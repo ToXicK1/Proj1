@@ -84,3 +84,11 @@ The scenario is written as a single parametrized test module so that it stays ru
 
 - Each milestone exit records: test counts by layer, failing tests (must be zero or listed in `KNOWN_ISSUES.md`), security test results, coverage of state transitions (100% of table rows), and the exit-criteria checklist in `IMPLEMENTATION_STATUS.md`.
 - Coverage target: 85% line coverage on `workflows`, `approvals`, `audit`, `auth`; no numeric target elsewhere, to avoid gaming.
+
+## Live tests against a local model (added 2026-11-19)
+
+`backend/tests/test_live_ollama.py` runs with `pytest -m live` when these are set:
+- `AIDLC_LIVE_OLLAMA_URL` (for example `http://127.0.0.1:11434/v1`)
+- `AIDLC_LIVE_OLLAMA_MODEL` (for example `qwen3-vl:4b-instruct`)
+
+They call a real local model through the OpenAI-compatible adapter, run a stage through the product path, and run the health probe. Without the variables they skip. Hosted-vendor live tests (Anthropic, OpenAI, Gemini) are not written yet because no keys are configured.

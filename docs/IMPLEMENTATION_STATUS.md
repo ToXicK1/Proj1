@@ -142,3 +142,8 @@ Verification:
 - `backend/`: 185 tests pass. New: 27 adapter tests (headers, bodies, parsing, every error mapping, refusals, mock modes), 8 secret tests (round trip, nonce, binding, tamper, key length, production refusal), 20 provider product tests (admin API, RBAC, leak scan, stage on mock and on two providers, retries, fallback, repair, failure reasons, injection, cost, health).
 - Migration 0004 reverses and re-applies on the Compose database.
 - Live run on Compose: mock provider and route created, a stored anthropic key (never called), AI stage run inside the container through the mock, usage recorded with no cost, canary leak scan clean.
+
+### M5 live verification update (2026-11-19)
+
+- Live: an `openai_compatible` provider pointed at a local Ollama server (`qwen3-vl:4b-instruct`) produced a structured stage output through the full product path, with the health probe passing. Run with `pytest -m live` after setting `AIDLC_LIVE_OLLAMA_URL` and `AIDLC_LIVE_OLLAMA_MODEL`.
+- Still not verified live: Anthropic, OpenAI and Gemini (no keys).

@@ -113,3 +113,9 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 | M5-7 | Prices are not shipped; cost stays blank until entered | Cost reports are incomplete | Maintained price file with source and date |
 | M5-8 | Context manifest per run is not stored (AGENT_ARCHITECTURE section 6) | Cannot yet list exactly which inputs an agent received | Store manifest IDs, M6 |
 | M5-9 | Mock provider can be created only in development or test | Demos outside those environments need a real provider | Accepted |
+
+## Live verification update (2026-11-19)
+
+- M5-0 partly closed: the adapter path is verified live against a local Ollama model (`qwen3-vl:4b-instruct`, served through Ollama's OpenAI-compatible endpoint). Two live tests pass: a structured answer from the adapter, and a full stage run through the product with a health probe.
+- Hosted vendors (Anthropic, OpenAI, Gemini) are still unverified: no keys.
+- Local models are slow on CPU; the live test allows 300 seconds per call.
