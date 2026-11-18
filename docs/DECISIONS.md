@@ -145,3 +145,20 @@ Format: each decision has context, decision, consequences, and status. New decis
 ## ADR-027: Compiler rejects what it cannot run (Milestone 3)
 - Status: Accepted (2026-11-19)
 - Decision: Conditional and parallel execution are refused with explicit messages, not silently ignored. Unknown fields are refused. Stage ids are lowercase snake_case, 1 to 64 characters.
+
+## ADR-028: Approval counts are scoped to a version and an approval epoch (Milestone 4)
+- Status: Accepted (2026-11-19)
+- Decision: A decision counts only when its artifact version is the current one and its epoch equals the stage's epoch. Invalidation bumps the epoch instead of editing rows. Decisions are append-only.
+- Consequence: History is kept, and invalidation needs no row updates. The unique index for one approval per approver includes the epoch so a person can approve again after invalidation.
+
+## ADR-029: Stages without a policy use a single project-owner approval (Milestone 4)
+- Status: Accepted (2026-11-19)
+- Decision: Every stage ends in a human gate. A missing `approval_policy` means `single` with role `project_owner`. Policies are validated at compile time.
+
+## ADR-030: Artifact content is stored in Postgres JSONB for now (Milestone 4)
+- Status: Accepted as an interim choice (2026-11-19)
+- Decision: Versions store canonical JSON with a SHA-256. ADR-004 and the architecture still call for object storage for large artifacts. That move is tracked in KNOWN_ISSUES and will not change the version or hash model.
+
+## ADR-031: Only the engine can approve a stage (Milestone 4)
+- Status: Accepted (2026-11-19)
+- Decision: `transition_stage` refuses APPROVED unless the approval service passes `approval_satisfied=True` after it has checked the policy in the same locked transaction. Approval rows are human-only at the database level.

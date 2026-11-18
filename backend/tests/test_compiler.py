@@ -17,7 +17,7 @@ def _base() -> dict:
             {"id": "intake", "name": "Intake", "depends_on": [], "work": "intake_summary",
              "output_required_keys": ["project_name"]},
             {"id": "outline", "name": "Outline", "depends_on": ["intake"], "protected": True,
-             "approval_policy": {"type": "single"}, "work": "requirements_outline",
+             "approval_policy": {"type": "single", "role": "project_owner"}, "work": "requirements_outline",
              "output_required_keys": ["sections"]},
         ],
     }
@@ -50,7 +50,8 @@ def _problems(raw: dict) -> list[str]:
         (lambda d: d["stages"][0].update(depends_on=["intake"]), "depends on itself"),
         (lambda d: d["stages"][0].update(depends_on=["outline"]), "circular dependency"),
         (lambda d: d["stages"][0].update(work="does_not_exist"), "unknown work function"),
-        (lambda d: d["stages"][1].update(approval_policy=None), "needs an approval policy"),
+        (lambda d: d["stages"][1].update(approval_policy={"type": "conditional"}), "conditional policies are not supported"),
+        (lambda d: d["stages"][1].update(approval_policy={"type": "any_of", "roles": ["wizard"]}), "unknown project role"),
         (lambda d: d["stages"][0].update(condition="x > 1"), "conditional execution is not supported"),
         (lambda d: d.update(execution="parallel"), "'parallel' is not supported"),
         (lambda d: d["stages"][0].update(id="Bad-ID"), "must be lowercase snake_case"),

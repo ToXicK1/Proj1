@@ -12,6 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.approvals.policy import PolicyError, parse_policy
+
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 SUPPORTED_EXECUTION = {"sequential"}
 
@@ -87,8 +89,14 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
                 problems.append(f"{path}.depends_on: unknown stage '{dep}'")
         if stage.work not in known_work:
             problems.append(f"{path}.work: unknown work function '{stage.work}'")
-        if stage.protected and not stage.approval_policy:
-            problems.append(f"{path}.approval_policy: protected stage '{stage.id}' needs an approval policy")
+        if stage.approval_policy is not None:
+            if stage.approval_policy.get("type") == "conditional":
+                problems.append(f"{path}.approval_policy: conditional policies are not supported yet")
+            else:
+                try:
+                    parse_policy(stage.approval_policy)
+                except PolicyError as exc:
+                    problems.extend(f"{path}.approval_policy.{p}" for p in exc.problems)
         if stage.condition is not None:
             problems.append(f"{path}.condition: conditional execution is not supported yet")
 

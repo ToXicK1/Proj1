@@ -84,3 +84,17 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 | M3-4 | Executions only report RUNNING; no completion, pause or cancel | No whole-workflow lifecycle yet | After M4 approvals |
 | M3-5 | Stage run is exposed only in code (`run_deterministic_stage`), with no API route | Correct for security (users cannot drive stages), but nothing can run stages from the UI yet | Internal runner endpoint behind a worker, M5/M6 |
 | M3-6 | Stage output is stored (`output_json`) but never shown | Intended for now; owner-visible artifacts come with M4 | M4 |
+
+## Milestone 4 known issues (2026-11-19)
+
+| ID | Issue | Impact | Plan |
+|---|---|---|---|
+| M4-1 | Conditional approval policies are refused | Cannot express "security approval only when risk is high" | Conditional policies with a restricted expression evaluator, M4.1 |
+| M4-2 | Artifact content in Postgres JSONB, not object storage | Large documents and binary artifacts do not fit yet | Object storage (ADR-030), M5 or M10 |
+| M4-3 | No mandatory sensors; validation snapshot lists none | Gates do not yet run deterministic checks | Sensor framework, M7 |
+| M4-4 | Every artifact is visible to all project members | No owner-visible flag yet; internal drafts would be visible too | Owner-visible flag per artifact kind, M9 |
+| M4-5 | No API to add or remove project members | Multi-approver policies are tested by inserting members in code | Membership management with org admin invites, M2.1 |
+| M4-6 | Rework and upstream-change runs have no API route | Only code (and the Compose container) can run them; there is no worker yet | Worker with queue, M5/M6 |
+| M4-7 | Nonce expiry for approval requests is not built | Replay is limited by idempotency keys, not by time-bound nonces | M4.1 with rate limiting on decisions |
+| M4-8 | `REJECTED` has no reopen route | A rejected stage stays rejected until a future admin action | Reopen command with audit, M8 |
+| M4-9 | Approval audit events carry the person's id, not a separate actor record | Adequate for now; evidence of exact screen shown is not recorded | Store the review snapshot, M9 |

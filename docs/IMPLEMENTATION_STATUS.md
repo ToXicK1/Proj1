@@ -9,7 +9,8 @@ Last updated: 2026-11-19 (Milestone 2)
 | M1 Research and architecture | Done, pushed to GitHub | `docs/research/*`, `docs/*`, commit `0ba9f98` |
 | M2 Application foundation | **Implemented; partly verified** (see below) | 27 backend tests, 3 frontend tests, live HTTP smoke run |
 | M3 Workflow engine | Partly done: engine, compiler and API built; approvals needed to advance past the first gate (M4) | 87 backend tests; live API check |
-| M4–M10 | Not started | — |
+| M4 Human approval engine | Backend done; conditional policies, sensors and object storage are later items | 129 backend tests; migration 0003 reversible; live approval run |
+| M5–M10 | Not started | — |
 
 ## M2 scope and status
 
@@ -76,3 +77,33 @@ Public API (owner only; users never drive stages):
 Verification:
 - `backend/`: 87 tests pass (state machine: every edge against every actor; compiler: each invalid class; engine: transitions, readiness, audit chain, concurrency, failure paths, API authorization and view contents). Schema drift test passes with migration 0002.
 - Live API on the Compose stack: start refused without CSRF (403), start succeeds (201), roots READY and dependents NOT_STARTED, unknown version (404), status in body (422), audit row written.
+
+## Milestone 4: human approval engine (2026-11-19)
+
+Status: **Backend complete against the M4 exit criteria; gaps listed below.**
+
+| Item (MASTER_PLAN M4) | Status | Notes |
+|---|---|---|
+| Versioned artifacts | Done | Immutable `artifact_versions` (trigger blocks UPDATE/DELETE); content hash; every stage output is version N |
+| Approval requests and decisions | Done | Approve, reject, request changes; append-only `approval_decisions` |
+| Approval policies | Done | single, any_of, all_of, role_based, sequential. Conditional is refused by the compiler (not yet supported) |
+| Authorization | Done | Non-members: 404. Members without a policy role: 403. Human actors only (DB CHECK + state machine) |
+| Version binding | Done | A decision names one version; a newer version makes older approvals stop counting (`stale_version`) |
+| Separation of duties | Done | An author cannot approve their own version; one person fills at most one slot per version |
+| Idempotency and replay | Done (partial) | Same key returns the same result; a different decision on the same key is refused. Nonce expiry not built |
+| Comments and change requests | Done | Reject and request-changes need a comment. Each request is a `change_requests` row, resolved by the revision that answers it |
+| Rework loop, bounded | Done | Feedback goes to the next revision (`feedback_addressed`); limit 3 loops (`rework_limit_reached`) |
+| Invalidation on upstream change | Done | New upstream version: that stage and approved downstream stages go to AWAITING; approvals of the previous epoch stop counting even when the version is unchanged |
+| Atomic approval | Done | Approval row, slot evaluation, stage transition, downstream readiness and workflow completion commit together. Injected failure rolls everything back (tested) |
+| Concurrency | Done | Concurrent approvals from two slots: exactly one APPROVED transition (tested) |
+| Workflow completion | Done | Execution moves to COMPLETED when all stages are APPROVED or SKIPPED; reopened if an upstream change lands |
+| Validation snapshot | Partial | Stores version and satisfied slots. Mandatory sensors arrive with M7 and are recorded as an empty list |
+
+API (owner or any member; CSRF on writes):
+- `GET /api/v1/workflow-executions/{id}/stages/{key}/review` returns the stage, the current artifact (content included), policy slots, decisions for the current epoch, change requests, and `can_decide` for the caller.
+- `POST /api/v1/workflow-executions/{id}/stages/{key}/decisions` takes `artifact_version_id`, `decision`, `comment`, `idempotency_key`. Unknown fields are refused, so a client cannot send a status or an approver.
+
+Verification:
+- `backend/`: 129 tests pass. New: 17 policy tests, approval engine tests (single, version binding, rework bound, reject, authorization, separation of duties, idempotency, append-only, all_of, sequential, concurrency, atomicity, invalidation), 6 HTTP tests, compiler policy cases.
+- Migration 0003 downgrades and re-applies cleanly on the Compose database.
+- Live run on the Compose stack: intake run inside the container, approval over HTTP (403 without CSRF, 200 on approve, idempotent repeat), second approval refused, outline run, request changes, rework to version 2, version-1 approval refused as stale, approval of version 2, workflow COMPLETED.

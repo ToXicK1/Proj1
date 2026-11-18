@@ -54,7 +54,7 @@ class WorkflowExecution(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    __table_args__ = (CheckConstraint("status in ('RUNNING')", name="status_valid"),)
+    __table_args__ = (CheckConstraint("status in ('RUNNING', 'COMPLETED')", name="status_valid"),)
 
 
 class StageExecution(Base):
@@ -71,6 +71,9 @@ class StageExecution(Base):
     stage_key: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rework_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Bumped when an approval is invalidated; only decisions of the current epoch count.
+    approval_epoch: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     output_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

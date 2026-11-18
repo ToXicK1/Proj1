@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine import Engine
 
+from app.approvals.router import router as approvals_router
 from app.auth.router import router as auth_router
 from app.core.config import Settings, get_settings
 from app.core.db import make_engine, make_session_factory
@@ -39,5 +40,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(orgs_router)
     app.include_router(projects_router)
     app.include_router(workflows_router)
+    app.include_router(approvals_router)
     return app
 
