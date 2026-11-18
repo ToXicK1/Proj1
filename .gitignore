@@ -34,3 +34,5 @@ storage/
 *.sqlite3
 .pgtest/
 .pgdev/
+test-results/
+playwright-report/

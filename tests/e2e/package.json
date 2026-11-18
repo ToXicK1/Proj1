@@ -1,0 +1,16 @@
+{
+  "name": "aidlc-e2e",
+  "private": true,
+  "version": "0.2.0",
+  "scripts": {
+    "test": "playwright test",
+    "install-browser": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.47.2",
+    "pg": "8.13.0",
+    "@types/pg": "8.11.10",
+    "@types/node": "22.7.5",
+    "typescript": "5.5.4"
+  }
+}

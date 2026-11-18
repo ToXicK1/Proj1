@@ -65,7 +65,7 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 | ID | Issue | Impact | Plan |
 |---|---|---|---|
 | M2-1 | Docker Compose verification | **Closed 2026-11-19.** Stack built and verified. Two defects were fixed: env template names did not match the app, and the image re-synced dev dependencies at start-up |
-| M2-2 | No browser end-to-end test yet | The UI flow is verified by typecheck, unit tests and the HTTP smoke run, not in a browser | Add Playwright tests in M2.1 |
+| M2-2 | Browser E2E | **Closed.** 11 Playwright tests pass against the Compose stack. They use the installed Google Chrome, because the bundled Chromium is blocked by Windows policy. The run found a real defect: the verify page sent its single-use token twice under React StrictMode (fixed) |
 | M2-3 | Admin invite to join an existing organization is not built | Users only get personal workspaces | M2.1, per ADR-015 |
 | M2-4 | Rate limiting is in-process | Limits do not hold across multiple API instances | Shared store (Postgres or Redis) before scaling out |
 | M2-5 | Email is written to an outbox table, not sent | Users need database access in development to get the verification link | SMTP adapter reads `email_outbox` (M2.1 or M10) |

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, api } from "../api";
 
@@ -7,27 +7,25 @@ export function VerifyEmailPage() {
   const token = params.get("token") ?? "";
   const [state, setState] = useState<"working" | "done" | "failed">("working");
   const [message, setMessage] = useState("");
+  // Verification tokens are single-use. React StrictMode runs effects twice in development, so the
+  // request is guarded: the second run would otherwise send the same token again and fail.
+  const submitted = useRef(false);
 
   useEffect(() => {
+    if (submitted.current) return;
+    submitted.current = true;
     if (!token) {
       setState("failed");
       setMessage("This link is missing its verification token.");
       return;
     }
-    let cancelled = false;
     api
       .verifyEmail(token)
-      .then(() => {
-        if (!cancelled) setState("done");
-      })
+      .then(() => setState("done"))
       .catch((err: unknown) => {
-        if (cancelled) return;
         setState("failed");
         setMessage(err instanceof ApiError ? err.message : "Verification failed. Try again.");
       });
-    return () => {
-      cancelled = true;
-    };
   }, [token]);
 
   return (

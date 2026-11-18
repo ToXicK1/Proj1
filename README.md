@@ -50,6 +50,16 @@ Open http://localhost:5173. The Vite dev server forwards `/api` to the backend o
 
 Email is not sent yet. The verification message is stored in the `email_outbox` table. To get the link, query that table (kind `verify_email`) and open the URL it contains.
 
+## End-to-end tests
+
+Start the Compose stack first. The suite uses the Google Chrome installed on the machine. Set E2E_CHANNEL to an empty string to use Playwright's bundled browser instead.
+
+```powershell
+cd tests/e2e
+npm install
+npm test
+```
+
 ## Docker Compose
 
 Verified on Docker Engine 29.5.2. The stack is defined in `docker-compose.yml`:

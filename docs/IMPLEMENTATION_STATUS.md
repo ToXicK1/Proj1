@@ -39,7 +39,7 @@ Last updated: 2026-11-19 (Milestone 2)
 
 ## Not verified
 
-- Browser end-to-end flow with Playwright (not written yet).
+- Browser end-to-end tests: 11 Playwright tests in `tests/e2e`, passing on 3 consecutive runs against the Compose stack (desktop and phone viewports).
 - Python 3.13 (the decided target). The dev venv is 3.12 (see DECISIONS ADR-021).
 - Accessibility and responsive layout checks.
 - Real email delivery.
