@@ -10,6 +10,7 @@ from app.notifications.models import EmailOutbox  # noqa: F401
 from app.organizations.models import Membership, Organization  # noqa: F401
 from app.projects.models import Project, ProjectMember  # noqa: F401
 from app.providers.models import AgentRun, AiProvider, ModelRoute, SecretReference, TokenUsage  # noqa: F401
+from app.skills.models import Skill, SkillVersion  # noqa: F401
 from app.workflows.models import (  # noqa: F401
     StageExecution,
     StageTransition,

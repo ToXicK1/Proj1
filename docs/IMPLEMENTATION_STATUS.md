@@ -106,7 +106,7 @@ API (owner or any member; CSRF on writes):
 - `POST /api/v1/workflow-executions/{id}/stages/{key}/decisions` takes `artifact_version_id`, `decision`, `comment`, `idempotency_key`. Unknown fields are refused, so a client cannot send a status or an approver.
 
 Verification:
-- `backend/`: 129 tests pass. New: 17 policy tests, approval engine tests (single, version binding, rework bound, reject, authorization, separation of duties, idempotency, append-only, all_of, sequential, concurrency, atomicity, invalidation), 6 HTTP tests, compiler policy cases.
+- `backend/`: 129 tests pass. New: 21 policy tests, approval engine tests (single, version binding, rework bound, reject, authorization, separation of duties, idempotency, append-only, all_of, sequential, concurrency, atomicity, invalidation), 5 HTTP tests, compiler policy cases.
 - Migration 0003 downgrades and re-applies cleanly on the Compose database.
 - Live run on the Compose stack: intake run inside the container, approval over HTTP (403 without CSRF, 200 on approve, idempotent repeat), second approval refused, outline run, request changes, rework to version 2, version-1 approval refused as stale, approval of version 2, workflow COMPLETED.
 
@@ -129,7 +129,7 @@ Status: **Built and tested offline. Live vendor calls are NOT verified: no provi
 | Admin API: configure and test providers | Done | Organization admins only. Writes need CSRF. Keys are write-only |
 | Provider calls inside the stage transaction | Done | Run records, usage and audit commit with the stage transition |
 | Prompt-injection stance for owner text | Done (prompt-level) | Owner text sits in tags and the system prompt says never to follow it. Tested with an injection payload |
-| No key in any response, log or audit | Tested | Canary test across all read endpoints, audit payloads, run records and ciphertext |
+| No key in API responses or stored records | Tested | Canary test across read endpoints, audit payloads, run records and ciphertext. Application logs are not scanned yet |
 | Live provider tests | **Not run** | Need keys and a budget. Nothing in CI calls a vendor |
 
 Public API (organization admin; CSRF on writes):
@@ -140,7 +140,7 @@ Public API (organization admin; CSRF on writes):
 Stage integration: a stage may name an AI task (`work: "ai:requirements_draft"`) and a `model_route`. The compiler requires the route for AI tasks and refuses it for deterministic ones. Output goes through the same validation and artifact versioning as M3–M4.
 
 Verification:
-- `backend/`: 185 tests pass. New: 27 adapter tests (headers, bodies, parsing, every error mapping, refusals, mock modes), 8 secret tests (round trip, nonce, binding, tamper, key length, production refusal), 20 provider product tests (admin API, RBAC, leak scan, stage on mock and on two providers, retries, fallback, repair, failure reasons, injection, cost, health).
+- `backend/`: 185 tests pass. New: 30 adapter tests (headers, bodies, parsing, every error mapping, refusals, mock modes), 8 secret tests (round trip, nonce, binding, tamper, key length, production refusal), 18 provider product tests (admin API, RBAC, leak scan, stage on mock and on two providers, retries, fallback, repair, failure reasons, injection, cost, health).
 - Migration 0004 reverses and re-applies on the Compose database.
 - Live run on Compose: mock provider and route created, a stored anthropic key (never called), AI stage run inside the container through the mock, usage recorded with no cost, canary leak scan clean.
 
@@ -163,7 +163,7 @@ Status: **Built and tested. The M6 exit criterion (independent professional prof
 | Structured handoff | Done | The review record carries a handoff: from run, to agent, artifact version, open questions |
 | Reviewer verdict visible to the owner | Done | Shown in the review view with its findings. Advisory: it does not block the gate |
 | Tool registry and grants | Done (catalogue only) | Five permission classes. Only READ can be granted; EXTERNAL and ADMINISTRATIVE are refused. No tool executes yet |
-| Skills | **Not built** | Deferred |
+| Skills | Done (see the update below) | Versioned, pinned by agent versions |
 | Development sandbox (ADR-017) | **Not built** | Needed before the design stage generates runnable code |
 | Blocking reviews | **Not built** | Reviews are advisory until sensors (M7) |
 | Admin API | Done | Profiles, agents, new versions, list. Org admins only |
@@ -172,3 +172,18 @@ Verification:
 - `backend/`: 203 tests pass; 3 live tests pass against the local Ollama model. New: 18 agent tests (admin rules, validation refusals, immutability, compile and run-time independence, context scope, handoff, profile mismatch, review visibility, two profiles executing independently).
 - Migration 0005 reverses and re-applies on the Compose database.
 - Live: a lead and a reviewer on the local model (`qwen3-vl:4b-instruct`) completed a stage through the full path.
+
+### M6 follow-up: skills and reviewer pinning (2026-11-19)
+
+| Item | Status | Notes |
+|---|---|---|
+| Skill registry | Done | Organization-scoped skills with immutable versions (trigger). Org admins only |
+| Pinning skills to agent versions | Done | An agent version pins the latest skill version at creation. Later skill edits do not change it; a new agent version is needed to pick them up |
+| Skill checks | Done | Compatible profiles are checked, and the agent must already hold every tool the skill requires. A skill never grants a tool |
+| Skills in runs | Done | Pinned instructions are added to the system prompt; the run manifest records key and version |
+| Provider pinning | Done | `allow_fallback: false` on an agent version limits it to the route's primary provider. Retries on that provider still apply. The default is `true`, so reviewers are pinned only when configured |
+| Compatible stages, skill dependencies | **Not built** | The brief lists both; only compatible profiles exist |
+
+Verification: 215 backend tests pass (12 new in `test_skills.py`), 3 live Ollama tests pass, and migration 0006 reverses and re-applies on the Compose database. The live tests do not use a skill, so skill prompts are verified only against the scripted model.
+
+Corrections to earlier notes in this file: test counts for M4 and M5 were recounted from pytest, and the M5 credential check no longer claims to cover application logs.

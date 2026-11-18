@@ -287,6 +287,7 @@ def run_structured(
     manifest: dict[str, Any] | None = None,
     accept: Callable[[dict[str, Any]], str | None] | None = None,
     sink: list[uuid.UUID] | None = None,
+    allow_fallback: bool = True,
 ) -> dict[str, Any]:
     """One structured call with fallback, retries and one repair. Every attempt is recorded.
 
@@ -300,6 +301,8 @@ def run_structured(
     candidates = [(route.primary_provider_id, route.primary_model)] + [
         (uuid.UUID(f["provider_id"]), f["model"]) for f in route.fallbacks
     ]
+    if not allow_fallback:
+        candidates = candidates[:1]  # pinned: the primary provider only, no fallback
     base = CompletionRequest(system=system, user=user, model="")
     attempts_total = 0
     last_kind = "unavailable"

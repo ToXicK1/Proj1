@@ -100,6 +100,8 @@ def create_agent(
     context_sources: list[str],
     tools: list[str],
     clone_of: str | None = None,
+    skills: list[str] | None = None,
+    allow_fallback: bool = True,
 ) -> tuple[AgentConfiguration, AgentConfigVersion]:
     require_org_admin(db, user.id, organization_id)
     if kind not in ("lead", "reviewer"):
@@ -123,7 +125,9 @@ def create_agent(
     )
     db.add(agent)
     db.flush()
-    version = _new_version(db, agent, instructions, required_keys, model_route, context_sources, tools)
+    pins = _pins(db, organization_id, skills or [], profile.key, tools)
+    version = _new_version(db, agent, instructions, required_keys, model_route, context_sources, tools,
+                           skills=pins, allow_fallback=allow_fallback)
     db.commit()
     return agent, version
 
@@ -136,16 +140,26 @@ def _agent(db: Session, organization_id: uuid.UUID, key: str) -> AgentConfigurat
     return agent
 
 
+def _pins(db: Session, organization_id: uuid.UUID, skill_keys: list[str], profile_key: str,
+          tools: list[str]) -> list[dict]:
+    from app.skills.service import pin_for_agent
+
+    return pin_for_agent(db, organization_id, skill_keys=skill_keys, profile_key=profile_key, agent_tools=tools)
+
+
 def _new_version(db: Session, agent: AgentConfiguration, instructions: str, required_keys: list[str],
-                 model_route: str, context_sources: list[str], tools: list[str]) -> AgentConfigVersion:
+                 model_route: str, context_sources: list[str], tools: list[str], *,
+                 skills: list[dict] | None = None, allow_fallback: bool = True) -> AgentConfigVersion:
     last = db.execute(select(func.max(AgentConfigVersion.version)).where(
         AgentConfigVersion.agent_id == agent.id)).scalar_one()
+    pins = skills or []
     payload = {"instructions": instructions, "required_keys": required_keys, "model_route": model_route,
-               "context_sources": context_sources, "tools": tools, "kind": agent.kind}
+               "context_sources": context_sources, "tools": tools, "kind": agent.kind, "skills": pins,
+               "allow_fallback": allow_fallback}
     version = AgentConfigVersion(
         id=uuid7(), agent_id=agent.id, version=(last or 0) + 1, instructions=instructions,
         required_keys=required_keys, model_route=model_route, context_sources=context_sources,
-        tools=tools, sha256=_digest(payload),
+        tools=tools, sha256=_digest(payload), skills=pins, allow_fallback=allow_fallback,
     )
     db.add(version)
     db.flush()
@@ -154,11 +168,15 @@ def _new_version(db: Session, agent: AgentConfiguration, instructions: str, requ
 
 def add_version(db: Session, user: User, *, organization_id: uuid.UUID, key: str, instructions: str,
                 required_keys: list[str], model_route: str, context_sources: list[str],
-                tools: list[str]) -> AgentConfigVersion:
+                tools: list[str], skills: list[str] | None = None,
+                allow_fallback: bool = True) -> AgentConfigVersion:
     require_org_admin(db, user.id, organization_id)
     agent = _agent(db, organization_id, key)
     _check_version_fields(agent.kind, instructions, required_keys, context_sources, tools)
-    version = _new_version(db, agent, instructions, required_keys, model_route, context_sources, tools)
+    profile = db.get(Profile, agent.profile_id)
+    pins = _pins(db, organization_id, skills or [], profile.key, tools)
+    version = _new_version(db, agent, instructions, required_keys, model_route, context_sources, tools,
+                           skills=pins, allow_fallback=allow_fallback)
     db.commit()
     return version
 

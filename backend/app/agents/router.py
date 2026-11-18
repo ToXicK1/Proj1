@@ -29,6 +29,8 @@ class AgentIn(_Strict):
     context_sources: list[str] = Field(min_length=1, max_length=4)
     tools: list[str] = Field(default_factory=list, max_length=10)
     clone_of: str | None = Field(default=None, max_length=64)
+    skills: list[str] = Field(default_factory=list, max_length=8)
+    allow_fallback: bool = True
 
 
 class VersionIn(_Strict):
@@ -37,6 +39,8 @@ class VersionIn(_Strict):
     model_route: str = Field(min_length=2, max_length=64)
     context_sources: list[str] = Field(min_length=1, max_length=4)
     tools: list[str] = Field(default_factory=list, max_length=10)
+    skills: list[str] = Field(default_factory=list, max_length=8)
+    allow_fallback: bool = True
 
 
 @router.post("/profiles", status_code=201)
@@ -51,7 +55,7 @@ def create_agent(organization_id: uuid.UUID, body: AgentIn, caller: CsrfCaller, 
         db, caller.user, organization_id=organization_id, profile_key=body.profile, key=body.key,
         kind=body.kind, instructions=body.instructions, required_keys=body.required_keys,
         model_route=body.model_route, context_sources=body.context_sources, tools=body.tools,
-        clone_of=body.clone_of,
+        clone_of=body.clone_of, skills=body.skills, allow_fallback=body.allow_fallback,
     )
     return {"key": agent.key, "kind": agent.kind, "version": version.version}
 
@@ -61,7 +65,7 @@ def add_version(organization_id: uuid.UUID, key: str, body: VersionIn, caller: C
     version = service.add_version(
         db, caller.user, organization_id=organization_id, key=key, instructions=body.instructions,
         required_keys=body.required_keys, model_route=body.model_route, context_sources=body.context_sources,
-        tools=body.tools,
+        tools=body.tools, skills=body.skills, allow_fallback=body.allow_fallback,
     )
     return {"key": key, "version": version.version}
 

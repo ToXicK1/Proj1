@@ -203,3 +203,12 @@ Format: each decision has context, decision, consequences, and status. New decis
 ## ADR-040: Reviews are advisory until sensors exist (Milestone 6)
 - Status: Accepted as an interim rule (2026-11-19)
 - Decision: A reviewer's verdict and findings are recorded and shown to the owner, but they do not change the gate. Blocking reviews come with the sensor framework (M7), where deterministic checks decide, not a model's own judgement.
+
+## ADR-041: Agent versions pin skill versions (M6 follow-up)
+- Status: Accepted (2026-11-19)
+- Decision: Creating an agent version resolves each named skill to its latest version and stores the key and version. Runs read exactly that version.
+- Consequence: A skill edit reaches an agent only through a new agent version, so behaviour never changes silently. Skills do not grant tools; the agent must already hold them.
+
+## ADR-042: Fallback is an agent-version setting (M6 follow-up)
+- Status: Accepted (2026-11-19)
+- Decision: `allow_fallback` defaults to true. When false, the run uses only the route's primary provider. This keeps a reviewer on its configured provider at the cost of failing the stage when that provider is down.

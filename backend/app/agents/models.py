@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -65,6 +66,10 @@ class AgentConfigVersion(Base):
     model_route: Mapped[str] = mapped_column(String(64), nullable=False)
     context_sources: Mapped[list] = mapped_column(JSONB, nullable=False)
     tools: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # Pinned skill versions: [{"key": ..., "version": n}]. Instructions are resolved from these, never from latest.
+    skills: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # False pins the run to the route's primary provider: no fallback candidates.
+    allow_fallback: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

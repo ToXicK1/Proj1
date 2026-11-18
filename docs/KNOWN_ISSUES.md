@@ -131,3 +131,10 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 | M6-5 | Context manifests store ids and counts, not prompt hashes | Auditors cannot see the exact text a run received | Store prompt hashes per run, M10 |
 | M6-6 | Agents are created through the API only | No visual editor for profiles and agents | Workflow Studio, M8 |
 | M6-7 | A review can be answered by a fallback provider | The reviewer may not use the provider configured for its role | Pin reviewer provider in the agent version, M6 follow-up |
+
+## M6 follow-up update (2026-11-19)
+
+- M6-1 closed for skill versions and pinning. Still missing: compatible stages and skill dependencies.
+- M6-7 closed: set `allow_fallback: false` on the reviewer's agent version. It is not the default.
+- M6-8 (new): skill instructions are written by org admins and go into system prompts unreviewed. A governed approval step belongs with the rules work in M7.
+- M6-9 (new): application logs are not scanned for credentials; the canary test covers API responses and stored records only.

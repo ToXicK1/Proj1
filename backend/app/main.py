@@ -12,6 +12,7 @@ from app.core.ratelimit import SlidingWindowLimiter
 from app.organizations.router import router as orgs_router
 from app.projects.router import router as projects_router
 from app.providers.router import router as providers_router
+from app.skills.router import router as skills_router
 from app.workflows.router import router as workflows_router
 
 
@@ -47,5 +48,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(approvals_router)
     app.include_router(providers_router)
     app.include_router(agents_router)
+    app.include_router(skills_router)
     return app
 
