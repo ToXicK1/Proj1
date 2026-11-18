@@ -14,6 +14,7 @@ from app.providers.models import AgentRun, AiProvider, ModelRoute, SecretReferen
 from app.rules.models import ChangeProposal, ProjectTeam, Rule, RuleVersion, Team  # noqa: F401
 from app.sensors.models import RiskAcceptance, SensorEvidence, SensorExecution  # noqa: F401
 from app.skills.models import Skill, SkillVersion  # noqa: F401
+from app.studio.models import WorkflowDraft  # noqa: F401
 from app.workflows.models import (  # noqa: F401
     StageExecution,
     StageTransition,

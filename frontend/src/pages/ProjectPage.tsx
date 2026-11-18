@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError, api, type ProjectDto } from "../api";
 
-// Stage progress comes from the workflow engine (Milestone 3). Until it exists, the page says so
-// instead of showing a made-up status.
+// The owner's view of workflow progress arrives with the portal (Milestone 9). Until then the page
+// says so instead of showing a made-up status.
 export function ProjectPage() {
   const { projectId = "" } = useParams();
   const [project, setProject] = useState<ProjectDto | null>(null);
@@ -45,7 +45,7 @@ export function ProjectPage() {
       {project.description && <p>{project.description}</p>}
       <div className="notice">
         The delivery lifecycle (Business Analyst, Architect, Designer, Developer, QA &amp; Security, DevOps) is not
-        available yet. It arrives with the workflow engine in Milestone 3.
+        shown on this page yet.
       </div>
     </section>
   );

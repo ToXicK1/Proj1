@@ -11,6 +11,16 @@ test.describe("phone layout", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
+  test("the workflow editor fits the viewport", async ({ page }) => {
+    await registerAndSignIn(page, "Phone Admin");
+    await page.goto("/studio");
+    await page.getByLabel("Workflow key").fill("phone-flow");
+    await page.getByRole("button", { name: "Create workflow" }).click();
+    await expect(page.getByLabel("Workflow diagram")).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
   test("project home fits the viewport and the create button is visible", async ({ page }) => {
     await registerAndSignIn(page, "Phone User");
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

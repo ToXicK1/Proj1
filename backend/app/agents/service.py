@@ -230,6 +230,8 @@ def list_agents(db: Session, organization_id: uuid.UUID) -> list[dict]:
             "kind": agent.kind,
             "profile": profile.key,
             "version": version.version if version else None,
+            "instructions": version.instructions if version else "",
+            "required_keys": version.required_keys if version else [],
             "model_route": version.model_route if version else None,
             "context_sources": version.context_sources if version else [],
             "tools": version.tools if version else [],

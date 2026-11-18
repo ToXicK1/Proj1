@@ -14,7 +14,8 @@ Last updated: 2026-11-19 (Milestone 2)
 | M6 Agent orchestration | Built and tested; skills and sandbox not built; reviews advisory | 203 backend tests, 3 live tests on a local model; migration 0005 reversible |
 | M7 Hooks, sensors and rules | Backend done; see the limits in the M7 section | 289 backend tests, 4 live tests on a local model, 14 safeguard mutations caught; migration 0008 reversible |
 | Member invitations | Built and tested; email is still outbox-only | 305 backend tests, 14 browser tests, 18 safeguard mutations caught; migration 0009 reversible |
-| M8–M10 | Not started | — |
+| M8 Workflow Configuration Studio | Exit criterion met; see the limits in the M8 section | 325 backend tests, 19 browser tests, 25 safeguard mutations caught; migration 0010 reversible |
+| M9–M10 | Not started | — |
 
 ## M2 scope and status
 
@@ -70,7 +71,7 @@ Status: **Partly done.** The state machine, the compiler, the locked engine, the
 | Deterministic execution without AI | Partly | A stage runs its deterministic work, validates required output, and ends in AWAITING_HUMAN_REVIEW. **Downstream stages cannot start until approvals exist (Milestone 4)** |
 | Approval, rework, invalidation | Not started | Milestone 4. Human-only edges exist in the state machine; the engine refuses APPROVED until then |
 | Workflow-level status (COMPLETED, PAUSED) | Not built | Executions only ever show RUNNING |
-| Publishing definitions over an API | Not built | Seeded from code (`app/workflows/seed.py`). Admin publishing comes with Workflow Studio (M8) |
+| Publishing definitions over an API | Done in M8 | Organization admins publish from the Studio; platform templates are still seeded from code |
 | Job queue for workers | Not built | Stage runs happen inline; the design calls for a DB-backed queue (ADR-004) |
 
 Public API (owner only; users never drive stages):
@@ -241,3 +242,25 @@ Status: **Built and tested. Invitation email is not delivered yet; the link sits
 - Migration 0009 reverses and re-applies on the Compose database.
 - Also fixed: the Create project button could be used before the organization list had loaded, which showed a false "workspace is not ready" error.
 - Limits: INV-1 to INV-4 and M7-8 in `KNOWN_ISSUES.md`. An invited reviewer has no evidence screen yet (M7-9).
+
+## Milestone 8: Workflow Configuration Studio (2026-11-18)
+
+Status: **Exit criterion met: an administrator builds and publishes a custom profile with a custom stage and gate without code changes, and invalid configurations cannot publish.**
+
+| Plan item | Status | Notes |
+|---|---|---|
+| Profile editor | Done | Profiles, agents and new agent versions |
+| Stage editor | Done | Work, profile, agents, outputs, dependencies, approval gate, sensors |
+| Visual workflow builder | Done | React Flow: drag to link, click a line to unlink |
+| Permission editor | Partial | Agent tool grants only (M8-4) |
+| Rules editor | Done | Add, update, retire, and decide proposals |
+| Hooks and sensors editor | Done | Hooks are created and switched on or off; sensors are added per stage |
+| Import and export | Done | JSON and YAML; imports become drafts |
+
+- Publishing is admin only, audited, and creates an immutable version. Starting a workflow now checks that it belongs to the project's organization or is a platform template.
+- `backend/`: 325 tests pass, 4 live tests skipped by default; 20 are in `tests/test_studio.py`.
+- `frontend/`: 8 unit tests, typecheck and production build pass.
+- Browser: 19 Playwright tests pass on Compose, including 4 Studio flows and a phone-width check.
+- 25 deliberate breakages of Studio safeguards are caught.
+- Migration 0010 reverses and re-applies on a clean database. Downgrade refuses while organization workflows exist, because they would otherwise become platform templates.
+- Not done: M8-1 to M8-8 in `KNOWN_ISSUES.md`. A published workflow's run is proven through the API and engine tests, not through a browser screen.

@@ -80,7 +80,7 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 |---|---|---|---|
 | M3-1 | Nothing past the first review gate can run until approvals exist | The M3 exit criterion "a deterministic workflow executes" is met only up to AWAITING_HUMAN_REVIEW | Milestone 4 |
 | M3-2 | No job queue; stage runs happen inline in the request or script | Long-running work would block; no retries after a crash | DB-backed queue with leases (ADR-004), M5 or M6 |
-| M3-3 | Workflow definitions are seeded from code, not published through an API | Administrators cannot add a template without a code change | Workflow Studio, M8 |
+| M3-3 | Closed 2026-11-18: administrators publish organization workflows from the Studio | None | Done, see ADR-050 |
 | M3-4 | Executions only report RUNNING; no completion, pause or cancel | No whole-workflow lifecycle yet | After M4 approvals |
 | M3-5 | Stage run is exposed only in code (`run_deterministic_stage`), with no API route | Correct for security (users cannot drive stages), but nothing can run stages from the UI yet | Internal runner endpoint behind a worker, M5/M6 |
 | M3-6 | Stage output is stored (`output_json`) but never shown | Intended for now; owner-visible artifacts come with M4 | M4 |
@@ -129,7 +129,7 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 | M6-3 | Reviews are advisory | A reviewer can recommend changes and the gate still opens | Blocking reviews with sensors, M7 |
 | M6-4 | No tool has an executor; only READ can be granted, and no READ tool runs yet | Agents cannot read the project through tools | Tool executors with per-run limits, M6 follow-up |
 | M6-5 | Context manifests store ids and counts, not prompt hashes | Auditors cannot see the exact text a run received | Store prompt hashes per run, M10 |
-| M6-6 | Agents are created through the API only | No visual editor for profiles and agents | Workflow Studio, M8 |
+| M6-6 | Closed 2026-11-18: profiles, agents and agent versions are edited in the Studio | Skills and teams still have no screen (M8-2) | Done |
 | M6-7 | A review can be answered by a fallback provider | The reviewer may not use the provider configured for its role | Pin reviewer provider in the agent version, M6 follow-up |
 
 ## M6 follow-up update (2026-11-19)
@@ -153,7 +153,7 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 | M7-6 | Events not emitted yet: project.updated, project.archived, workflow.failed, stage.reopened, artifact.updated, agent.tool_requested | Hooks cannot subscribe to them, and the API refuses them | Add with the features that produce them |
 | M7-7 | Hook timeouts do not interrupt an action | A slow action is marked failed only after it returns | Needed if hooks ever call external systems |
 | M7-8 | Teams have no members yet; they only scope rules. Invitations cover organization and project roles only | Team membership cannot drive permissions | Separate team membership work |
-| M7-9 | No screens for sensors, hooks, rules or proposals | Everything is API only | Workflow Studio, M8 |
+| M7-9 | Closed 2026-11-18: the Studio manages rules, proposals and hooks, adds sensors to stages and lists the sensor catalogue | Evidence and risk acceptance still have no screen (M8-3) | Done for configuration |
 
 - M6-3 remains open as M7-5. M6-8 is partly addressed: rules now use governed proposals, but skill text does not.
 
@@ -164,4 +164,17 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 | INV-1 | Invitation email is written to `email_outbox`, not sent (same cause as M2-5) | Someone with database access must pass the link on until email delivery exists | SMTP adapter |
 | INV-2 | After signing up and verifying, the invited person must open the invitation link again | One extra step for new users | Carry the invitation through signup |
 | INV-3 | The Team page lists only projects the admin belongs to, because `GET /projects` returns the caller's own projects | An org admin cannot use the page to manage a project they are not in. The API does allow it | Organization-wide project list for admins |
-| INV-4 | Browser tests run with 2 workers. With 6, page loads and proxied API calls stalled for up to a minute on a freshly started Vite dev server. The API answered quickly when called directly. The exact cause inside the dev server was not isolated | Slower E2E runs; `E2E_WORKERS` overrides the setting | Re-check against static hosting (M10) |
+| INV-4 | Browser tests run with 2 workers and repeat requests limited by the 20-per-minute auth limit. With 6 workers, page loads and proxied API calls stalled for up to a minute on a freshly started Vite dev server. The API answered quickly when called directly. The exact cause inside the dev server was not isolated | Slower E2E runs; `E2E_WORKERS` overrides the setting | Re-check against static hosting (M10) |
+
+## Milestone 8: Workflow Studio
+
+| ID | Issue | Impact | Plan |
+|---|---|---|---|
+| M8-1 | No screen starts a published workflow or runs its stages | The API starts it; stage runs are triggered in code. A published workflow cannot yet be followed end to end in the browser | Portal and run controls, M9 |
+| M8-2 | Providers, model routes, skills and teams have no Studio screen | An AI stage or agent needs a route created through the API first | Later Studio work |
+| M8-3 | Evidence and risk acceptance have no screen | Reviewers use the API | Reviewer workspace, M9 |
+| M8-4 | The permission editor covers agent tool grants only, and only READ tools can be granted. Project and organization roles are managed on the Team page | No custom roles or permission policies | Needs a permission model first |
+| M8-5 | No visual comparison between workflow versions | An older version can be loaded into the draft and republished, but differences are not highlighted | Diff view |
+| M8-6 | Sequential execution only; conditional stages and conditional approval policies are refused | Parallel branches cannot be designed | Engine work |
+| M8-7 | Diagram positions are computed, not saved. Linking needs a pointer; the "Runs after" checkboxes are the keyboard route | Administrators cannot arrange the diagram | Add saved layout if needed |
+| M8-8 | No automated accessibility scan has been run on the Studio | Accessibility is only partly checked | axe checks |

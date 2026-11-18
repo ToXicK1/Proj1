@@ -52,16 +52,36 @@ export async function invitationPath(email: string): Promise<string> {
   }
 }
 
+/**
+ * The suite creates accounts faster than the real limit of 20 auth requests per minute allows.
+ * The limit stays on: a limited request is simply repeated once the window has moved on.
+ */
+async function retryWhileLimited(page: Page, path: string, act: () => Promise<unknown>): Promise<void> {
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const response = page.waitForResponse((r) => r.url().endsWith(path) && r.request().method() === "POST");
+    await act();
+    if ((await response).status() !== 429) return;
+    await page.waitForTimeout(5_000);
+  }
+  throw new Error(`${path} stayed rate limited`);
+}
+
+/** Submits the sign-in form that is already filled in. */
+export async function submitSignIn(page: Page): Promise<void> {
+  await retryWhileLimited(page, "/api/v1/auth/login", () => page.getByRole("button", { name: "Sign in" }).click());
+}
+
 /** Signs up through the UI, verifies through the link, and leaves the user on the sign-in page. */
 export async function registerVerifiedUser(page: Page, name: string, email: string): Promise<void> {
   await page.goto("/signup");
   await page.getByLabel("Your name").fill(name);
   await page.getByLabel("Work email").fill(email);
   await page.getByLabel("Password (at least 12 characters)").fill(PASSWORD);
-  await page.getByRole("button", { name: "Create account" }).click();
+  await retryWhileLimited(page, "/api/v1/auth/signup", () => page.getByRole("button", { name: "Create account" }).click());
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
 
-  await page.goto(await verificationPath(email));
+  const link = await verificationPath(email);
+  await retryWhileLimited(page, "/api/v1/auth/verify-email", () => page.goto(link));
   await expect(page.getByText("Your email is verified")).toBeVisible();
 }
 
@@ -69,7 +89,7 @@ export async function signIn(page: Page, email: string, password: string = PASSW
   await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await submitSignIn(page);
 }
 
 export async function registerAndSignIn(page: Page, name: string): Promise<string> {

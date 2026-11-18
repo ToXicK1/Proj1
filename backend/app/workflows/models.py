@@ -6,11 +6,13 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,10 +24,19 @@ STAGE_STATUS_VALUES = ", ".join(f"'{s.value}'" for s in StageStatus)
 
 
 class WorkflowDefinition(Base):
+    """A workflow template. Without an organization it is a platform template every organization can use."""
+
     __tablename__ = "workflow_definitions"
+    __table_args__ = (
+        Index("uq_workflow_definitions_platform_key", "key", unique=True,
+              postgresql_where=text("organization_id IS NULL")),
+        Index("uq_workflow_definitions_org_key", "organization_id", "key", unique=True,
+              postgresql_where=text("organization_id IS NOT NULL")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
-    key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("organizations.id"), nullable=True)
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -41,6 +52,7 @@ class WorkflowVersion(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     spec_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    published_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

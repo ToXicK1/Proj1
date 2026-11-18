@@ -6,6 +6,7 @@ import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { SignupPage } from "./pages/SignupPage";
+import { StudioPage } from "./pages/StudioPage";
 import { TeamPage } from "./pages/TeamPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 
@@ -29,6 +30,7 @@ function Shell({ children }: { children: ReactNode }) {
         </Link>
         {state.status === "authenticated" && (
           <nav className="topbar-actions">
+            <Link to="/studio">Studio</Link>
             <Link to="/team">Team</Link>
             <span className="muted">{state.user.display_name}</span>
             <button type="button" className="secondary" onClick={() => void signOut()}>
@@ -50,6 +52,14 @@ export function App() {
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/accept-invite" element={<AcceptInvitePage />} />
+        <Route
+          path="/studio"
+          element={
+            <RequireAuth>
+              <StudioPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/team"
           element={

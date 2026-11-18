@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { invitationPath, PASSWORD, registerAndSignIn, registerVerifiedUser, uniqueEmail } from "../helpers/users";
+import { invitationPath, PASSWORD, registerAndSignIn, registerVerifiedUser, submitSignIn, uniqueEmail } from "../helpers/users";
 
 async function createProject(page: Page, name: string): Promise<void> {
   await page.getByLabel("Project name").fill(name);
@@ -27,7 +27,7 @@ async function signInFromInvite(page: Page, path: string, email: string): Promis
   await page.getByRole("link", { name: "Sign in to accept" }).click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await submitSignIn(page);
 }
 
 test.describe("team invitations", () => {

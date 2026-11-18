@@ -244,3 +244,16 @@ Format: each decision has context, decision, consequences, and status. New decis
 - Status: Accepted (2026-11-18)
 - Decision: Admins cannot change or remove their own organization or project access. Removing someone from an organization also removes their project roles in it. A change that would leave a project without an owner is refused.
 - Consequence: A person cannot make themselves a reviewer of their own work. Leaving an organization needs another admin.
+
+## ADR-050: Organizations own their workflows; drafts become immutable versions only by publishing (Milestone 8)
+- Status: Accepted (2026-11-18)
+- Decision: A workflow belongs to one organization or is a platform template. Drafts may be invalid and carry a revision so edits cannot overwrite each other. Only an organization admin can publish, and publishing checks the compiler plus the organization's own profiles, agents, model routes and stage outputs. A project can start only its organization's workflows or platform templates.
+- Consequence: Every stage still ends at a human gate; the Studio chooses who approves but cannot remove the gate.
+
+## ADR-051: Imported workflows are data and always land as drafts (Milestone 8)
+- Status: Accepted (2026-11-18)
+- Decision: JSON and YAML imports are size limited. YAML uses the safe loader and refuses aliases. An import never publishes anything.
+
+## ADR-052: The diagram edits the same dependencies as the form (Milestone 8)
+- Status: Accepted (2026-11-18)
+- Decision: React Flow draws `depends_on` and edits it by dragging; form checkboxes edit the same field. No position data enters the workflow definition, so a layout change cannot change a published hash.

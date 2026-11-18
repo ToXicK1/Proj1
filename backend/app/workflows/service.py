@@ -58,14 +58,26 @@ _NOTIFY_ONLY_EVENTS = {
 
 
 def publish_version(db: Session, raw: dict[str, Any]) -> WorkflowVersion:
-    """Compile and store a new immutable version. Nothing is stored if compilation fails."""
+    """Compile and store a new platform version. Nothing is stored if compilation fails."""
     compiled: CompiledWorkflow = compile_workflow(raw, known_work=set(KNOWN_WORK))
+    version = store_version(db, compiled)
+    db.commit()
+    return version
+
+
+def store_version(db: Session, compiled: CompiledWorkflow, *, organization_id: uuid.UUID | None = None,
+                  published_by: uuid.UUID | None = None) -> WorkflowVersion:
+    """Adds the next immutable version. The caller commits."""
     key = compiled.spec["key"]
-    definition = db.execute(select(WorkflowDefinition).where(WorkflowDefinition.key == key)).scalar_one_or_none()
+    owner = WorkflowDefinition.organization_id.is_(None) if organization_id is None \
+        else WorkflowDefinition.organization_id == organization_id
+    definition = db.execute(select(WorkflowDefinition).where(owner, WorkflowDefinition.key == key)).scalar_one_or_none()
     if definition is None:
-        definition = WorkflowDefinition(id=uuid7(), key=key, name=compiled.spec["name"])
+        definition = WorkflowDefinition(id=uuid7(), organization_id=organization_id, key=key,
+                                        name=compiled.spec["name"])
         db.add(definition)
         db.flush()
+    definition.name = compiled.spec["name"]
     latest = db.execute(
         select(WorkflowVersion)
         .where(WorkflowVersion.definition_id == definition.id)
@@ -77,9 +89,10 @@ def publish_version(db: Session, raw: dict[str, Any]) -> WorkflowVersion:
         version=(latest.version + 1) if latest else 1,
         spec_json=compiled.spec,
         sha256=compiled.sha256,
+        published_by=published_by,
     )
     db.add(version)
-    db.commit()
+    db.flush()
     return version
 
 
@@ -107,7 +120,8 @@ def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_
     project = db.get(Project, project_id)
 
     version = db.get(WorkflowVersion, workflow_version_id)
-    if version is None:
+    owner = db.get(WorkflowDefinition, version.definition_id).organization_id if version else None
+    if version is None or owner not in (None, project.organization_id):
         raise AppError(404, "unknown_workflow_version", "Workflow version does not exist")
     compiled = compile_workflow(version.spec_json, known_work=set(KNOWN_WORK))
 

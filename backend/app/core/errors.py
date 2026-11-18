@@ -6,11 +6,12 @@ from fastapi.responses import JSONResponse
 class AppError(Exception):
     """Expected, client-facing error. Rendered as application/problem+json."""
 
-    def __init__(self, status: int, code: str, message: str) -> None:
+    def __init__(self, status: int, code: str, message: str, **extra: object) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
+        self.extra = extra
 
 
 def not_found() -> AppError:
@@ -32,7 +33,7 @@ def _problem(status: int, code: str, message: str, **extra: object) -> JSONRespo
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError) -> JSONResponse:
-        return _problem(exc.status, exc.code, exc.message)
+        return _problem(exc.status, exc.code, exc.message, **exc.extra)
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:

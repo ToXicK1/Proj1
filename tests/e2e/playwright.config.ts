@@ -11,7 +11,7 @@ const channel = process.env.E2E_CHANNEL ?? "chrome";
 export default defineConfig({
   testDir: "./specs",
   globalSetup: "./global-setup.ts",
-  timeout: 60_000,
+  timeout: 120_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
   // Six parallel browsers stalled page loads on the Vite dev server for up to a minute.
