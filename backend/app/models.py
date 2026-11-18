@@ -8,7 +8,7 @@ from app.auth.models import EmailToken, User, UserSession  # noqa: F401
 from app.core.db import Base
 from app.hooks.models import HookDefinition, HookExecution, HookVersion  # noqa: F401
 from app.notifications.models import EmailOutbox, Notification  # noqa: F401
-from app.organizations.models import Membership, Organization  # noqa: F401
+from app.organizations.models import Membership, Organization, OrganizationInvitation  # noqa: F401
 from app.projects.models import Project, ProjectMember  # noqa: F401
 from app.providers.models import AgentRun, AiProvider, ModelRoute, SecretReference, TokenUsage  # noqa: F401
 from app.rules.models import ChangeProposal, ProjectTeam, Rule, RuleVersion, Team  # noqa: F401

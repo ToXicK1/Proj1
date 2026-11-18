@@ -234,3 +234,13 @@ Format: each decision has context, decision, consequences, and status. New decis
 ## ADR-047: Rules guide agents; sensors and hooks enforce (Milestone 7)
 - Status: Accepted (2026-11-19)
 - Decision: A rule is text given to a model. Marking it mandatory stops lower levels from redefining it, but it cannot force a model to comply. Anything that must hold is expressed as a sensor or hook.
+
+## ADR-048: People join an organization by single-use, email-bound invitation
+- Status: Accepted (2026-11-18)
+- Decision: Only organization admins invite. The token is stored as a SHA-256 hash, expires after 7 days, works once, and can be accepted only by a signed-in account with the invited email. An invitation can also grant one project role.
+- Consequence: A forwarded link is useless to anyone else. New users must create and verify an account with that address first.
+
+## ADR-049: Nobody changes their own access, and every project keeps an owner
+- Status: Accepted (2026-11-18)
+- Decision: Admins cannot change or remove their own organization or project access. Removing someone from an organization also removes their project roles in it. A change that would leave a project without an owner is refused.
+- Consequence: A person cannot make themselves a reviewer of their own work. Leaving an organization needs another admin.

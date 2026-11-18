@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     login_max_failures: int = 5
     login_lockout_minutes: int = 15
     auth_rate_limit_per_minute: int = 20
+    invite_ttl_days: int = 7
+    invites_per_org_per_hour: int = 30
 
     # Base64 of 32 random bytes. Required outside development. Store in a secret manager.
     secret_encryption_key: str | None = None

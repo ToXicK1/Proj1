@@ -13,6 +13,7 @@ Last updated: 2026-11-19 (Milestone 2)
 | M5 AI provider layer | Built and tested offline; live vendor calls not verified (no keys) | 185 backend tests; migration 0004 reversible; live mock run on Compose |
 | M6 Agent orchestration | Built and tested; skills and sandbox not built; reviews advisory | 203 backend tests, 3 live tests on a local model; migration 0005 reversible |
 | M7 Hooks, sensors and rules | Backend done; see the limits in the M7 section | 289 backend tests, 4 live tests on a local model, 14 safeguard mutations caught; migration 0008 reversible |
+| Member invitations | Built and tested; email is still outbox-only | 305 backend tests, 14 browser tests, 18 safeguard mutations caught; migration 0009 reversible |
 | M8–M10 | Not started | — |
 
 ## M2 scope and status
@@ -226,3 +227,17 @@ Verification:
 - 14 deliberate breakages of safeguards (approval and gate ignoring sensors, evidence role check, expired acceptances, hook enforcement, disabled hooks, rule snapshot, binding rules, proposal conflicts, self-approval, skill stage limits, reviewer role, agent snapshot) were each caught by a test, and the code was restored.
 - 4 live tests pass on the local `qwen3-vl:4b-instruct` model, including a stage with a pinned skill, an organization rule and three sensors.
 - Migration 0008 reverses and re-applies on the Compose database.
+
+## Member invitations (2026-11-18)
+
+Status: **Built and tested. Invitation email is not delivered yet; the link sits in `email_outbox`.**
+
+- Admins invite by email from the new Team page, optionally with a project role, and can revoke pending invitations, change roles and remove members.
+- The `/accept-invite` page shows the invitation and accepts it for the matching signed-in account.
+- Rules are enforced in the backend (ADR-048, ADR-049).
+- `backend/`: 305 tests pass, 4 live tests skipped by default; 16 are in `tests/test_members.py`.
+- Browser: 14 Playwright tests pass on Compose from a freshly started web container, including 3 for invitations. They now run with 2 workers (INV-4).
+- 18 deliberate breakages of membership safeguards are caught. The first pass missed 5, so 3 tests were added. The invite admin check exists in both router and service, so that breakage removes both.
+- Migration 0009 reverses and re-applies on the Compose database.
+- Also fixed: the Create project button could be used before the organization list had loaded, which showed a false "workspace is not ready" error.
+- Limits: INV-1 to INV-4 and M7-8 in `KNOWN_ISSUES.md`. An invited reviewer has no evidence screen yet (M7-9).

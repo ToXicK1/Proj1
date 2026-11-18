@@ -10,6 +10,7 @@ from app.core.db import make_engine, make_session_factory
 from app.core.errors import register_error_handlers
 from app.core.ratelimit import SlidingWindowLimiter
 from app.governance.router import router as governance_router
+from app.organizations.members_router import router as members_router
 from app.organizations.router import router as orgs_router
 from app.projects.router import router as projects_router
 from app.providers.router import router as providers_router
@@ -26,6 +27,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.state.engine = engine or make_engine(settings.database_url)
     app.state.session_factory = make_session_factory(app.state.engine)
     app.state.auth_limiter = SlidingWindowLimiter(settings.auth_rate_limit_per_minute)
+    app.state.invite_limiter = SlidingWindowLimiter(settings.invites_per_org_per_hour, 3600.0)
     # Test hook: an httpx transport (for example httpx.MockTransport) replaces the network for providers.
     app.state.provider_transport = None
 
@@ -33,7 +35,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Content-Type", "X-CSRF-Token"],
     )
     register_error_handlers(app)
@@ -44,6 +46,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     app.include_router(auth_router)
     app.include_router(orgs_router)
+    app.include_router(members_router)
     app.include_router(projects_router)
     app.include_router(workflows_router)
     app.include_router(approvals_router)

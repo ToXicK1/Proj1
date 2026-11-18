@@ -126,6 +126,7 @@ label {
 }
 
 input,
+select,
 textarea {
   font: inherit;
   padding: 0.55rem 0.7rem;
@@ -136,6 +137,7 @@ textarea {
 }
 
 input:focus-visible,
+select:focus-visible,
 textarea:focus-visible,
 button:focus-visible,
 a:focus-visible {
@@ -208,6 +210,14 @@ a {
   list-style: none;
   padding: 0;
   margin: 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
 .list li {

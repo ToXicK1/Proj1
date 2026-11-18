@@ -66,7 +66,7 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 |---|---|---|---|
 | M2-1 | Docker Compose verification | **Closed 2026-11-19.** Stack built and verified. Two defects were fixed: env template names did not match the app, and the image re-synced dev dependencies at start-up |
 | M2-2 | Browser E2E | **Closed.** 11 Playwright tests pass against the Compose stack. They use the installed Google Chrome, because the bundled Chromium is blocked by Windows policy. The run found a real defect: the verify page sent its single-use token twice under React StrictMode (fixed) |
-| M2-3 | Admin invite to join an existing organization is not built | Users only get personal workspaces | M2.1, per ADR-015 |
+| M2-3 | Closed 2026-11-18: admins invite people to an existing organization | None | Done, see ADR-048 |
 | M2-4 | Rate limiting is in-process | Limits do not hold across multiple API instances | Shared store (Postgres or Redis) before scaling out |
 | M2-5 | Email is written to an outbox table, not sent | Users need database access in development to get the verification link | SMTP adapter reads `email_outbox` (M2.1 or M10) |
 | M2-6 | Python 3.12 used for the dev venv, target is 3.13 | Minor version gap | Re-test on 3.13 before M10 |
@@ -93,7 +93,7 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 | M4-2 | Artifact content in Postgres JSONB, not object storage | Large documents and binary artifacts do not fit yet | Object storage (ADR-030), M5 or M10 |
 | M4-3 | No mandatory sensors; validation snapshot lists none | Gates do not yet run deterministic checks | Sensor framework, M7 |
 | M4-4 | Every artifact is visible to all project members | No owner-visible flag yet; internal drafts would be visible too | Owner-visible flag per artifact kind, M9 |
-| M4-5 | No API to add or remove project members | Multi-approver policies are tested by inserting members in code | Membership management with org admin invites, M2.1 |
+| M4-5 | Closed 2026-11-18: project members are managed through the API and the Team page | None | Done, see ADR-048 |
 | M4-6 | Rework and upstream-change runs have no API route | Only code (and the Compose container) can run them; there is no worker yet | Worker with queue, M5/M6 |
 | M4-7 | Nonce expiry for approval requests is not built | Replay is limited by idempotency keys, not by time-bound nonces | M4.1 with rate limiting on decisions |
 | M4-8 | `REJECTED` has no reopen route | A rejected stage stays rejected until a future admin action | Reopen command with audit, M8 |
@@ -145,14 +145,23 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 
 | ID | Issue | Impact | Plan |
 |---|---|---|---|
-| M7-1 | **No API adds project members.** Evidence needs an internal reviewer or team member, who can only be added in code today | Evidence-based sensors cannot be cleared by a real user yet | Member and invite API, next (with M2-3 and M4-5) |
+| M7-1 | Closed 2026-11-18: an invited internal reviewer can record evidence through the API | The evidence screen does not exist yet (M7-9) | Done for the API |
 | M7-2 | The platform does not run linters, tests or scanners | Those sensors depend on recorded evidence | Sandbox or CI integration with signed results |
 | M7-3 | Mandatory rules are prompt text | A model can ignore one; only sensors and hooks enforce (ADR-047) | Pair important rules with sensors |
 | M7-4 | The check for rules that weaken controls is a phrase match | It can miss rewording and can flag harmless text; a person still approves every proposal | Improve with real examples |
 | M7-5 | Reviewer verdicts stay advisory | A reviewer recommending changes does not stop the gate | Optional blocking policy per stage |
 | M7-6 | Events not emitted yet: project.updated, project.archived, workflow.failed, stage.reopened, artifact.updated, agent.tool_requested | Hooks cannot subscribe to them, and the API refuses them | Add with the features that produce them |
 | M7-7 | Hook timeouts do not interrupt an action | A slow action is marked failed only after it returns | Needed if hooks ever call external systems |
-| M7-8 | Teams have no members yet; they only scope rules | Team membership cannot drive permissions | Member and invite work |
+| M7-8 | Teams have no members yet; they only scope rules. Invitations cover organization and project roles only | Team membership cannot drive permissions | Separate team membership work |
 | M7-9 | No screens for sensors, hooks, rules or proposals | Everything is API only | Workflow Studio, M8 |
 
 - M6-3 remains open as M7-5. M6-8 is partly addressed: rules now use governed proposals, but skill text does not.
+
+## Member invitations
+
+| ID | Issue | Impact | Plan |
+|---|---|---|---|
+| INV-1 | Invitation email is written to `email_outbox`, not sent (same cause as M2-5) | Someone with database access must pass the link on until email delivery exists | SMTP adapter |
+| INV-2 | After signing up and verifying, the invited person must open the invitation link again | One extra step for new users | Carry the invitation through signup |
+| INV-3 | The Team page lists only projects the admin belongs to, because `GET /projects` returns the caller's own projects | An org admin cannot use the page to manage a project they are not in. The API does allow it | Organization-wide project list for admins |
+| INV-4 | Browser tests run with 2 workers. With 6, page loads and proxied API calls stalled for up to a minute on a freshly started Vite dev server. The API answered quickly when called directly. The exact cause inside the dev server was not isolated | Slower E2E runs; `E2E_WORKERS` overrides the setting | Re-check against static hosting (M10) |

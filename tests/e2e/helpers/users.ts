@@ -35,6 +35,23 @@ export async function verificationPath(email: string): Promise<string> {
   }
 }
 
+/** The newest invitation link for an address, as a path to open in the browser. */
+export async function invitationPath(email: string): Promise<string> {
+  const client = new Client({ connectionString: DATABASE_URL });
+  await client.connect();
+  try {
+    const res = await client.query<{ body: string }>(
+      "select body from email_outbox where kind = 'org_invitation' and recipient = $1 order by id desc limit 1",
+      [email],
+    );
+    const match = res.rows[0]?.body.match(/https?:\/\/[^\s]+(\/accept-invite\?token=[A-Za-z0-9_-]+)/);
+    if (!match) throw new Error(`no invitation email found for ${email}`);
+    return match[1];
+  } finally {
+    await client.end();
+  }
+}
+
 /** Signs up through the UI, verifies through the link, and leaves the user on the sign-in page. */
 export async function registerVerifiedUser(page: Page, name: string, email: string): Promise<void> {
   await page.goto("/signup");

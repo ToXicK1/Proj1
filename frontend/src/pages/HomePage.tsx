@@ -46,7 +46,7 @@ export function HomePage() {
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
-    const org = orgs[0];
+    const org = orgs.find((item) => item.role === "org_admin") ?? orgs[0];
     if (!org) {
       setFormError("Your workspace is not ready yet.");
       return;
@@ -96,7 +96,7 @@ export function HomePage() {
             />
           </label>
           {formError && <p role="alert" className="error">{formError}</p>}
-          <button type="submit" disabled={busy || !name.trim()}>
+          <button type="submit" disabled={busy || !name.trim() || orgs.length === 0}>
             {busy ? "Creating…" : "Create project"}
           </button>
         </form>

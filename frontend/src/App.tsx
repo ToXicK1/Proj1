@@ -1,10 +1,12 @@
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useSession } from "./session";
+import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { SignupPage } from "./pages/SignupPage";
+import { TeamPage } from "./pages/TeamPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -12,7 +14,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (state.status === "loading") return <p className="muted">Loading…</p>;
   if (state.status === "anonymous") {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
   return <>{children}</>;
 }
@@ -27,6 +29,7 @@ function Shell({ children }: { children: ReactNode }) {
         </Link>
         {state.status === "authenticated" && (
           <nav className="topbar-actions">
+            <Link to="/team">Team</Link>
             <span className="muted">{state.user.display_name}</span>
             <button type="button" className="secondary" onClick={() => void signOut()}>
               Sign out
@@ -46,6 +49,15 @@ export function App() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/accept-invite" element={<AcceptInvitePage />} />
+        <Route
+          path="/team"
+          element={
+            <RequireAuth>
+              <TeamPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/"
           element={

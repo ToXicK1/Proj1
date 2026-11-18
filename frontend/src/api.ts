@@ -40,6 +40,33 @@ export interface ProjectDto {
   status: string;
 }
 
+export interface InvitationPreviewDto {
+  organization: string;
+  role: string;
+  project: string | null;
+  project_role: string | null;
+  email_hint: string;
+}
+
+export interface OrgMemberDto {
+  user_id: string;
+  display_name: string;
+  email: string;
+  role: "org_admin" | "member";
+  is_you: boolean;
+}
+
+export interface OrgMembersDto {
+  members: OrgMemberDto[];
+  invitations: { id: string; email: string; role: string; project_role: string | null; project_id: string | null }[];
+}
+
+export interface ProjectMemberDto {
+  user_id: string;
+  display_name: string;
+  role: string;
+}
+
 let csrfToken: string | null = null;
 
 export function setCsrfToken(token: string | null): void {
@@ -51,7 +78,7 @@ interface Problem {
   title?: string;
 }
 
-export async function request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+export async function request<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
@@ -84,6 +111,29 @@ export const api = {
   listOrgs: () => request<{ items: OrgDto[] }>("GET", "/api/v1/orgs"),
   listProjects: () => request<{ items: ProjectDto[] }>("GET", "/api/v1/projects"),
   getProject: (id: string) => request<ProjectDto>("GET", `/api/v1/projects/${encodeURIComponent(id)}`),
+  previewInvitation: (token: string) => request<InvitationPreviewDto>("POST", "/api/v1/invitations/preview", { token }),
+  acceptInvitation: (token: string) =>
+    request<{ organization_id: string; project_id: string | null }>("POST", "/api/v1/invitations/accept", { token }),
+  listMembers: (orgId: string) => request<OrgMembersDto>("GET", `/api/v1/orgs/${encodeURIComponent(orgId)}/members`),
+  createInvitation: (orgId: string, email: string, role: string, projectId: string | null, projectRole: string | null) =>
+    request<{ id: string }>("POST", `/api/v1/orgs/${encodeURIComponent(orgId)}/invitations`, {
+      email,
+      role,
+      project_id: projectId,
+      project_role: projectRole,
+    }),
+  revokeInvitation: (orgId: string, id: string) =>
+    request("POST", `/api/v1/orgs/${encodeURIComponent(orgId)}/invitations/${encodeURIComponent(id)}/revoke`),
+  setOrgRole: (orgId: string, userId: string, role: string) =>
+    request("PUT", `/api/v1/orgs/${encodeURIComponent(orgId)}/members/${encodeURIComponent(userId)}`, { role }),
+  removeMember: (orgId: string, userId: string) =>
+    request("DELETE", `/api/v1/orgs/${encodeURIComponent(orgId)}/members/${encodeURIComponent(userId)}`),
+  listProjectMembers: (projectId: string) =>
+    request<{ items: ProjectMemberDto[] }>("GET", `/api/v1/projects/${encodeURIComponent(projectId)}/members`),
+  setProjectRole: (projectId: string, userId: string, role: string) =>
+    request("PUT", `/api/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`, { role }),
+  removeProjectMember: (projectId: string, userId: string) =>
+    request("DELETE", `/api/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`),
   createProject: (orgId: string, name: string, description: string, projectType: string) =>
     request<ProjectDto>("POST", `/api/v1/orgs/${encodeURIComponent(orgId)}/projects`, {
       name,
