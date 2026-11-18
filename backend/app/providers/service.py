@@ -363,14 +363,18 @@ def run_task(
     project_type: str,
     description: str,
     feedback: tuple[str, ...] = (),
+    rules_text: str = "",
+    rule_refs: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    system = system_prompt(task)
     return run_structured(
         db, settings, transport=transport, organization_id=organization_id, project_id=project_id,
         stage_execution_id=stage_execution_id, route_key=route_key,
-        system=system_prompt(task),
+        system=f"{rules_text}\n\n{system}" if rules_text else system,
         user=user_prompt(project_name, project_type, description, feedback),
         required_keys=task.required_keys,
-        manifest={"sources": ["project_input", "feedback"], "feedback_count": len(feedback)},
+        manifest={"sources": ["project_input", "feedback"], "feedback_count": len(feedback),
+                  "rules": rule_refs or []},
     )
 
 

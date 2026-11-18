@@ -12,7 +12,8 @@ Last updated: 2026-11-19 (Milestone 2)
 | M4 Human approval engine | Backend done; conditional policies, sensors and object storage are later items | 129 backend tests; migration 0003 reversible; live approval run |
 | M5 AI provider layer | Built and tested offline; live vendor calls not verified (no keys) | 185 backend tests; migration 0004 reversible; live mock run on Compose |
 | M6 Agent orchestration | Built and tested; skills and sandbox not built; reviews advisory | 203 backend tests, 3 live tests on a local model; migration 0005 reversible |
-| M7–M10 | Not started | — |
+| M7 Hooks, sensors and rules | Backend done; see the limits in the M7 section | 289 backend tests, 4 live tests on a local model, 14 safeguard mutations caught; migration 0008 reversible |
+| M8–M10 | Not started | — |
 
 ## M2 scope and status
 
@@ -195,3 +196,33 @@ Corrections to earlier notes in this file: test counts for M4 and M5 were recoun
 - An agent version pins the full closure, dependencies first. Profile and tool checks apply to every skill in the closure. Two versions of one skill in a closure are refused.
 - A stage now refuses a lead that was not created as a lead and a reviewer that was not created as a reviewer. Before this, a lead agent could be named as a reviewer.
 - Verified by 223 backend tests (8 new) and migration 0007 reversing and re-applying on the Compose database.
+
+## Milestone 7: hooks, sensors and rules (2026-11-19)
+
+Status: **Backend exit criteria met. There is no user interface for any of this yet.**
+
+| Exit criterion | Result |
+|---|---|
+| Mandatory validations block gates | Done. A failed mandatory sensor moves the stage to BLOCKED, and approval re-checks the stored results for that exact artifact version |
+| Hooks run at configured events | Done. Declarative actions only: `require_approval`, `run_sensor`, `notify` |
+| Rule inheritance | Done. Organization, Team, Project, Profile, Stage, Agent; additive; binding rules cannot be redefined lower down |
+| AI cannot activate a rule or hook | Done. AI output can only create a pending proposal; an organization admin must approve it |
+
+What was built:
+
+- **Sensors:** all 17 from the brief, with statuses PASS, FAIL, WARNING, NOT_APPLICABLE and ERROR. Results are append-only. For a mandatory sensor, only PASS or WARNING counts; ERROR and NOT_APPLICABLE do not.
+- **Evidence:** lint, type check, unit tests, integration tests, security scan and dependency audit read results recorded outside the artifact. A claim written inside an artifact is ignored. A project owner cannot record evidence, and only an internal reviewer can record security evidence.
+- **Risk acceptance:** only where the stage allows it, by an organization admin, with a reason and an expiry of at most 30 days, bound to one artifact version. Security sensors can never be accepted.
+- **Re-validation and rework:** `POST .../validate` re-runs checks; a BLOCKED stage can be reworked with the sensor findings as feedback, within the same loop limit.
+- **Hooks:** versioned, prioritized, conditional, with retries, timeouts and an append-only execution log. `fail_closed` is accepted only where the engine can really stop the operation. A refused approval keeps its log after the rollback.
+- **Rules:** versioned with change history; deterministic conflict checks; resolved rule versions are added to agent prompts and recorded in the run manifest.
+- **Learning loop:** a human correction can produce a proposed rule. It is checked for conflicts and takes effect only for workflows started after a person approves it.
+- **Execution snapshot:** a workflow now keeps the agent versions, rule versions and teams it started with. Later edits do not change it. This closes a gap in M6, where runs used the latest agent version.
+- **Notifications:** per-person records with read state.
+
+Verification:
+
+- `backend/`: 289 tests pass, 4 live tests skipped by default. New: sensor logic for all 17 sensors, 36 governance tests end to end.
+- 14 deliberate breakages of safeguards (approval and gate ignoring sensors, evidence role check, expired acceptances, hook enforcement, disabled hooks, rule snapshot, binding rules, proposal conflicts, self-approval, skill stage limits, reviewer role, agent snapshot) were each caught by a test, and the code was restored.
+- 4 live tests pass on the local `qwen3-vl:4b-instruct` model, including a stage with a pinned skill, an organization rule and three sensors.
+- Migration 0008 reverses and re-applies on the Compose database.

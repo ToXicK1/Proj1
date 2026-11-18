@@ -14,6 +14,7 @@ from app.audit.service import append_event, org_chain
 from app.auth.models import User
 from app.core.db import uuid7
 from app.core.errors import AppError, not_found
+from app.hooks import service as hooks
 from app.organizations.service import membership_for
 from app.projects.models import Project, ProjectMember
 
@@ -67,6 +68,7 @@ def create_project(
         project_id=project.id,
         payload={"project_type": project_type},
     )
+    hooks.run_hooks(db, hooks.HookScope(organization_id, project.id, project.project_type), "project.created")
     db.commit()
     return project
 

@@ -8,11 +8,12 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.approvals.policy import PolicyError, parse_policy
+from app.sensors.registry import SENSORS, config_problems, stage_references
 
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 SUPPORTED_EXECUTION = {"sequential"}
@@ -20,6 +21,14 @@ SUPPORTED_EXECUTION = {"sequential"}
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class SensorSpec(_Strict):
+    key: str
+    mandatory: bool = True
+    severity: Literal["critical", "high", "medium", "low"] | None = None
+    allow_risk_acceptance: bool = False
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class StageSpec(_Strict):
@@ -35,6 +44,7 @@ class StageSpec(_Strict):
     profile: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
     agent: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
     reviewer: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
+    sensors: list[SensorSpec] = Field(default_factory=list, max_length=30)
 
 
 class WorkflowSpec(_Strict):
@@ -120,6 +130,8 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
             problems.append(f"{path}.condition: conditional execution is not supported yet")
 
     graph = {s.id: [d for d in s.depends_on if d in ids] for s in spec.stages}
+    for i, stage in enumerate(spec.stages):
+        problems += _sensor_problems(f"stages[{i}].sensors", stage, graph)
     order: list[str] = []
     if not problems:
         order, cycle = _topological(graph)
@@ -138,6 +150,37 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
         roots=roots,
         sha256=_canonical_sha(compiled_spec),
     )
+
+
+def _upstream(stage: str, graph: dict[str, list[str]]) -> set[str]:
+    seen: set[str] = set()
+    frontier = list(graph.get(stage, []))
+    while frontier:
+        node = frontier.pop()
+        if node not in seen:
+            seen.add(node)
+            frontier.extend(graph.get(node, []))
+    return seen
+
+
+def _sensor_problems(path: str, stage: StageSpec, graph: dict[str, list[str]]) -> list[str]:
+    problems: list[str] = []
+    keys = [s.key for s in stage.sensors]
+    problems += [f"{path}: sensor '{k}' is listed twice" for k in sorted({k for k in keys if keys.count(k) > 1})]
+    upstream = _upstream(stage.id, graph)
+    for sensor in stage.sensors:
+        found = config_problems(sensor.key, sensor.config)
+        problems += [f"{path}.{sensor.key}: {p}" for p in found]
+        if found:
+            continue
+        if sensor.allow_risk_acceptance and SENSORS[sensor.key].category == "security":
+            problems.append(f"{path}.{sensor.key}: a security sensor cannot allow risk acceptance")
+        if sensor.allow_risk_acceptance and not sensor.mandatory:
+            problems.append(f"{path}.{sensor.key}: only a mandatory sensor needs risk acceptance")
+        for ref in stage_references(sensor.key, sensor.config):
+            if ref not in upstream:
+                problems.append(f"{path}.{sensor.key}: stage '{ref}' is not upstream of '{stage.id}'")
+    return problems
 
 
 def _topological(graph: dict[str, list[str]]) -> tuple[list[str], list[str]]:

@@ -140,3 +140,19 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 - M6-9 (new): application logs are not scanned for credentials; the canary test covers API responses and stored records only.
 
 - M6-1 fully closed (2026-11-19): compatible stages and skill dependencies are built.
+
+## Milestone 7 known issues (2026-11-19)
+
+| ID | Issue | Impact | Plan |
+|---|---|---|---|
+| M7-1 | **No API adds project members.** Evidence needs an internal reviewer or team member, who can only be added in code today | Evidence-based sensors cannot be cleared by a real user yet | Member and invite API, next (with M2-3 and M4-5) |
+| M7-2 | The platform does not run linters, tests or scanners | Those sensors depend on recorded evidence | Sandbox or CI integration with signed results |
+| M7-3 | Mandatory rules are prompt text | A model can ignore one; only sensors and hooks enforce (ADR-047) | Pair important rules with sensors |
+| M7-4 | The check for rules that weaken controls is a phrase match | It can miss rewording and can flag harmless text; a person still approves every proposal | Improve with real examples |
+| M7-5 | Reviewer verdicts stay advisory | A reviewer recommending changes does not stop the gate | Optional blocking policy per stage |
+| M7-6 | Events not emitted yet: project.updated, project.archived, workflow.failed, stage.reopened, artifact.updated, agent.tool_requested | Hooks cannot subscribe to them, and the API refuses them | Add with the features that produce them |
+| M7-7 | Hook timeouts do not interrupt an action | A slow action is marked failed only after it returns | Needed if hooks ever call external systems |
+| M7-8 | Teams have no members yet; they only scope rules | Team membership cannot drive permissions | Member and invite work |
+| M7-9 | No screens for sensors, hooks, rules or proposals | Everything is API only | Workflow Studio, M8 |
+
+- M6-3 remains open as M7-5. M6-8 is partly addressed: rules now use governed proposals, but skill text does not.

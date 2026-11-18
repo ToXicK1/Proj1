@@ -9,6 +9,7 @@ from app.core.config import Settings, get_settings
 from app.core.db import make_engine, make_session_factory
 from app.core.errors import register_error_handlers
 from app.core.ratelimit import SlidingWindowLimiter
+from app.governance.router import router as governance_router
 from app.organizations.router import router as orgs_router
 from app.projects.router import router as projects_router
 from app.providers.router import router as providers_router
@@ -49,5 +50,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(providers_router)
     app.include_router(agents_router)
     app.include_router(skills_router)
+    app.include_router(governance_router)
     return app
 

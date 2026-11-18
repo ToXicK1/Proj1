@@ -212,3 +212,25 @@ Format: each decision has context, decision, consequences, and status. New decis
 ## ADR-042: Fallback is an agent-version setting (M6 follow-up)
 - Status: Accepted (2026-11-19)
 - Decision: `allow_fallback` defaults to true. When false, the run uses only the route's primary provider. This keeps a reviewer on its configured provider at the cost of failing the stage when that provider is down.
+
+## ADR-043: Sensors about code and security read evidence, not artifacts (Milestone 7)
+- Status: Accepted (2026-11-19)
+- Decision: An AI could write "tests passed" into its own output, so these sensors ignore artifact content. They read evidence recorded by an authorized person and report ERROR without it.
+- Consequence: They fail closed until someone records a result. The sandbox or a CI integration should supply this evidence later.
+
+## ADR-044: NOT_APPLICABLE does not satisfy a mandatory sensor (Milestone 7)
+- Status: Accepted (2026-11-19)
+- Decision: Otherwise an artifact could avoid a check by leaving out what the check reads. If a check truly does not apply, it should not be mandatory on that stage.
+
+## ADR-045: Hooks are declarative and fail_closed must be enforceable (Milestone 7)
+- Status: Accepted (2026-11-19)
+- Decision: Hooks choose from built-in actions and cannot run code. Only events the platform emits are accepted. fail_closed is allowed only at points where the engine can stop the operation.
+- Consequence: Hook timeouts are measured after an action returns; they do not interrupt it. Actions are short database operations today.
+
+## ADR-046: A workflow keeps the configuration it started with (Milestone 7)
+- Status: Accepted (2026-11-19)
+- Decision: Starting a workflow records agent versions, rule versions and teams. Hooks are the exception: they stay live, so an organization can add a control to running work.
+
+## ADR-047: Rules guide agents; sensors and hooks enforce (Milestone 7)
+- Status: Accepted (2026-11-19)
+- Decision: A rule is text given to a model. Marking it mandatory stops lower levels from redefining it, but it cannot force a model to comply. Anything that must hold is expressed as a sensor or hook.

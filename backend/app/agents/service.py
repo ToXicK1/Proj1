@@ -192,6 +192,25 @@ def latest(db: Session, organization_id: uuid.UUID, key: str) -> Resolved:
     return Resolved(agent=agent, version=version)
 
 
+def at_version(db: Session, organization_id: uuid.UUID, key: str, version_id: uuid.UUID) -> Resolved:
+    agent = _agent(db, organization_id, key)
+    version = db.get(AgentConfigVersion, version_id)
+    if version is None or version.agent_id != agent.id:
+        raise AppError(404, "unknown_agent", "Agent version does not exist")
+    return Resolved(agent=agent, version=version)
+
+
+def snapshot_versions(db: Session, organization_id: uuid.UUID, keys: set[str]) -> dict[str, str]:
+    """The current version of each named agent that exists, fixed for one workflow."""
+    pinned: dict[str, str] = {}
+    for key in sorted(keys):
+        try:
+            pinned[key] = str(latest(db, organization_id, key).version.id)
+        except AppError:
+            continue
+    return pinned
+
+
 def assert_independent(lead: AgentConfiguration, reviewer: AgentConfiguration) -> None:
     """A reviewer must not be the lead, nor a clone of it. Refused at run time, not just in the compiler."""
     if lead.id == reviewer.id or lead.lineage_root_id == reviewer.lineage_root_id:

@@ -32,8 +32,11 @@ from app.audit.service import append_event, org_chain
 from app.auth.models import User
 from app.core.db import uuid7
 from app.core.errors import AppError, not_found
+from app.hooks import service as hooks
+from app.sensors import service as sensors
 from app.workflows.models import StageExecution, WorkflowExecution, WorkflowVersion
 from app.workflows.service import (
+    hook_scope,
     lock_stage,
     project_role,
     stage_rows,
@@ -102,6 +105,7 @@ def _complete_if_done(db: Session, execution: WorkflowExecution) -> None:
             project_id=execution.project_id,
             payload={"workflow_execution": execution.id.hex},
         )
+        hooks.run_hooks(db, hook_scope(db, execution), "workflow.completed")
 
 
 def _display_name(db: Session, user_id: uuid.UUID) -> str:
@@ -156,15 +160,22 @@ def submit_decision(
 
         slots = _slots(db, execution, stage_key)
         approvals = _approvals_by_slot(db, version.id, stage.approval_epoch)
+        spec = stage_spec(db.get(WorkflowVersion, execution.workflow_version_id), stage_key)
+        scope = hook_scope(db, execution, stage_key)
 
         if decision == "APPROVE":
+            blocked = sensors.blocking(db, stage, spec, version)
+            if blocked:
+                raise AppError(409, "sensor_blocking", f"Mandatory checks are not satisfied: {', '.join(blocked)}")
             if any(user.id in people for people in approvals.values()):
                 raise AppError(409, "already_approved", "You already approved this version")
             slot = open_slot_for(slots, role, approvals, user.id)
             if slot is None:
                 raise AppError(403, "approval_not_permitted", "No open approval slot matches your role")
+            hooks.enforce(db, scope, "stage.approved", "pre")
             approvals.setdefault(slot.id, set()).add(user.id)
-            db.add(_record(execution, stage, version, user, decision, slot.id, comment, idempotency_key, slots, approvals))
+            db.add(_record(execution, stage, version, user, decision, slot.id, comment, idempotency_key, slots,
+                           approvals, sensors.summary(db, stage, spec, version)))
             append_event(
                 db,
                 chain_key=org_chain(execution.organization_id),
@@ -180,9 +191,12 @@ def submit_decision(
                 transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.APPROVED,
                                  actor=ActorType.HUMAN, actor_id=str(user.id), reason="policy satisfied",
                                  approval_satisfied=True, commit=False)
+                hooks.enforce(db, scope, "stage.approved", "post")
+                hooks.run_hooks(db, scope, "artifact.approved")
                 _complete_if_done(db, execution)
         else:
-            db.add(_record(execution, stage, version, user, decision, None, comment, idempotency_key, slots, approvals))
+            db.add(_record(execution, stage, version, user, decision, None, comment, idempotency_key, slots,
+                           approvals, sensors.summary(db, stage, spec, version)))
             if decision == "REJECT":
                 transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.REJECTED,
                                  actor=ActorType.HUMAN, actor_id=str(user.id), reason=comment[:300], commit=False)
@@ -201,6 +215,10 @@ def submit_decision(
                                  to_status=StageStatus.CHANGES_REQUESTED, actor=ActorType.HUMAN,
                                  actor_id=str(user.id), reason=comment[:300], commit=False)
         db.commit()
+    except hooks.HookBlocked as exc:
+        db.rollback()
+        hooks.persist_blocked(db, exc)
+        raise
     except Exception:
         db.rollback()
         raise
@@ -218,6 +236,7 @@ def _record(
     idempotency_key: str,
     slots: list[Slot],
     approvals: dict[str, set[uuid.UUID]],
+    sensor_summary: list[dict[str, Any]],
 ) -> ApprovalDecision:
     return ApprovalDecision(
         id=uuid7(),
@@ -236,7 +255,8 @@ def _record(
         validation_snapshot={
             "version_number": version.version_number,
             "satisfied_slots": sorted(satisfied_slots(slots, approvals)),
-            "mandatory_sensors": [],
+            "sensors": [{"sensor": s["sensor"], "mandatory": s["mandatory"], "status": s["status"],
+                         "risk_accepted": s["risk_accepted"]} for s in sensor_summary],
         },
     )
 
@@ -264,6 +284,7 @@ def record_upstream_change(
             content=content,
             author_user_id=author_user_id,
         )
+        hooks.run_hooks(db, hook_scope(db, execution, stage_key), "artifact.versioned")
         transition_stage(db, execution_id=execution_id, stage_key=stage_key, to_status=StageStatus.AWAITING_HUMAN_REVIEW,
                          actor=ActorType.SYSTEM, reason="upstream artifact changed", commit=False)
         stage.approval_epoch += 1  # approvals of the previous epoch stop counting
@@ -342,11 +363,12 @@ def review_view(db: Session, user: User, execution_id: uuid.UUID, stage_key: str
             reviews.append({"verdict": rec.verdict, "findings": rec.findings,
                             "reviewed_at": rec.created_at.isoformat()})
     done = satisfied_slots(slots, approvals)
+    sensor_results = sensors.summary(db, stage, spec, current[1]) if current is not None else []
     can_decide = False
     if current is not None and stage.status == StageStatus.AWAITING_HUMAN_REVIEW.value:
         can_decide = open_slot_for(slots, role, approvals, user.id) is not None and (
             current[1].author_user_id != user.id
-        )
+        ) and not any(s["blocking"] for s in sensor_results)
 
     return {
         "stage": {
@@ -371,6 +393,7 @@ def review_view(db: Session, user: User, execution_id: uuid.UUID, stage_key: str
         },
         "decisions": decisions,
         "reviews": reviews,
+        "sensors": sensor_results,
         "change_requests": change_requests,
         "can_decide": can_decide,
         "your_role": role,

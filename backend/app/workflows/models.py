@@ -53,6 +53,8 @@ class WorkflowExecution(Base):
     organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    # Agent versions, rule versions and teams fixed when the workflow started.
+    config_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     __table_args__ = (CheckConstraint("status in ('RUNNING', 'COMPLETED')", name="status_valid"),)
 

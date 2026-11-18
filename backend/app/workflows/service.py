@@ -16,6 +16,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents import runner as agent_runner
+from app.agents import service as agent_service
+from app.agents.models import ReviewRecord
 from app.approvals.models import ChangeRequest
 from app.artifacts import service as artifacts
 from app.audit.service import append_event, org_chain
@@ -23,9 +25,13 @@ from app.auth.models import User
 from app.core.config import Settings, get_settings
 from app.core.db import uuid7
 from app.core.errors import AppError, not_found
+from app.hooks import service as hooks
 from app.projects.models import Project, ProjectMember
 from app.providers import service as providers
+from app.providers.models import AgentRun
 from app.providers.tasks import AI_TASKS, is_ai_task
+from app.rules import service as rule_service
+from app.sensors import service as sensors
 from app.workflows.compiler import CompiledWorkflow, compile_workflow
 from app.workflows.models import (
     StageExecution,
@@ -44,6 +50,11 @@ from app.workflows.state_machine import (
 from app.workflows.work import KNOWN_WORK, WORK_FUNCTIONS, WorkContext
 
 MAX_REWORK_LOOPS = 3
+_NOTIFY_ONLY_EVENTS = {
+    StageStatus.FAILED: "stage.failed",
+    StageStatus.CHANGES_REQUESTED: "stage.changes_requested",
+    StageStatus.REJECTED: "stage.rejected",
+}
 
 
 def publish_version(db: Session, raw: dict[str, Any]) -> WorkflowVersion:
@@ -100,6 +111,7 @@ def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_
         raise AppError(404, "unknown_workflow_version", "Workflow version does not exist")
     compiled = compile_workflow(version.spec_json, known_work=set(KNOWN_WORK))
 
+    agent_keys = {k for s in version.spec_json["stages"] for k in (s.get("agent"), s.get("reviewer")) if k}
     execution = WorkflowExecution(
         id=uuid7(),
         project_id=project.id,
@@ -107,6 +119,10 @@ def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_
         organization_id=project.organization_id,
         status="RUNNING",
         created_by=user.id,
+        config_snapshot={
+            "agent_versions": agent_service.snapshot_versions(db, project.organization_id, agent_keys),
+            **rule_service.snapshot(db, project.organization_id, project.id),
+        },
     )
     db.add(execution)
     db.flush()
@@ -132,8 +148,19 @@ def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_
         project_id=project.id,
         payload={"workflow_key": version.spec_json["key"], "version": version.id.hex},
     )
+    hooks.run_hooks(db, hook_scope(db, execution), "workflow.started")
     db.commit()
     return execution
+
+
+def hook_scope(db: Session, execution: WorkflowExecution, stage_key: str | None = None) -> hooks.HookScope:
+    project = db.get(Project, execution.project_id)
+    profile = None
+    if stage_key:
+        profile = stage_spec(db.get(WorkflowVersion, execution.workflow_version_id), stage_key).get("profile")
+    return hooks.HookScope(organization_id=execution.organization_id, project_id=execution.project_id,
+                           project_type=project.project_type, execution_id=execution.id, stage_key=stage_key,
+                           profile=profile)
 
 
 def lock_stage(db: Session, execution_id: uuid.UUID, stage_key: str) -> tuple[WorkflowExecution, StageExecution]:
@@ -190,15 +217,16 @@ def transition_stage(
     if output is not None:
         stage.output_json = output
     if to_status is StageStatus.AI_COMPLETED and output is not None:
-        artifacts.create_version(
+        created = artifacts.create_version(
             db,
             project_id=execution.project_id,
             stage_execution_id=stage.id,
             kind=stage_key,
             content=output,
         )
-    if to_status is StageStatus.FAILED:
-        stage.failure_reason = reason[:300]
+        event = "artifact.created" if created.version_number == 1 else "artifact.versioned"
+        hooks.run_hooks(db, hook_scope(db, execution, stage_key), event)
+    stage.failure_reason = reason[:300] if to_status in (StageStatus.FAILED, StageStatus.BLOCKED) else None
     db.add(
         StageTransition(
             stage_execution_id=stage.id,
@@ -222,6 +250,8 @@ def transition_stage(
     db.flush()
     if to_status in SATISFIES_DEPENDENCY:
         refresh_readiness(db, execution)
+    if to_status in _NOTIFY_ONLY_EVENTS:
+        hooks.run_hooks(db, hook_scope(db, execution, stage_key), _NOTIFY_ONLY_EVENTS[to_status])
     if commit:
         db.commit()
     return stage
@@ -291,13 +321,40 @@ def _produce(
     if not is_ai_task(spec["work"]):
         return WORK_FUNCTIONS[spec["work"]](context)
     stage = stage_rows(db, execution.id)[stage_key]
+    scope = hook_scope(db, execution, stage_key)
+    hooks.run_hooks(db, scope, "agent.started")
+    try:
+        output = _run_ai(db, execution=execution, stage=stage, spec=spec, context=context, settings=settings,
+                         transport=transport, lead_sink=lead_sink)
+    except Exception:
+        hooks.run_hooks(db, scope, "agent.failed")
+        raise
+    hooks.run_hooks(db, scope, "agent.completed")
+    return output
+
+
+def _run_ai(
+    db: Session,
+    *,
+    execution: WorkflowExecution,
+    stage: StageExecution,
+    spec: dict[str, Any],
+    context: WorkContext,
+    settings: Settings,
+    transport: Any,
+    lead_sink: list[uuid.UUID],
+) -> dict[str, Any]:
+    stage_key = stage.stage_key
+    config = execution.config_snapshot
     if spec.get("agent"):
         return agent_runner.run_lead(
             db, settings, transport=transport, organization_id=execution.organization_id,
             project_id=execution.project_id, stage_execution_id=stage.id, stage_key=stage_key,
             agent_key=spec["agent"],
-            profile_key=spec.get("profile"), context=context, sink=lead_sink,
+            profile_key=spec.get("profile"), context=context, sink=lead_sink, config=config,
         )
+    rules = rule_service.resolve(db, config, project_id=execution.project_id, profile=spec.get("profile"),
+                                 stage=stage_key, agent=None)
     return providers.run_task(
         db,
         settings,
@@ -311,6 +368,8 @@ def _produce(
         project_type=context.project_type,
         description=context.project_description,
         feedback=context.feedback,
+        rules_text=rule_service.render(rules),
+        rule_refs=rule_service.references(rules),
     )
 
 
@@ -344,20 +403,54 @@ def _work_and_validate(
 
     transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.AI_COMPLETED,
                      actor=ActorType.SYSTEM, output=output, commit=False)
+    failures, _ = hooks.run_hooks(db, hook_scope(db, execution, stage_key), "stage.ai_completed")
     transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.VALIDATING,
                      actor=ActorType.SYSTEM, commit=False)
-    missing = [k for k in spec["output_required_keys"] if k not in output]
+    if failures:
+        return _block(db, execution, stage_key, f"hook: {'; '.join(failures)}")
+    return _gate(db, execution=execution, stage_key=stage_key, spec=spec, settings=settings, transport=transport,
+                 lead_run_ids=lead_sink)
+
+
+def _block(db: Session, execution: WorkflowExecution, stage_key: str, reason: str) -> StageExecution:
+    return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.BLOCKED,
+                            actor=ActorType.SYSTEM, reason=reason[:300], commit=False)
+
+
+def _gate(
+    db: Session, *, execution: WorkflowExecution, stage_key: str, spec: dict[str, Any], settings: Settings,
+    transport: Any, lead_run_ids: list[uuid.UUID],
+) -> StageExecution:
+    """Everything between VALIDATING and the human gate. Deterministic checks run before any review."""
+    scope = hook_scope(db, execution, stage_key)
+    stage = stage_rows(db, execution.id)[stage_key]
+    _, version = artifacts.current_version(db, stage.id)
+    missing = [k for k in spec["output_required_keys"] if k not in version.content_json]
     if missing:
-        return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.BLOCKED,
-                                actor=ActorType.SYSTEM, reason=f"output missing keys: {', '.join(missing)}",
-                                commit=False)
+        return _block(db, execution, stage_key, f"output missing keys: {', '.join(missing)}")
+    failures, _ = hooks.run_hooks(db, scope, "stage.validation_started", "pre")
+    if failures:
+        return _block(db, execution, stage_key, f"hook: {'; '.join(failures)}")
+    hooks.run_hooks(db, scope, "stage.validation_started")
+    sensors.run_stage_sensors(db, execution, stage, spec, version)
+    blocked = sensors.blocking(db, stage, spec, version)
+    if blocked:
+        return _block(db, execution, stage_key, f"mandatory sensors not satisfied: {', '.join(blocked)}")
+    failures, _ = hooks.run_hooks(db, scope, "stage.validation_completed")
+    if failures:
+        return _block(db, execution, stage_key, f"hook: {'; '.join(failures)}")
     if spec.get("reviewer"):
         review_failure = _review(db, execution=execution, stage_key=stage_key, spec=spec, settings=settings,
-                                 transport=transport, lead_run_ids=lead_sink)
+                                 transport=transport, lead_run_ids=lead_run_ids)
         if review_failure is not None:
             return review_failure
-    return transition_stage(db, execution_id=execution.id, stage_key=stage_key,
-                            to_status=StageStatus.AWAITING_HUMAN_REVIEW, actor=ActorType.SYSTEM, commit=False)
+    failures, _ = hooks.run_hooks(db, scope, "stage.approval_requested", "pre")
+    if failures:
+        return _block(db, execution, stage_key, f"hook: {'; '.join(failures)}")
+    result = transition_stage(db, execution_id=execution.id, stage_key=stage_key,
+                              to_status=StageStatus.AWAITING_HUMAN_REVIEW, actor=ActorType.SYSTEM, commit=False)
+    hooks.run_hooks(db, scope, "stage.approval_requested")
+    return result
 
 
 def _review(
@@ -368,13 +461,21 @@ def _review(
     stage = stage_rows(db, execution.id)[stage_key]
     _, version = artifacts.current_version(db, stage.id)
     content = version.content_json
+    if db.execute(select(ReviewRecord.id).where(ReviewRecord.stage_execution_id == stage.id,
+                                                ReviewRecord.artifact_version_id == version.id)).first():
+        return None  # this exact version was already reviewed
+    lead_run = lead_run_ids[0] if lead_run_ids else db.execute(
+        select(AgentRun.id).where(AgentRun.stage_execution_id == stage.id, AgentRun.kind == "lead",
+                                  AgentRun.status == "succeeded").order_by(AgentRun.id.desc())
+    ).scalars().first()
     try:
         agent_runner.run_reviewer(
             db, settings, transport=transport, organization_id=execution.organization_id,
             project_id=execution.project_id, stage_execution_id=stage.id, stage_key=stage_key,
             reviewer_key=spec["reviewer"],
             lead_key=spec["agent"], artifact_version_id=version.id, content=content,
-            lead_run_id=lead_run_ids[0] if lead_run_ids else uuid.UUID(int=0),
+            lead_run_id=lead_run or uuid.UUID(int=0), profile_key=spec.get("profile"),
+            config=execution.config_snapshot,
         )
     except agent_runner.AgentRefused as exc:
         return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.FAILED,
@@ -410,8 +511,17 @@ def run_deterministic_stage(db: Session, *, execution_id: uuid.UUID, stage_key: 
             raise AppError(409, "dependencies_not_satisfied", "Upstream stages must be approved first")
         if stage.status != StageStatus.READY.value:
             raise AppError(409, "invalid_transition", "Only a READY stage can run")
+        scope = hook_scope(db, execution, stage_key)
+        failures, _ = hooks.run_hooks(db, scope, "stage.started", "pre")
+        if failures:
+            result = transition_stage(db, execution_id=execution_id, stage_key=stage_key,
+                                      to_status=StageStatus.BLOCKED, actor=ActorType.SYSTEM,
+                                      reason=f"hook: {'; '.join(failures)}", commit=False)
+            db.commit()
+            return result
         transition_stage(db, execution_id=execution_id, stage_key=stage_key,
                          to_status=StageStatus.RUNNING, actor=ActorType.SYSTEM, commit=False)
+        hooks.run_hooks(db, scope, "stage.started")
         context = WorkContext(project_name=project.name, project_description=project.description,
                               project_type=project.project_type, revision=1)
         result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
@@ -425,11 +535,11 @@ def run_deterministic_stage(db: Session, *, execution_id: uuid.UUID, stage_key: 
 
 def run_rework(db: Session, *, execution_id: uuid.UUID, stage_key: str,
                settings: Settings | None = None, transport: Any = None) -> StageExecution:
-    """Answer open change requests with a new artifact version. The loop is bounded."""
+    """Answer change requests or blocking sensor findings with a new version. The loop is bounded."""
     try:
         execution, stage, spec, project = _stage_and_spec(db, execution_id, stage_key)
-        if stage.status != StageStatus.CHANGES_REQUESTED.value:
-            raise AppError(409, "invalid_transition", "Rework runs only after changes were requested")
+        if stage.status not in (StageStatus.CHANGES_REQUESTED.value, StageStatus.BLOCKED.value):
+            raise AppError(409, "invalid_transition", "Rework needs requested changes or a blocked stage")
         if stage.rework_count >= MAX_REWORK_LOOPS:
             raise AppError(409, "rework_limit_reached", f"Rework is limited to {MAX_REWORK_LOOPS} loops")
 
@@ -440,15 +550,21 @@ def run_rework(db: Session, *, execution_id: uuid.UUID, stage_key: str,
                 .order_by(ChangeRequest.created_at)
             ).scalars()
         )
+        sensor_feedback = sensors.blocking_feedback(db, stage, spec)
+        scope = hook_scope(db, execution, stage_key)
+        failures, records = hooks.run_hooks(db, scope, "stage.started", "pre")
+        if failures:
+            raise hooks.HookBlocked(scope, "stage.started", failures, records)
         transition_stage(db, execution_id=execution_id, stage_key=stage_key, to_status=StageStatus.RUNNING,
                          actor=ActorType.SYSTEM, commit=False)
+        hooks.run_hooks(db, scope, "stage.started")
         stage.rework_count += 1
         context = WorkContext(
             project_name=project.name,
             project_description=project.description,
             project_type=project.project_type,
             revision=stage.rework_count + 1,
-            feedback=tuple(cr.comment for cr in open_requests),
+            feedback=(*(cr.comment for cr in open_requests), *sensor_feedback),
         )
         result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
                                     settings=settings or get_settings(), transport=transport)
@@ -459,6 +575,44 @@ def run_rework(db: Session, *, execution_id: uuid.UUID, stage_key: str,
                 cr.status = "resolved"
                 cr.resulting_artifact_version_id = version.id
                 cr.resolved_at = now
+        db.commit()
+        return result
+    except hooks.HookBlocked as exc:
+        db.rollback()
+        hooks.persist_blocked(db, exc)
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+
+def revalidate_stage(db: Session, user: User, *, execution_id: uuid.UUID, stage_key: str, settings: Settings,
+                     transport: Any = None) -> StageExecution:
+    """Run validation again for a stage at the gate or blocked by it. The caller cannot set the result."""
+    try:
+        execution, stage = lock_stage(db, execution_id, stage_key)
+        role = project_role(db, user, execution.project_id)
+        if role is None:
+            raise not_found()
+        if role == "viewer":
+            raise AppError(403, "not_permitted", "Viewers cannot run validation")
+        current = artifacts.current_version(db, stage.id)
+        if current is None:
+            raise AppError(409, "no_artifact", "This stage has nothing to validate yet")
+        spec = stage_spec(db.get(WorkflowVersion, execution.workflow_version_id), stage_key)
+        append_event(db, chain_key=org_chain(execution.organization_id), event_type="stage.revalidation_requested",
+                     actor_type="human", actor_id=str(user.id), organization_id=execution.organization_id,
+                     project_id=execution.project_id, payload={"stage": stage_key})
+        if stage.status == StageStatus.AWAITING_HUMAN_REVIEW.value:
+            sensors.run_stage_sensors(db, execution, stage, spec, current[1])
+            result = stage
+        elif stage.status == StageStatus.BLOCKED.value:
+            transition_stage(db, execution_id=execution_id, stage_key=stage_key, to_status=StageStatus.VALIDATING,
+                             actor=ActorType.SYSTEM, commit=False)
+            result = _gate(db, execution=execution, stage_key=stage_key, spec=spec, settings=settings,
+                           transport=transport, lead_run_ids=[])
+        else:
+            raise AppError(409, "invalid_transition", "Only a blocked or reviewable stage can be validated")
         db.commit()
         return result
     except Exception:

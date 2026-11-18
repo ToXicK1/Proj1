@@ -81,3 +81,43 @@ def test_lead_and_reviewer_agents_run_on_the_local_model(client, engine, setting
                                            settings=settings.model_copy(update={"provider_backoff_seconds": 0.0}))
         status, reason = stage.status, stage.failure_reason
     assert status == "AWAITING_HUMAN_REVIEW", reason
+
+
+def test_skill_rule_and_sensor_apply_on_the_local_model(client, engine, settings):
+    """A pinned skill and an organization rule reach the model; a sensor checks what it wrote."""
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+
+    from app.workflows import service as wf
+    from tests.test_agents import BA_LEAD, _start
+    from tests.test_approvals import _publish
+
+    csrf = signup_verify_login(client, engine, "live-governed@example.com")
+    org_id = _org_id(client)
+    h = {"X-CSRF-Token": csrf}
+    provider = _provider(client, csrf, org_id, "ollama-governed", "openai_compatible", base_url=URL)
+    _route(client, csrf, org_id, "drafting", provider["id"], MODEL)
+    assert client.post(f"/api/v1/orgs/{org_id}/profiles", json={"key": "business_analyst", "name": "BA"},
+                       headers=h).status_code == 201
+    assert client.post(f"/api/v1/orgs/{org_id}/skills", headers=h, json={
+        "key": "plain-language", "instructions": "Use short, plain sentences."}).status_code == 201
+    assert client.post(f"/api/v1/orgs/{org_id}/agents", headers=h,
+                       json={**BA_LEAD, "skills": ["plain-language"]}).status_code == 201
+    assert client.post(f"/api/v1/orgs/{org_id}/rules", headers=h, json={
+        "key": "state-assumptions", "scope_type": "organization", "scope_key": "", "kind": "documentation",
+        "name": "State assumptions", "content": "List every assumption you make."}).status_code == 201
+    version = _publish(engine, {"key": "live-governed", "name": "live", "stages": [{
+        "id": "ba", "name": "BA", "work": "ai:requirements_draft", "agent": "ba-analyst",
+        "profile": "business_analyst", "output_required_keys": ["summary"],
+        "sensors": [{"key": "required_sections", "config": {"sections": ["summary"]}},
+                    {"key": "secret_detection"}, {"key": "artifact_version"}]}]})
+    execution_id, _ = _start(client, engine, version)
+    with Session(engine) as s:
+        stage = wf.run_deterministic_stage(s, execution_id=execution_id, stage_key="ba",
+                                           settings=settings.model_copy(update={"provider_backoff_seconds": 0.0}))
+        assert stage.status == "AWAITING_HUMAN_REVIEW", stage.failure_reason
+    with engine.connect() as conn:
+        statuses = set(conn.execute(text("select status from sensor_executions")).scalars())
+        manifest = conn.execute(text("select context_manifest::text from agent_runs where status = 'succeeded'")).scalar_one()
+    assert statuses == {"PASS"}
+    assert "plain-language" in manifest and "state-assumptions" in manifest
