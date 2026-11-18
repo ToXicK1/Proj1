@@ -1,0 +1,39 @@
+[project]
+name = "aidlc-backend"
+version = "0.2.0"
+description = "AI-DLC orchestration platform backend (Milestone 2)"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "pydantic>=2.7,<3",
+  "pydantic-settings>=2.3,<3",
+  "sqlalchemy>=2.0.30,<3",
+  "alembic>=1.13,<2",
+  "pg8000>=1.31,<2",
+  "argon2-cffi>=23.1,<26",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.2,<9",
+  "httpx>=0.27,<1",
+  "pgserver>=0.1.4,<1",
+  "ruff>=0.5,<1",
+]
+
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

@@ -104,3 +104,27 @@ Format: each decision has context, decision, consequences, and status. New decis
 ## ADR-020: SOC 2 is the first compliance knowledge pack (answers Q-7)
 - Status: Accepted (2026-11-18)
 - Decision: The compliance agent's first knowledge pack covers SOC 2 controls. It is added in M7 with the knowledge system.
+
+## ADR-021: Dev and test on Python 3.12 with pure-Python PostgreSQL driver (Milestone 2)
+- Status: Accepted (2026-11-19), supersedes the 3.13 target for the local venv only
+- Context: `pgserver` (embedded PostgreSQL for tests) has no cp313 wheel. Python 3.13 was the target in ADR-003.
+- Decision: `requires-python >= 3.12`; the local venv uses 3.12.13. The application code avoids 3.13-only features and should run on 3.13. Re-test on 3.13 before M10.
+- Driver: `pg8000` (pure Python) replaces `psycopg[binary]`, because Windows Application Control blocks the psycopg native DLL in this environment. Production may switch to psycopg 3 once the policy allows it; SQLAlchemy URLs differ only in the driver name.
+
+## ADR-022: Windows Application Control workarounds in the local environment
+- Status: Accepted as a local workaround (2026-11-19)
+- Context: The policy blocks some compiled extensions from site-packages: SQLAlchemy `.pyd` speedups, psycopg binaries, and the native rollup binary.
+- Decision: Remove the blocked SQLAlchemy `.pyd` files from the local `.venv` only (SQLAlchemy falls back to its pure-Python modules). For rollup, npm `overrides` points `rollup` at `@rollup/wasm-node`, the official WebAssembly build with the same API. Both are environment workarounds. Neither is a product decision, and both should be reverted when the policy allows native modules.
+- Consequence: Production builds are expected to use the native rollup and SQLAlchemy extensions. The wasm override applies to every install, so it should be revisited before release.
+
+## ADR-023: Milestone 2 security choices
+- Status: Accepted (2026-11-19)
+- Decision:
+  - Session cookie is opaque, HttpOnly, SameSite=Lax; the server stores only its SHA-256.
+  - CSRF token is HMAC(secret, session token), so it needs no storage. Required on every mutating request.
+  - Passwords: Argon2id, minimum 12 characters.
+  - Login lockout after 5 failures for 15 minutes; unknown and wrong-password responses are identical; timing is equalized.
+  - Signup returns the same response whether or not the email exists.
+  - Not-found and not-permitted are indistinguishable (404) for tenant resources.
+  - Audit chain: one chain per organization plus a platform chain. Appends lock the chain row. A trigger blocks UPDATE and DELETE.
+- Known gaps: rate limiter is per process; no MFA yet; no session-idle timeout beyond the absolute TTL.

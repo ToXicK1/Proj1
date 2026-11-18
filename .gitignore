@@ -32,3 +32,5 @@ Thumbs.db
 data/
 storage/
 *.sqlite3
+.pgtest/
+.pgdev/

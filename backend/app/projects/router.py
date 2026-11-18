@@ -1,0 +1,66 @@
+import uuid
+
+from fastapi import APIRouter
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
+from app.projects import service
+from app.projects.models import Project
+
+router = APIRouter(prefix="/api/v1", tags=["projects"])
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ProjectCreateIn(_Strict):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    project_type: str = Field(min_length=1, max_length=64)
+
+
+class ProjectOut(BaseModel):
+    id: str
+    organization_id: str
+    name: str
+    description: str
+    project_type: str
+    status: str
+
+    @classmethod
+    def of(cls, p: Project) -> "ProjectOut":
+        return cls(
+            id=str(p.id),
+            organization_id=str(p.organization_id),
+            name=p.name,
+            description=p.description,
+            project_type=p.project_type,
+            status=p.status,
+        )
+
+
+@router.post("/orgs/{organization_id}/projects", status_code=201)
+def create_project(
+    organization_id: uuid.UUID, body: ProjectCreateIn, caller: CsrfCaller, db: DbSession
+) -> dict:
+    project = service.create_project(
+        db,
+        caller.user,
+        organization_id=organization_id,
+        name=body.name,
+        description=body.description,
+        project_type=body.project_type,
+    )
+    return ProjectOut.of(project).model_dump()
+
+
+@router.get("/projects")
+def list_projects(caller: CurrentCaller, db: DbSession) -> dict:
+    items = service.projects_for_user(db, caller.user.id)
+    return {"items": [ProjectOut.of(p).model_dump() for p in items]}
+
+
+@router.get("/projects/{project_id}")
+def get_project(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    return ProjectOut.of(service.project_for_user(db, caller.user.id, project_id)).model_dump()

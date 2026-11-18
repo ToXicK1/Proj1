@@ -59,3 +59,17 @@ Status as of Milestone 1 (2026-11-18). No application code exists yet.
 | Q-9 | **Self-signup with email verification and personal org** (changed from admin-created default) | ADR-015 |
 
 Still open: the GitHub connection (Q-8) must be fixed before the repo can be created there.
+
+## Milestone 2 known issues (2026-11-19)
+
+| ID | Issue | Impact | Plan |
+|---|---|---|---|
+| M2-1 | Docker Desktop daemon did not start, so Docker Compose has not been run | The documented local stack is unverified | Start Docker Desktop, then run `docker compose up --build` and fix any errors |
+| M2-2 | No browser end-to-end test yet | The UI flow is verified by typecheck, unit tests and the HTTP smoke run, not in a browser | Add Playwright tests in M2.1 |
+| M2-3 | Admin invite to join an existing organization is not built | Users only get personal workspaces | M2.1, per ADR-015 |
+| M2-4 | Rate limiting is in-process | Limits do not hold across multiple API instances | Shared store (Postgres or Redis) before scaling out |
+| M2-5 | Email is written to an outbox table, not sent | Users need database access in development to get the verification link | SMTP adapter reads `email_outbox` (M2.1 or M10) |
+| M2-6 | Python 3.12 used for the dev venv, target is 3.13 | Minor version gap | Re-test on 3.13 before M10 |
+| M2-7 | Windows policy workarounds (ADR-022) | Local only | Revert when native modules are allowed |
+| M2-8 | Audit verifier has no API endpoint | Integrity can be checked by code or by an operator only | Add an admin endpoint in M2.1 |
+| M2-9 | No MFA; idle session timeout not implemented | Weaker session controls than the security architecture target | MFA before production (M10) |

@@ -1,52 +1,50 @@
 # Implementation Status
 
-Last updated: 2026-11-18 (Milestone 1)
+Last updated: 2026-11-19 (Milestone 2)
 
 ## Summary
 
 | Milestone | State | Evidence |
 |---|---|---|
-| M1 Research and architecture | **Documents written; awaiting review** | `docs/research/*` (8), `docs/*` architecture set (13 incl. this file and portal), repo skeleton |
-| M2 Application foundation | Not started | — |
+| M1 Research and architecture | Done, pushed to GitHub | `docs/research/*`, `docs/*`, commit `0ba9f98` |
+| M2 Application foundation | **Implemented; partly verified** (see below) | 27 backend tests, 3 frontend tests, live HTTP smoke run |
 | M3–M10 | Not started | — |
 
-No application code, migrations, tests or running services exist. Nothing in this document claims a feature works.
+## M2 scope and status
 
-## M1 checklist
+| Item (MASTER_PLAN M2) | Status | Notes |
+|---|---|---|
+| Backend skeleton: FastAPI app factory, settings, error model | Done | `backend/app/main.py`, `core/config.py`, `core/errors.py` (problem+json) |
+| PostgreSQL schema and Alembic migration | Done | `backend/migrations/versions/0001_foundation.py`; drift test compares migration to models |
+| Identity: self-signup, email verification, login, sessions, CSRF | Done | ADR-015. Sessions hold only SHA-256 of the cookie token; CSRF derived with HMAC |
+| Lockout, rate limiting, enumeration resistance | Done | Lockout after 5 failures for 15 min. Rate limit is per process (in memory) |
+| Organizations and personal workspace | Done | Verification creates a personal org with the user as `org_admin` |
+| Joining an existing org by admin invite | **Not built** | ADR-015 requires it; deferred to M2.1 |
+| Projects, project members, owner role | Done (creator becomes `project_owner`) | Member management endpoints not built |
+| Authorization base classes | Partly | Tenant and membership checks are in service functions, not yet a shared repository base class |
+| Audit hash chain (write and verify) | Done | Append-only trigger, per-chain row lock. Verifier is a service function; no API endpoint yet |
+| Email delivery | Dev outbox only | Rows in `email_outbox`; no SMTP sender |
+| Frontend skeleton: signup, verify, login, projects | Done | Vite + React + TypeScript; typecheck, unit tests and build pass |
+| Docker Compose | Written, **not run** | Docker Desktop daemon did not start in this environment |
+| Object storage (MinIO) | Not in M2 | Needed from artifacts work |
+| Sandbox groundwork for prototypes (ADR-017) | Not started | Planned for M6 |
+| Claude Code dev assets under `.claude/` | Not started | Directories exist only |
 
-- [x] Inspect working directory, runtimes and tools (Node 25.9, Python 3.13.14, Docker 29.5, Git 2.54; GitHub CLI absent)
-- [x] Clone AWS AI-DLC reference outside the project (`C:\Users\vyshu\Desktop\aidlc-reference-research`, commit `d52a31cb`)
-- [x] Inspect license (MIT-0), structure, engine, stage protocol, reviewer protocol, hooks, sensors, audit format, state machine docs
-- [x] `docs/research/REFERENCE_ARCHITECTURE.md`
-- [x] `docs/research/WORKFLOW_ANALYSIS.md`
-- [x] `docs/research/HOOKS_AND_SENSORS.md`
-- [x] `docs/research/AGENT_ANALYSIS.md`
-- [x] `docs/research/APPROVAL_GATE_ANALYSIS.md`
-- [x] `docs/research/STATE_AND_AUDIT_ANALYSIS.md`
-- [x] `docs/research/REUSABLE_CONCEPTS.md`
-- [x] `docs/research/OUR_PLATFORM_DIFFERENCES.md`
-- [x] Architecture proposal and stack recommendation: `docs/ARCHITECTURE.md`
-- [x] Data model: `docs/SYSTEM_DESIGN.md`
-- [x] Workflow engine and state machine: `docs/WORKFLOW_ENGINE.md`
-- [x] Approval enforcement: `docs/APPROVAL_GOVERNANCE.md`
-- [x] Agent orchestration and provider abstraction: `docs/AGENT_ARCHITECTURE.md`
-- [x] Security and permissions model: `docs/SECURITY_ARCHITECTURE.md`
-- [x] Data flow: `docs/DATA_FLOW.md`
-- [x] Test strategy: `docs/TEST_STRATEGY.md`
-- [x] End-user portal design: `docs/USER_PORTAL.md`
-- [x] Decision log, known issues, master plan
-- [x] Repository skeleton (directories with `.gitkeep`), project git repository initialized on `main`
-- [ ] Owner review of open questions Q-1 to Q-9 (`KNOWN_ISSUES.md`)
-- [ ] Commit of M1 snapshot (not done; the user has not asked for commits)
+## Verification performed
 
-## Verification performed in M1
+- `backend/`: `pytest` 27 passed on Python 3.12.13 against an embedded PostgreSQL server (pgserver). Covers: audit chain integrity and tamper detection, append-only trigger, concurrent appends, signup and verification, single-use tokens, lockout, enumeration resistance, CSRF on mutations, cookie flags, tenant isolation (cross-tenant reads and writes return 404), project audit events, migration-to-model drift.
+- `backend/`: `ruff check` passes.
+- Live run: API started with uvicorn against a dev database and exercised over HTTP: signup, unverified login refused, verification, single-use token, login with cookie, CSRF rejection, project creation, cross-tenant 404. All matched the expected results.
+- `frontend/`: `tsc --noEmit` passes; 3 unit tests pass; `vite build` succeeds.
 
-- Reference clone file count: 2,360 files; license file read.
-- Document cross-references checked by reading. Broken-path check by grep: two stale `docs/architecture/` references in the research notes were corrected to the actual `docs/` locations. No document content was executed or tested.
-- No code was executed; no tests exist to run.
+## Not verified
 
-## Not yet verified (must be verified in later milestones)
+- Docker Compose stack (not run).
+- Browser end-to-end flow with Playwright (not written yet).
+- Python 3.13 (the decided target). The dev venv is 3.12 (see DECISIONS ADR-021).
+- Accessibility and responsive layout checks.
+- Real email delivery.
 
-- Reference repository's own test suite and its behavior claims (only read, not run).
-- Every SDK and library version named in `ARCHITECTURE.md` (versions to be pinned at M2 with a two-week-minimum age check).
-- Docker Compose stack (not yet written).
+## Environment constraints hit in this session
+
+Windows Application Control blocks some unsigned native binaries. Workarounds are documented in DECISIONS (ADR-021 to ADR-023). Deleting the blocked `.pyd` files in the local venv is a local workaround only, not a project change.
