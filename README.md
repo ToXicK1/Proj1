@@ -52,7 +52,7 @@ Email is not sent yet. The verification message is stored in the `email_outbox` 
 
 ## Docker Compose
 
-Not verified in this environment yet. The stack is defined in `docker-compose.yml`:
+Verified on Docker Engine 29.5.2. The stack is defined in `docker-compose.yml`:
 
 ```powershell
 Copy-Item .env.example .env

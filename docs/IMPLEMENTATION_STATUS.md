@@ -25,7 +25,7 @@ Last updated: 2026-11-19 (Milestone 2)
 | Audit hash chain (write and verify) | Done | Append-only trigger, per-chain row lock. Verifier is a service function; no API endpoint yet |
 | Email delivery | Dev outbox only | Rows in `email_outbox`; no SMTP sender |
 | Frontend skeleton: signup, verify, login, projects | Done | Vite + React + TypeScript; typecheck, unit tests and build pass |
-| Docker Compose | Written, **not run** | Docker Desktop daemon did not start in this environment |
+| Docker Compose | Done, verified | Docker Desktop started on 2026-11-19 (engine 29.5.2). Stack builds, migrates, and serves the API and web app; the HTTP smoke flow passes against the containers |
 | Object storage (MinIO) | Not in M2 | Needed from artifacts work |
 | Sandbox groundwork for prototypes (ADR-017) | Not started | Planned for M6 |
 | Claude Code dev assets under `.claude/` | Not started | Directories exist only |
@@ -39,7 +39,6 @@ Last updated: 2026-11-19 (Milestone 2)
 
 ## Not verified
 
-- Docker Compose stack (not run).
 - Browser end-to-end flow with Playwright (not written yet).
 - Python 3.13 (the decided target). The dev venv is 3.12 (see DECISIONS ADR-021).
 - Accessibility and responsive layout checks.

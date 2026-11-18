@@ -64,7 +64,7 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 
 | ID | Issue | Impact | Plan |
 |---|---|---|---|
-| M2-1 | Docker Desktop daemon did not start, so Docker Compose has not been run | The documented local stack is unverified | Start Docker Desktop, then run `docker compose up --build` and fix any errors |
+| M2-1 | Docker Compose verification | **Closed 2026-11-19.** Stack built and verified. Two defects were fixed: env template names did not match the app, and the image re-synced dev dependencies at start-up |
 | M2-2 | No browser end-to-end test yet | The UI flow is verified by typecheck, unit tests and the HTTP smoke run, not in a browser | Add Playwright tests in M2.1 |
 | M2-3 | Admin invite to join an existing organization is not built | Users only get personal workspaces | M2.1, per ADR-015 |
 | M2-4 | Rate limiting is in-process | Limits do not hold across multiple API instances | Shared store (Postgres or Redis) before scaling out |
