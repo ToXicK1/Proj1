@@ -31,6 +31,7 @@ class StageSpec(_Strict):
     work: str = Field(min_length=1, max_length=64)
     output_required_keys: list[str] = Field(default_factory=list)
     condition: str | None = None  # conditional execution is not supported in this milestone
+    model_route: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
 
 
 class WorkflowSpec(_Strict):
@@ -97,6 +98,11 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
                     parse_policy(stage.approval_policy)
                 except PolicyError as exc:
                     problems.extend(f"{path}.approval_policy.{p}" for p in exc.problems)
+        is_ai = stage.work.startswith("ai:")
+        if is_ai and not stage.model_route:
+            problems.append(f"{path}.model_route: AI task '{stage.work}' needs a model route")
+        if stage.model_route and not is_ai:
+            problems.append(f"{path}.model_route: only AI tasks use a model route")
         if stage.condition is not None:
             problems.append(f"{path}.condition: conditional execution is not supported yet")
 

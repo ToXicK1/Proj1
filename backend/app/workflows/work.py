@@ -8,6 +8,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.providers.tasks import AI_TASKS
+
 
 @dataclass(frozen=True)
 class WorkContext:
@@ -43,3 +45,6 @@ WORK_FUNCTIONS: dict[str, Callable[[WorkContext], dict[str, Any]]] = {
     "intake_summary": intake_summary,
     "requirements_outline": requirements_outline,
 }
+
+# Every work key a stage may name: deterministic functions and AI-backed tasks.
+KNOWN_WORK: frozenset[str] = frozenset(WORK_FUNCTIONS) | frozenset(AI_TASKS)

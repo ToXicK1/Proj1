@@ -19,9 +19,12 @@ from app.approvals.models import ChangeRequest
 from app.artifacts import service as artifacts
 from app.audit.service import append_event, org_chain
 from app.auth.models import User
+from app.core.config import Settings, get_settings
 from app.core.db import uuid7
 from app.core.errors import AppError, not_found
 from app.projects.models import Project, ProjectMember
+from app.providers import service as providers
+from app.providers.tasks import AI_TASKS, is_ai_task
 from app.workflows.compiler import CompiledWorkflow, compile_workflow
 from app.workflows.models import (
     StageExecution,
@@ -37,14 +40,14 @@ from app.workflows.state_machine import (
     StageStatus,
     check_transition,
 )
-from app.workflows.work import WORK_FUNCTIONS, WorkContext
+from app.workflows.work import KNOWN_WORK, WORK_FUNCTIONS, WorkContext
 
 MAX_REWORK_LOOPS = 3
 
 
 def publish_version(db: Session, raw: dict[str, Any]) -> WorkflowVersion:
     """Compile and store a new immutable version. Nothing is stored if compilation fails."""
-    compiled: CompiledWorkflow = compile_workflow(raw, known_work=set(WORK_FUNCTIONS))
+    compiled: CompiledWorkflow = compile_workflow(raw, known_work=set(KNOWN_WORK))
     key = compiled.spec["key"]
     definition = db.execute(select(WorkflowDefinition).where(WorkflowDefinition.key == key)).scalar_one_or_none()
     if definition is None:
@@ -94,7 +97,7 @@ def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_
     version = db.get(WorkflowVersion, workflow_version_id)
     if version is None:
         raise AppError(404, "unknown_workflow_version", "Workflow version does not exist")
-    compiled = compile_workflow(version.spec_json, known_work=set(WORK_FUNCTIONS))
+    compiled = compile_workflow(version.spec_json, known_work=set(KNOWN_WORK))
 
     execution = WorkflowExecution(
         id=uuid7(),
@@ -272,15 +275,56 @@ def refresh_readiness(db: Session, execution: WorkflowExecution) -> None:
             )
 
 
+def _produce(
+    db: Session,
+    *,
+    execution: WorkflowExecution,
+    stage_key: str,
+    spec: dict[str, Any],
+    context: WorkContext,
+    settings: Settings,
+    transport: Any,
+) -> dict[str, Any]:
+    """Run the stage's work: a deterministic function, or an AI task through its model route."""
+    if not is_ai_task(spec["work"]):
+        return WORK_FUNCTIONS[spec["work"]](context)
+    stage = stage_rows(db, execution.id)[stage_key]
+    return providers.run_task(
+        db,
+        settings,
+        transport=transport,
+        organization_id=execution.organization_id,
+        project_id=execution.project_id,
+        stage_execution_id=stage.id,
+        route_key=spec["model_route"],
+        task=AI_TASKS[spec["work"]],
+        project_name=context.project_name,
+        project_type=context.project_type,
+        description=context.project_description,
+        feedback=context.feedback,
+    )
+
+
 def _work_and_validate(
-    db: Session, *, execution: WorkflowExecution, stage_key: str, spec: dict[str, Any], context: WorkContext
+    db: Session,
+    *,
+    execution: WorkflowExecution,
+    stage_key: str,
+    spec: dict[str, Any],
+    context: WorkContext,
+    settings: Settings,
+    transport: Any = None,
 ) -> StageExecution:
     """RUNNING -> work -> AI_COMPLETED (new artifact version) -> VALIDATING -> review gate.
 
     Every step is a transition with commit=False; the caller commits once.
     """
     try:
-        output = WORK_FUNCTIONS[spec["work"]](context)
+        output = _produce(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
+                          settings=settings, transport=transport)
+    except providers.ProviderRunFailed as exc:
+        return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.FAILED,
+                                actor=ActorType.SYSTEM, reason=f"provider failed: {exc.kind}", commit=False)
     except Exception as exc:  # noqa: BLE001 - any work failure must be recorded as FAILED, not hidden
         return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.FAILED,
                                 actor=ActorType.SYSTEM, reason=f"work failed: {type(exc).__name__}", commit=False)
@@ -311,7 +355,8 @@ def _stage_and_spec(
     return execution, stage, stage_spec(version, stage_key), db.get(Project, execution.project_id)
 
 
-def run_deterministic_stage(db: Session, *, execution_id: uuid.UUID, stage_key: str) -> StageExecution:
+def run_deterministic_stage(db: Session, *, execution_id: uuid.UUID, stage_key: str,
+                            settings: Settings | None = None, transport: Any = None) -> StageExecution:
     """First run of a stage. No AI: the stage's registered function produces the output.
 
     The stage ends in AWAITING_HUMAN_REVIEW. Approval, rework and downstream start are separate.
@@ -326,7 +371,8 @@ def run_deterministic_stage(db: Session, *, execution_id: uuid.UUID, stage_key: 
                          to_status=StageStatus.RUNNING, actor=ActorType.SYSTEM, commit=False)
         context = WorkContext(project_name=project.name, project_description=project.description,
                               project_type=project.project_type, revision=1)
-        result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context)
+        result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
+                                    settings=settings or get_settings(), transport=transport)
         db.commit()
         return result
     except Exception:
@@ -334,7 +380,8 @@ def run_deterministic_stage(db: Session, *, execution_id: uuid.UUID, stage_key: 
         raise
 
 
-def run_rework(db: Session, *, execution_id: uuid.UUID, stage_key: str) -> StageExecution:
+def run_rework(db: Session, *, execution_id: uuid.UUID, stage_key: str,
+               settings: Settings | None = None, transport: Any = None) -> StageExecution:
     """Answer open change requests with a new artifact version. The loop is bounded."""
     try:
         execution, stage, spec, project = _stage_and_spec(db, execution_id, stage_key)
@@ -360,7 +407,8 @@ def run_rework(db: Session, *, execution_id: uuid.UUID, stage_key: str) -> Stage
             revision=stage.rework_count + 1,
             feedback=tuple(cr.comment for cr in open_requests),
         )
-        result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context)
+        result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
+                                    settings=settings or get_settings(), transport=transport)
         if result.status == StageStatus.AWAITING_HUMAN_REVIEW.value:
             _, version = artifacts.current_version(db, stage.id)
             now = datetime.now(UTC)

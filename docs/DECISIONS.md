@@ -162,3 +162,28 @@ Format: each decision has context, decision, consequences, and status. New decis
 ## ADR-031: Only the engine can approve a stage (Milestone 4)
 - Status: Accepted (2026-11-19)
 - Decision: `transition_stage` refuses APPROVED unless the approval service passes `approval_satisfied=True` after it has checked the policy in the same locked transaction. Approval rows are human-only at the database level.
+
+## ADR-032: Vendors are reached through our own adapter contract (Milestone 5)
+- Status: Accepted (2026-11-19)
+- Decision: Each vendor gets one small adapter that builds documented HTTP requests. No general AI framework. Normalized errors and usage come out of the adapter; nothing else knows vendor formats.
+- Consequence: We own the request and response code and must update it when vendors change their APIs. Contract tests with mocked HTTP guard the shapes we rely on.
+
+## ADR-033: Credentials use AES-256-GCM envelope encryption with bound associated data (Milestone 5)
+- Status: Accepted as an interim scheme (2026-11-19)
+- Decision: The key-encryption key comes from `AIDLC_SECRET_ENCRYPTION_KEY` (32 bytes, base64). Development and test derive a key from the signing key so local runs work; production refuses to start without it. Associated data binds each ciphertext to its organization and name. Only ciphertext, nonce, key version and last four characters are stored.
+- Consequence: Data-key envelopes and a KMS integration are still to come. Rotation is supported by key version fields but no re-encryption job exists yet (KNOWN_ISSUES M5-4).
+
+## ADR-034: Provider calls run synchronously inside the stage transaction (Milestone 5)
+- Status: Accepted for now (2026-11-19)
+- Decision: A stage's AI call runs inside the locked transaction that records its result, so run records, usage, audit and the transition commit together. This holds row locks during network calls.
+- Consequence: Long vendor latency holds locks on that stage's execution. Move AI calls to a worker with a lease when the queue exists (ADR-004, KNOWN_ISSUES M5-1).
+
+## ADR-035: Cost is reported only for models with an entered price (Milestone 5)
+- Status: Accepted (2026-11-19)
+- Decision: The price table is empty by default. Tokens are always recorded; cost is computed only for an exact (adapter, model) price. No vendor price is assumed in code.
+- Consequence: Cost reports are blank until an administrator or a maintained price file supplies prices.
+
+## ADR-036: Fallback happens per candidate, with one schema repair (Milestone 5)
+- Status: Accepted (2026-11-19)
+- Decision: The candidate list is primary then fallbacks. A retryable error retries on the same candidate with backoff. Other errors move to the next candidate. Output that fails the schema gets one repair attempt on the same candidate before moving on. Every attempt is an AgentRun row.
+- Consequence: Retries can spend budget. Budgets and per-organization limits are still to come (KNOWN_ISSUES M5-5).

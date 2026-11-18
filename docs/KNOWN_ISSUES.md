@@ -98,3 +98,18 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 | M4-7 | Nonce expiry for approval requests is not built | Replay is limited by idempotency keys, not by time-bound nonces | M4.1 with rate limiting on decisions |
 | M4-8 | `REJECTED` has no reopen route | A rejected stage stays rejected until a future admin action | Reopen command with audit, M8 |
 | M4-9 | Approval audit events carry the person's id, not a separate actor record | Adequate for now; evidence of exact screen shown is not recorded | Store the review snapshot, M9 |
+
+## Milestone 5 known issues (2026-11-19)
+
+| ID | Issue | Impact | Plan |
+|---|---|---|---|
+| M5-0 | **Live vendor calls are unverified.** No keys are configured; adapters are tested only against mocked HTTP | The first real call may fail on a detail the mocks do not reproduce | Add keys (owner decision), run `-m live` tests, fix any drift |
+| M5-1 | AI calls run inside the stage transaction (ADR-034) | Network latency holds row locks on the stage | Worker with lease, with the queue |
+| M5-2 | Base URL for OpenAI-compatible servers is user-supplied | Server-side request forgery risk: a user could point the platform at internal services | Allow-list or egress proxy before any multi-tenant use |
+| M5-3 | No streaming and no tool calling | Owners see results only after a stage completes; agents cannot call tools yet | Streaming and tool grants in a later milestone (AGENT_ARCHITECTURE section 7) |
+| M5-4 | Key rotation records the new key version but no re-encryption job exists; no KMS or data-key envelope | Keys stay under one configured key | KMS integration and rotation job, M10 |
+| M5-5 | No token or spend budgets per organization | Retries and fallbacks can spend without a ceiling | Budget policy and enforcement, M10 |
+| M5-6 | Health probes run on demand only | A broken provider is found when a stage fails | Scheduled probes, with the worker |
+| M5-7 | Prices are not shipped; cost stays blank until entered | Cost reports are incomplete | Maintained price file with source and date |
+| M5-8 | Context manifest per run is not stored (AGENT_ARCHITECTURE section 6) | Cannot yet list exactly which inputs an agent received | Store manifest IDs, M6 |
+| M5-9 | Mock provider can be created only in development or test | Demos outside those environments need a real provider | Accepted |

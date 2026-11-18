@@ -10,7 +10,8 @@ Last updated: 2026-11-19 (Milestone 2)
 | M2 Application foundation | **Implemented; partly verified** (see below) | 27 backend tests, 3 frontend tests, live HTTP smoke run |
 | M3 Workflow engine | Partly done: engine, compiler and API built; approvals needed to advance past the first gate (M4) | 87 backend tests; live API check |
 | M4 Human approval engine | Backend done; conditional policies, sensors and object storage are later items | 129 backend tests; migration 0003 reversible; live approval run |
-| M5–M10 | Not started | — |
+| M5 AI provider layer | Built and tested offline; live vendor calls not verified (no keys) | 185 backend tests; migration 0004 reversible; live mock run on Compose |
+| M6–M10 | Not started | — |
 
 ## M2 scope and status
 
@@ -107,3 +108,37 @@ Verification:
 - `backend/`: 129 tests pass. New: 17 policy tests, approval engine tests (single, version binding, rework bound, reject, authorization, separation of duties, idempotency, append-only, all_of, sequential, concurrency, atomicity, invalidation), 6 HTTP tests, compiler policy cases.
 - Migration 0003 downgrades and re-applies cleanly on the Compose database.
 - Live run on the Compose stack: intake run inside the container, approval over HTTP (403 without CSRF, 200 on approve, idempotent repeat), second approval refused, outline run, request changes, rework to version 2, version-1 approval refused as stale, approval of version 2, workflow COMPLETED.
+
+## Milestone 5: AI provider layer (2026-11-19)
+
+Status: **Built and tested offline. Live vendor calls are NOT verified: no provider keys are configured (ADR-016).**
+
+| Item (MASTER_PLAN M5) | Status | Notes |
+|---|---|---|
+| Adapters: Anthropic, OpenAI, Gemini, OpenAI-compatible, local | Built; tested against mocked HTTP | Request shape, auth headers, response parsing and error mapping are tested. Not yet proven against the live vendors |
+| Mock provider for CI | Done | Deterministic, offline. Refused outside development and test |
+| Common interface, normalized errors | Done | auth, rate_limited, timeout, unavailable, invalid_request, content_filtered, bad_response |
+| Retries and timeouts | Done | Retryable errors back off (2 retries); auth and invalid errors are not retried. Timeout per request |
+| Structured output | Done | JSON object with the task's required keys; one repair attempt on the same provider, then the next candidate |
+| Fallback that keeps the schema | Done | Same request and the same key check on each candidate; each attempt is recorded |
+| Model routes (primary, fallback order) | Done | Admin-defined, organization-scoped, up to 3 fallbacks |
+| Token and cost tracking | Done (tokens); cost only when priced | Cost is computed only for models with an entered price. None is invented |
+| Secrets: envelope encryption | Done | AES-256-GCM, random nonce per secret, associated data bound to organization and name. Plaintext never stored or returned |
+| Provider health checks | Done | Admin probe per provider and model; result stored on the provider |
+| Admin API: configure and test providers | Done | Organization admins only. Writes need CSRF. Keys are write-only |
+| Provider calls inside the stage transaction | Done | Run records, usage and audit commit with the stage transition |
+| Prompt-injection stance for owner text | Done (prompt-level) | Owner text sits in tags and the system prompt says never to follow it. Tested with an injection payload |
+| No key in any response, log or audit | Tested | Canary test across all read endpoints, audit payloads, run records and ciphertext |
+| Live provider tests | **Not run** | Need keys and a budget. Nothing in CI calls a vendor |
+
+Public API (organization admin; CSRF on writes):
+- `POST /api/v1/orgs/{id}/providers`: name, adapter_type, base_url, api_key (write-only). Returns `key_last4` only.
+- `GET /api/v1/orgs/{id}/providers`, `POST .../providers/{id}/key` (rotate), `POST .../providers/{id}/health` (probe).
+- `POST /api/v1/orgs/{id}/model-routes`, `GET /api/v1/orgs/{id}/model-routes`.
+
+Stage integration: a stage may name an AI task (`work: "ai:requirements_draft"`) and a `model_route`. The compiler requires the route for AI tasks and refuses it for deterministic ones. Output goes through the same validation and artifact versioning as M3–M4.
+
+Verification:
+- `backend/`: 185 tests pass. New: 27 adapter tests (headers, bodies, parsing, every error mapping, refusals, mock modes), 8 secret tests (round trip, nonce, binding, tamper, key length, production refusal), 20 provider product tests (admin API, RBAC, leak scan, stage on mock and on two providers, retries, fallback, repair, failure reasons, injection, cost, health).
+- Migration 0004 reverses and re-applies on the Compose database.
+- Live run on Compose: mock provider and route created, a stored anthropic key (never called), AI stage run inside the container through the mock, usage recorded with no cost, canary leak scan clean.

@@ -10,6 +10,7 @@ from app.core.errors import register_error_handlers
 from app.core.ratelimit import SlidingWindowLimiter
 from app.organizations.router import router as orgs_router
 from app.projects.router import router as projects_router
+from app.providers.router import router as providers_router
 from app.workflows.router import router as workflows_router
 
 
@@ -22,6 +23,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.state.engine = engine or make_engine(settings.database_url)
     app.state.session_factory = make_session_factory(app.state.engine)
     app.state.auth_limiter = SlidingWindowLimiter(settings.auth_rate_limit_per_minute)
+    # Test hook: an httpx transport (for example httpx.MockTransport) replaces the network for providers.
+    app.state.provider_transport = None
 
     app.add_middleware(
         CORSMiddleware,
@@ -41,5 +44,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(projects_router)
     app.include_router(workflows_router)
     app.include_router(approvals_router)
+    app.include_router(providers_router)
     return app
 
