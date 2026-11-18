@@ -138,3 +138,5 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 - M6-7 closed: set `allow_fallback: false` on the reviewer's agent version. It is not the default.
 - M6-8 (new): skill instructions are written by org admins and go into system prompts unreviewed. A governed approval step belongs with the rules work in M7.
 - M6-9 (new): application logs are not scanned for credentials; the canary test covers API responses and stored records only.
+
+- M6-1 fully closed (2026-11-19): compatible stages and skill dependencies are built.

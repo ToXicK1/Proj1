@@ -182,8 +182,16 @@ Verification:
 | Skill checks | Done | Compatible profiles are checked, and the agent must already hold every tool the skill requires. A skill never grants a tool |
 | Skills in runs | Done | Pinned instructions are added to the system prompt; the run manifest records key and version |
 | Provider pinning | Done | `allow_fallback: false` on an agent version limits it to the route's primary provider. Retries on that provider still apply. The default is `true`, so reviewers are pinned only when configured |
-| Compatible stages, skill dependencies | **Not built** | The brief lists both; only compatible profiles exist |
+| Compatible stages, skill dependencies | Done (see the next update) | Added after this table was written |
 
 Verification: 215 backend tests pass (12 new in `test_skills.py`), 3 live Ollama tests pass, and migration 0006 reverses and re-applies on the Compose database. The live tests do not use a skill, so skill prompts are verified only against the scripted model.
 
 Corrections to earlier notes in this file: test counts for M4 and M5 were recounted from pytest, and the M5 credential check no longer claims to cover application logs.
+
+### M6 follow-up: skill stages and dependencies (2026-11-19)
+
+- A skill version can list compatible stages. The limit is enforced when the stage runs, because workflow versions are global and agents belong to an organization; a violation fails the stage before any provider call.
+- A skill version can depend on other skills. Each dependency is pinned to the exact version that existed when the skill version was created, so a later edit cannot change it and cycles cannot form through edits.
+- An agent version pins the full closure, dependencies first. Profile and tool checks apply to every skill in the closure. Two versions of one skill in a closure are refused.
+- A stage now refuses a lead that was not created as a lead and a reviewer that was not created as a reviewer. Before this, a lead agent could be named as a reviewer.
+- Verified by 223 backend tests (8 new) and migration 0007 reversing and re-applying on the Compose database.

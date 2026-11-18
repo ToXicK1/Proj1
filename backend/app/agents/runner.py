@@ -43,9 +43,16 @@ def _instructions(db: Session, organization_id: uuid.UUID, version) -> str:
     return version.instructions + chr(10) + chr(10) + instructions_for_pins(db, organization_id, list(version.skills))
 
 
-def _resolve(db: Session, organization_id: uuid.UUID, key: str) -> service.Resolved:
+def _resolve(db: Session, organization_id: uuid.UUID, key: str, *, kind: str, stage_key: str) -> service.Resolved:
+    """The agent's latest version, refused unless it has the expected role and suits this stage."""
+    from app.skills.service import assert_stage_allowed
+
     try:
-        return service.latest(db, organization_id, key)
+        resolved = service.latest(db, organization_id, key)
+        if resolved.agent.kind != kind:
+            raise AgentRefused(f"agent '{key}' is not a {kind}")
+        assert_stage_allowed(db, organization_id, list(resolved.version.skills), stage_key)
+        return resolved
     except AppError as exc:
         raise AgentRefused(exc.message) from exc
 
@@ -58,12 +65,13 @@ def run_lead(
     organization_id: uuid.UUID,
     project_id: uuid.UUID,
     stage_execution_id: uuid.UUID,
+    stage_key: str,
     agent_key: str,
     profile_key: str | None,
     context: WorkContext,
     sink: list[uuid.UUID],
 ) -> dict[str, Any]:
-    resolved = _resolve(db, organization_id, agent_key)
+    resolved = _resolve(db, organization_id, agent_key, kind="lead", stage_key=stage_key)
     if profile_key is not None and _profile_key(db, resolved.agent) != profile_key:
         raise AgentRefused("agent belongs to a different profile than this stage")
     version = resolved.version
@@ -118,14 +126,15 @@ def run_reviewer(
     organization_id: uuid.UUID,
     project_id: uuid.UUID,
     stage_execution_id: uuid.UUID,
+    stage_key: str,
     reviewer_key: str,
     lead_key: str,
     artifact_version_id: uuid.UUID,
     content: dict[str, Any],
     lead_run_id: uuid.UUID,
 ) -> ReviewRecord:
-    reviewer = _resolve(db, organization_id, reviewer_key)
-    lead = _resolve(db, organization_id, lead_key)
+    reviewer = _resolve(db, organization_id, reviewer_key, kind="reviewer", stage_key=stage_key)
+    lead = _resolve(db, organization_id, lead_key, kind="lead", stage_key=stage_key)
     try:
         service.assert_independent(lead.agent, reviewer.agent)
     except service.ReviewerNotIndependent as exc:

@@ -67,7 +67,8 @@ def test_admins_create_and_version_skills(client, engine):
                           "compatible_profiles": []}, headers={"X-CSRF-Token": csrf})
     assert r.status_code == 201 and r.json()["version"] == 2
     listed = client.get(f"/api/v1/orgs/{org_id}/skills").json()["items"]
-    assert listed == [{"key": "plain-english", "version": 2, "required_tools": [], "compatible_profiles": []}]
+    assert listed == [{"key": "plain-english", "version": 2, "required_tools": [], "compatible_profiles": [],
+                       "compatible_stages": [], "dependencies": []}]
 
 
 @pytest.mark.parametrize(

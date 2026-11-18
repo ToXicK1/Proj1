@@ -34,6 +34,10 @@ class SkillVersion(Base):
     instructions: Mapped[str] = mapped_column(Text, nullable=False)
     required_tools: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     compatible_profiles: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # Stage keys this version may run in. Empty means any stage. Checked when a stage runs.
+    compatible_stages: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # Exact versions this version builds on: [{"key": ..., "version": n}], fixed at creation.
+    dependencies: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

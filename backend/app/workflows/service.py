@@ -294,7 +294,8 @@ def _produce(
     if spec.get("agent"):
         return agent_runner.run_lead(
             db, settings, transport=transport, organization_id=execution.organization_id,
-            project_id=execution.project_id, stage_execution_id=stage.id, agent_key=spec["agent"],
+            project_id=execution.project_id, stage_execution_id=stage.id, stage_key=stage_key,
+            agent_key=spec["agent"],
             profile_key=spec.get("profile"), context=context, sink=lead_sink,
         )
     return providers.run_task(
@@ -370,7 +371,8 @@ def _review(
     try:
         agent_runner.run_reviewer(
             db, settings, transport=transport, organization_id=execution.organization_id,
-            project_id=execution.project_id, stage_execution_id=stage.id, reviewer_key=spec["reviewer"],
+            project_id=execution.project_id, stage_execution_id=stage.id, stage_key=stage_key,
+            reviewer_key=spec["reviewer"],
             lead_key=spec["agent"], artifact_version_id=version.id, content=content,
             lead_run_id=lead_run_ids[0] if lead_run_ids else uuid.UUID(int=0),
         )
