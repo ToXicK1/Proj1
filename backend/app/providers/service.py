@@ -14,6 +14,7 @@ import json
 import re
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
@@ -225,7 +226,8 @@ def parse_output(text: str, required: tuple[str, ...]) -> dict[str, Any] | None:
 
 
 def _record(db: Session, *, organization_id, project_id, stage_execution_id, route_key, provider: AiProvider,
-            model: str, attempt: int, outcome: _Outcome, settings: Settings) -> None:
+            model: str, attempt: int, outcome: _Outcome, settings: Settings, kind: str = "lead",
+            agent_version_id: uuid.UUID | None = None, manifest: dict[str, Any] | None = None) -> uuid.UUID:
     status = "failed" if outcome.kind else "succeeded"
     run = AgentRun(
         id=uuid7(),
@@ -240,6 +242,9 @@ def _record(db: Session, *, organization_id, project_id, stage_execution_id, rou
         status=status,
         error_kind=outcome.kind,
         latency_ms=outcome.latency_ms,
+        kind=kind,
+        agent_version_id=agent_version_id,
+        context_manifest=manifest or {},
     )
     db.add(run)
     db.flush()
@@ -262,6 +267,83 @@ def _record(db: Session, *, organization_id, project_id, stage_execution_id, rou
                  "status": status, "error_kind": outcome.kind, "latency_ms": outcome.latency_ms,
                  "input_tokens": outcome.input_tokens, "output_tokens": outcome.output_tokens},
     )
+    return run.id
+
+
+def run_structured(
+    db: Session,
+    settings: Settings,
+    *,
+    transport: httpx.BaseTransport | None,
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    stage_execution_id: uuid.UUID,
+    route_key: str,
+    system: str,
+    user: str,
+    required_keys: tuple[str, ...],
+    kind: str = "lead",
+    agent_version_id: uuid.UUID | None = None,
+    manifest: dict[str, Any] | None = None,
+    accept: Callable[[dict[str, Any]], str | None] | None = None,
+    sink: list[uuid.UUID] | None = None,
+) -> dict[str, Any]:
+    """One structured call with fallback, retries and one repair. Every attempt is recorded.
+
+    accept, when given, returns an error message for output that parses but is not acceptable;
+    such output is treated like output that does not parse.
+    """
+    route = db.execute(select(ModelRoute).where(ModelRoute.organization_id == organization_id,
+                                                ModelRoute.key == route_key)).scalar_one_or_none()
+    if route is None:
+        raise ProviderRunFailed("no_route", 0)
+    candidates = [(route.primary_provider_id, route.primary_model)] + [
+        (uuid.UUID(f["provider_id"]), f["model"]) for f in route.fallbacks
+    ]
+    base = CompletionRequest(system=system, user=user, model="")
+    attempts_total = 0
+    last_kind = "unavailable"
+    last_run_id: uuid.UUID | None = None
+    for provider_id, model in candidates:
+        provider = db.get(AiProvider, provider_id)
+        if provider is None or provider.organization_id != organization_id or provider.status != "active":
+            last_kind = "invalid_request"
+            continue
+        try:
+            adapter = _adapter(db, settings, provider, transport)
+        except (SecretError, ProviderError):
+            last_kind = "auth"
+            continue
+        request = replace(base, model=model)
+        for repair in (False, True):
+            attempts_total += 1
+            outcomes = _call_with_retries(adapter, request, settings)
+            for index, outcome in enumerate(outcomes):
+                if index > 0:
+                    attempts_total += 1
+                run_id = _record(db, organization_id=organization_id, project_id=project_id,
+                                 stage_execution_id=stage_execution_id, route_key=route_key, provider=provider,
+                                 model=model, attempt=attempts_total, outcome=outcome, settings=settings,
+                                 kind=kind, agent_version_id=agent_version_id, manifest=manifest)
+                last_run_id = run_id
+            outcome = outcomes[-1]
+            if outcome.kind is not None:
+                last_kind = outcome.kind
+                break
+            parsed = parse_output(outcome.text or "", required_keys)
+            if parsed is not None and (accept is None or accept(parsed) is None):
+                if sink is not None:
+                    sink.append(last_run_id)
+                return parsed
+            last_kind = "bad_response"
+            request = replace(
+                request,
+                user=request.user + "\nYour last reply was not acceptable: it must be a JSON object with the "
+                "required keys and valid values. Reply again with only that object.",
+            )
+            if repair:
+                break
+    raise ProviderRunFailed(last_kind, attempts_total)
 
 
 def run_task(
@@ -279,53 +361,14 @@ def run_task(
     description: str,
     feedback: tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    route = db.execute(select(ModelRoute).where(ModelRoute.organization_id == organization_id,
-                                                ModelRoute.key == route_key)).scalar_one_or_none()
-    if route is None:
-        raise ProviderRunFailed("no_route", 0)
-    candidates = [(route.primary_provider_id, route.primary_model)] + [
-        (uuid.UUID(f["provider_id"]), f["model"]) for f in route.fallbacks
-    ]
-    base = CompletionRequest(
+    return run_structured(
+        db, settings, transport=transport, organization_id=organization_id, project_id=project_id,
+        stage_execution_id=stage_execution_id, route_key=route_key,
         system=system_prompt(task),
         user=user_prompt(project_name, project_type, description, feedback),
-        model="",
+        required_keys=task.required_keys,
+        manifest={"sources": ["project_input", "feedback"], "feedback_count": len(feedback)},
     )
-    attempts_total = 0
-    last_kind = "unavailable"
-    for provider_id, model in candidates:
-        provider = db.get(AiProvider, provider_id)
-        if provider is None or provider.organization_id != organization_id or provider.status != "active":
-            last_kind = "invalid_request"
-            continue
-        try:
-            adapter = _adapter(db, settings, provider, transport)
-        except (SecretError, ProviderError):
-            last_kind = "auth"
-            continue
-        request = replace(base, model=model)
-        for repair in (False, True):
-            attempts_total += 1
-            outcomes = _call_with_retries(adapter, request, settings)
-            for outcome in outcomes:
-                if outcome is not outcomes[0]:
-                    attempts_total += 1
-                _record(db, organization_id=organization_id, project_id=project_id,
-                        stage_execution_id=stage_execution_id, route_key=route_key, provider=provider,
-                        model=model, attempt=attempts_total, outcome=outcome, settings=settings)
-            outcome = outcomes[-1]
-            if outcome.kind is not None:
-                last_kind = outcome.kind
-                break
-            parsed = parse_output(outcome.text or "", task.required_keys)
-            if parsed is not None:
-                return parsed
-            last_kind = "bad_response"
-            request = replace(request, user=request.user + "\nYour last reply was not a JSON object with the "
-                              "required keys. Reply again with only that JSON object.")
-            if repair:
-                break
-    raise ProviderRunFailed(last_kind, attempts_total)
 
 
 def probe(db: Session, settings: Settings, user: User, *, organization_id: uuid.UUID, provider_id: uuid.UUID,

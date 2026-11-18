@@ -11,7 +11,8 @@ Last updated: 2026-11-19 (Milestone 2)
 | M3 Workflow engine | Partly done: engine, compiler and API built; approvals needed to advance past the first gate (M4) | 87 backend tests; live API check |
 | M4 Human approval engine | Backend done; conditional policies, sensors and object storage are later items | 129 backend tests; migration 0003 reversible; live approval run |
 | M5 AI provider layer | Built and tested offline; live vendor calls not verified (no keys) | 185 backend tests; migration 0004 reversible; live mock run on Compose |
-| M6–M10 | Not started | — |
+| M6 Agent orchestration | Built and tested; skills and sandbox not built; reviews advisory | 203 backend tests, 3 live tests on a local model; migration 0005 reversible |
+| M7–M10 | Not started | — |
 
 ## M2 scope and status
 
@@ -147,3 +148,27 @@ Verification:
 
 - Live: an `openai_compatible` provider pointed at a local Ollama server (`qwen3-vl:4b-instruct`) produced a structured stage output through the full product path, with the health probe passing. Run with `pytest -m live` after setting `AIDLC_LIVE_OLLAMA_URL` and `AIDLC_LIVE_OLLAMA_MODEL`.
 - Still not verified live: Anthropic, OpenAI and Gemini (no keys).
+
+## Milestone 6: agent orchestration (2026-11-19)
+
+Status: **Built and tested. The M6 exit criterion (independent professional profiles) is met in tests and on a local model. Skills and the development sandbox are not built.**
+
+| Item (MASTER_PLAN M6) | Status | Notes |
+|---|---|---|
+| Agent registry, versioned | Done | Agents are named; each version is immutable (trigger). Runs record the version they used |
+| Profiles (professional areas) | Done | Agents belong to one profile; a run refuses an agent from another profile |
+| Lead and reviewer roles | Done | A stage may name one lead and one reviewer |
+| Reviewer independence | Done | Compile time: same key refused. Run time: a reviewer that shares the lead's lineage (a clone) is refused |
+| Context scope per agent | Done | Lead: project input and feedback, as its version allows. Reviewer: the artifact under review only. Each run stores a manifest (ids and counts, never content) |
+| Structured handoff | Done | The review record carries a handoff: from run, to agent, artifact version, open questions |
+| Reviewer verdict visible to the owner | Done | Shown in the review view with its findings. Advisory: it does not block the gate |
+| Tool registry and grants | Done (catalogue only) | Five permission classes. Only READ can be granted; EXTERNAL and ADMINISTRATIVE are refused. No tool executes yet |
+| Skills | **Not built** | Deferred |
+| Development sandbox (ADR-017) | **Not built** | Needed before the design stage generates runnable code |
+| Blocking reviews | **Not built** | Reviews are advisory until sensors (M7) |
+| Admin API | Done | Profiles, agents, new versions, list. Org admins only |
+
+Verification:
+- `backend/`: 203 tests pass; 3 live tests pass against the local Ollama model. New: 18 agent tests (admin rules, validation refusals, immutability, compile and run-time independence, context scope, handoff, profile mismatch, review visibility, two profiles executing independently).
+- Migration 0005 reverses and re-applies on the Compose database.
+- Live: a lead and a reviewer on the local model (`qwen3-vl:4b-instruct`) completed a stage through the full path.

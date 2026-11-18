@@ -53,3 +53,31 @@ def test_stage_runs_through_the_product_on_the_local_model(client, engine, setti
     status, reason = _run(engine, settings, None, execution_id)
     assert status == "AWAITING_HUMAN_REVIEW", reason
     assert _runs(engine, execution_id) == [(1, "succeeded", None, "openai_compatible")]
+
+
+def test_lead_and_reviewer_agents_run_on_the_local_model(client, engine, settings):
+    """Two agents with separate lineage: the lead drafts, the reviewer checks the draft alone."""
+    from sqlalchemy.orm import Session
+
+    from app.workflows import service as wf
+    from tests.test_agents import BA_LEAD, BA_REVIEWER, _start
+    from tests.test_approvals import _publish
+
+    csrf = signup_verify_login(client, engine, "live-agents@example.com")
+    org_id = _org_id(client)
+    provider = _provider(client, csrf, org_id, "ollama-agents", "openai_compatible", base_url=URL)
+    _route(client, csrf, org_id, "drafting", provider["id"], MODEL)
+    h = {"X-CSRF-Token": csrf}
+    assert client.post(f"/api/v1/orgs/{org_id}/profiles", json={"key": "business_analyst", "name": "BA"}, headers=h).status_code == 201
+    for agent in (BA_LEAD, BA_REVIEWER):
+        assert client.post(f"/api/v1/orgs/{org_id}/agents", json=agent, headers=h).status_code == 201
+
+    version = _publish(engine, {"key": "live-agent-stage", "name": "live", "stages": [{
+        "id": "ba", "name": "BA", "depends_on": [], "work": "ai:requirements_draft", "agent": "ba-analyst",
+        "reviewer": "ba-critic", "profile": "business_analyst", "output_required_keys": ["summary"]}]})
+    execution_id, _ = _start(client, engine, version)
+    with Session(engine) as s:
+        stage = wf.run_deterministic_stage(s, execution_id=execution_id, stage_key="ba",
+                                           settings=settings.model_copy(update={"provider_backoff_seconds": 0.0}))
+        status, reason = stage.status, stage.failure_reason
+    assert status == "AWAITING_HUMAN_REVIEW", reason

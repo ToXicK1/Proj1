@@ -187,3 +187,19 @@ Format: each decision has context, decision, consequences, and status. New decis
 - Status: Accepted (2026-11-19)
 - Decision: The candidate list is primary then fallbacks. A retryable error retries on the same candidate with backoff. Other errors move to the next candidate. Output that fails the schema gets one repair attempt on the same candidate before moving on. Every attempt is an AgentRun row.
 - Consequence: Retries can spend budget. Budgets and per-organization limits are still to come (KNOWN_ISSUES M5-5).
+
+## ADR-037: Profiles group agents; agents are versioned and immutable (Milestone 6)
+- Status: Accepted (2026-11-19)
+- Decision: A profile is a professional area. An agent belongs to one profile and changes only through new versions. Runs point at the version they used.
+
+## ADR-038: Reviewer independence is enforced by lineage at run time (Milestone 6)
+- Status: Accepted (2026-11-19)
+- Decision: Each agent carries a lineage root. A clone shares its source's root. The compiler refuses a stage whose reviewer names the lead. The runner refuses a reviewer that shares the lead's root, so a clone cannot review its own work.
+
+## ADR-039: Context is passed per source, never by default (Milestone 6)
+- Status: Accepted (2026-11-19)
+- Decision: A version lists its context sources. A lead may read project input and feedback; a reviewer may read only the artifact. Prompts are built from those sources alone. Run manifests record ids and counts, not content.
+
+## ADR-040: Reviews are advisory until sensors exist (Milestone 6)
+- Status: Accepted as an interim rule (2026-11-19)
+- Decision: A reviewer's verdict and findings are recorded and shown to the owner, but they do not change the gate. Blocking reviews come with the sensor framework (M7), where deterministic checks decide, not a model's own judgement.

@@ -332,6 +332,15 @@ def review_view(db: Session, user: User, execution_id: uuid.UUID, stage_key: str
             for c in crs
         ]
 
+    reviews: list[dict[str, Any]] = []
+    if current is not None:
+        from app.agents.models import ReviewRecord
+
+        for rec in db.execute(select(ReviewRecord).where(
+                ReviewRecord.stage_execution_id == stage.id,
+                ReviewRecord.artifact_version_id == current[1].id)).scalars():
+            reviews.append({"verdict": rec.verdict, "findings": rec.findings,
+                            "reviewed_at": rec.created_at.isoformat()})
     done = satisfied_slots(slots, approvals)
     can_decide = False
     if current is not None and stage.status == StageStatus.AWAITING_HUMAN_REVIEW.value:
@@ -361,6 +370,7 @@ def review_view(db: Session, user: User, execution_id: uuid.UUID, stage_key: str
             ]
         },
         "decisions": decisions,
+        "reviews": reviews,
         "change_requests": change_requests,
         "can_decide": can_decide,
         "your_role": role,

@@ -312,7 +312,7 @@ def test_invalid_output_gets_one_repair_on_the_same_provider(client, engine, set
     script = Scripted(openai=[_lazy(_openai, "Sure, here it is."), _lazy(_openai, GOOD)])
     assert _run(engine, settings, script.transport(), execution_id)[0] == "AWAITING_HUMAN_REVIEW"
     second = json.loads(script.calls["openai"][1].content)
-    assert "Your last reply was not a JSON object" in second["messages"][1]["content"]
+    assert "Your last reply was not acceptable" in second["messages"][1]["content"]
     assert len(script.calls["openai"]) == 2
 
 

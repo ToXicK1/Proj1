@@ -92,6 +92,10 @@ class AgentRun(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     error_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="lead")
+    agent_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("agent_config_versions.id"), nullable=True)
+    # Which sources the run was given (ids and counts, never the content itself).
+    context_manifest: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

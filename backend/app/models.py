@@ -1,5 +1,6 @@
 """Import every model so Base.metadata is complete (used by Alembic and the drift test)."""
 
+from app.agents.models import AgentConfiguration, AgentConfigVersion, Profile, ReviewRecord  # noqa: F401
 from app.approvals.models import ApprovalDecision, ChangeRequest  # noqa: F401
 from app.artifacts.models import Artifact, ArtifactVersion  # noqa: F401
 from app.audit.models import AuditChain, AuditEvent  # noqa: F401

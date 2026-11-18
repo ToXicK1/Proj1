@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agents import runner as agent_runner
 from app.approvals.models import ChangeRequest
 from app.artifacts import service as artifacts
 from app.audit.service import append_event, org_chain
@@ -284,11 +285,18 @@ def _produce(
     context: WorkContext,
     settings: Settings,
     transport: Any,
+    lead_sink: list[uuid.UUID],
 ) -> dict[str, Any]:
-    """Run the stage's work: a deterministic function, or an AI task through its model route."""
+    """Run the stage's work: a deterministic function, a lead agent, or an AI task through its model route."""
     if not is_ai_task(spec["work"]):
         return WORK_FUNCTIONS[spec["work"]](context)
     stage = stage_rows(db, execution.id)[stage_key]
+    if spec.get("agent"):
+        return agent_runner.run_lead(
+            db, settings, transport=transport, organization_id=execution.organization_id,
+            project_id=execution.project_id, stage_execution_id=stage.id, agent_key=spec["agent"],
+            profile_key=spec.get("profile"), context=context, sink=lead_sink,
+        )
     return providers.run_task(
         db,
         settings,
@@ -319,9 +327,13 @@ def _work_and_validate(
 
     Every step is a transition with commit=False; the caller commits once.
     """
+    lead_sink: list[uuid.UUID] = []
     try:
         output = _produce(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
-                          settings=settings, transport=transport)
+                          settings=settings, transport=transport, lead_sink=lead_sink)
+    except agent_runner.AgentRefused as exc:
+        return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.FAILED,
+                                actor=ActorType.SYSTEM, reason=f"agent refused: {exc}"[:300], commit=False)
     except providers.ProviderRunFailed as exc:
         return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.FAILED,
                                 actor=ActorType.SYSTEM, reason=f"provider failed: {exc.kind}", commit=False)
@@ -338,8 +350,37 @@ def _work_and_validate(
         return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.BLOCKED,
                                 actor=ActorType.SYSTEM, reason=f"output missing keys: {', '.join(missing)}",
                                 commit=False)
+    if spec.get("reviewer"):
+        review_failure = _review(db, execution=execution, stage_key=stage_key, spec=spec, settings=settings,
+                                 transport=transport, lead_run_ids=lead_sink)
+        if review_failure is not None:
+            return review_failure
     return transition_stage(db, execution_id=execution.id, stage_key=stage_key,
                             to_status=StageStatus.AWAITING_HUMAN_REVIEW, actor=ActorType.SYSTEM, commit=False)
+
+
+def _review(
+    db: Session, *, execution: WorkflowExecution, stage_key: str, spec: dict[str, Any], settings: Settings,
+    transport: Any, lead_run_ids: list[uuid.UUID],
+) -> StageExecution | None:
+    """The reviewer checks the current artifact version. Returns a FAILED stage on refusal or failure."""
+    stage = stage_rows(db, execution.id)[stage_key]
+    _, version = artifacts.current_version(db, stage.id)
+    content = version.content_json
+    try:
+        agent_runner.run_reviewer(
+            db, settings, transport=transport, organization_id=execution.organization_id,
+            project_id=execution.project_id, stage_execution_id=stage.id, reviewer_key=spec["reviewer"],
+            lead_key=spec["agent"], artifact_version_id=version.id, content=content,
+            lead_run_id=lead_run_ids[0] if lead_run_ids else uuid.UUID(int=0),
+        )
+    except agent_runner.AgentRefused as exc:
+        return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.FAILED,
+                                actor=ActorType.SYSTEM, reason=f"review refused: {exc}"[:300], commit=False)
+    except providers.ProviderRunFailed as exc:
+        return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.FAILED,
+                                actor=ActorType.SYSTEM, reason=f"review failed: {exc.kind}", commit=False)
+    return None
 
 
 def _stage_and_spec(

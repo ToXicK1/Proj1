@@ -119,3 +119,15 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 - M5-0 partly closed: the adapter path is verified live against a local Ollama model (`qwen3-vl:4b-instruct`, served through Ollama's OpenAI-compatible endpoint). Two live tests pass: a structured answer from the adapter, and a full stage run through the product with a health probe.
 - Hosted vendors (Anthropic, OpenAI, Gemini) are still unverified: no keys.
 - Local models are slow on CPU; the live test allows 300 seconds per call.
+
+## Milestone 6 known issues (2026-11-19)
+
+| ID | Issue | Impact | Plan |
+|---|---|---|---|
+| M6-1 | Skills are not built | Agents cannot share reusable instructions | Skill records with versions, M7 or later |
+| M6-2 | Development sandbox (ADR-017) is not built | Design stages cannot generate runnable prototypes | Sandbox with no network, resource limits and an isolated preview origin, before design generation |
+| M6-3 | Reviews are advisory | A reviewer can recommend changes and the gate still opens | Blocking reviews with sensors, M7 |
+| M6-4 | No tool has an executor; only READ can be granted, and no READ tool runs yet | Agents cannot read the project through tools | Tool executors with per-run limits, M6 follow-up |
+| M6-5 | Context manifests store ids and counts, not prompt hashes | Auditors cannot see the exact text a run received | Store prompt hashes per run, M10 |
+| M6-6 | Agents are created through the API only | No visual editor for profiles and agents | Workflow Studio, M8 |
+| M6-7 | A review can be answered by a fallback provider | The reviewer may not use the provider configured for its role | Pin reviewer provider in the agent version, M6 follow-up |

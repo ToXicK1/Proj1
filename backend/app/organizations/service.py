@@ -28,3 +28,14 @@ def membership_for(db: Session, user_id: uuid.UUID, organization_id: uuid.UUID) 
             Membership.user_id == user_id, Membership.organization_id == organization_id
         )
     ).scalar_one_or_none()
+
+
+def require_org_admin(db: Session, user_id: uuid.UUID, organization_id: uuid.UUID) -> None:
+    """Non-members get not_found. Members who are not org admins get not_permitted."""
+    from app.core.errors import AppError, not_found
+
+    membership = membership_for(db, user_id, organization_id)
+    if membership is None:
+        raise not_found()
+    if membership.role != "org_admin":
+        raise AppError(403, "not_permitted", "Only organization administrators can do this")
