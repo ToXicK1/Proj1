@@ -128,3 +128,20 @@ Format: each decision has context, decision, consequences, and status. New decis
   - Not-found and not-permitted are indistinguishable (404) for tenant resources.
   - Audit chain: one chain per organization plus a platform chain. Appends lock the chain row. A trigger blocks UPDATE and DELETE.
 - Known gaps: rate limiter is per process; no MFA yet; no session-idle timeout beyond the absolute TTL.
+
+## ADR-024: Stage transitions are the only writer of stage state; execution locks first (Milestone 3)
+- Status: Accepted (2026-11-19)
+- Decision: Every transition locks the execution row, then the stage row, inside one transaction. The log row, the audit event and the readiness update commit together. Lock order is fixed to avoid deadlocks.
+- Consequence: Transitions in one execution are serialized. That is acceptable at current scale. Revisit if one execution holds many parallel stages.
+
+## ADR-025: APPROVED is refused until the approval engine exists (Milestone 3)
+- Status: Accepted (2026-11-19)
+- Decision: The state machine defines the human-only edges, but the engine refuses APPROVED with `approval_required` until Milestone 4 provides the approval records that must exist first. Downstream stages therefore cannot start in M3. This is intentional: nothing may advance without an approval.
+
+## ADR-026: Stage work is deterministic code, not AI, in this milestone (Milestone 3)
+- Status: Accepted (2026-11-19)
+- Decision: Stages name a registered pure function (`app/workflows/work.py`). Its output must contain the stage's required keys, or the stage is BLOCKED. A raised exception moves the stage to FAILED and records the exception type. Real AI-backed work arrives with the provider layer (Milestone 5).
+
+## ADR-027: Compiler rejects what it cannot run (Milestone 3)
+- Status: Accepted (2026-11-19)
+- Decision: Conditional and parallel execution are refused with explicit messages, not silently ignored. Unknown fields are refused. Stage ids are lowercase snake_case, 1 to 64 characters.

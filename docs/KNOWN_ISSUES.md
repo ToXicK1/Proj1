@@ -73,3 +73,14 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 | M2-7 | Windows policy workarounds (ADR-022) | Local only | Revert when native modules are allowed |
 | M2-8 | Audit verifier has no API endpoint | Integrity can be checked by code or by an operator only | Add an admin endpoint in M2.1 |
 | M2-9 | No MFA; idle session timeout not implemented | Weaker session controls than the security architecture target | MFA before production (M10) |
+
+## Milestone 3 known issues (2026-11-19)
+
+| ID | Issue | Impact | Plan |
+|---|---|---|---|
+| M3-1 | Nothing past the first review gate can run until approvals exist | The M3 exit criterion "a deterministic workflow executes" is met only up to AWAITING_HUMAN_REVIEW | Milestone 4 |
+| M3-2 | No job queue; stage runs happen inline in the request or script | Long-running work would block; no retries after a crash | DB-backed queue with leases (ADR-004), M5 or M6 |
+| M3-3 | Workflow definitions are seeded from code, not published through an API | Administrators cannot add a template without a code change | Workflow Studio, M8 |
+| M3-4 | Executions only report RUNNING; no completion, pause or cancel | No whole-workflow lifecycle yet | After M4 approvals |
+| M3-5 | Stage run is exposed only in code (`run_deterministic_stage`), with no API route | Correct for security (users cannot drive stages), but nothing can run stages from the UI yet | Internal runner endpoint behind a worker, M5/M6 |
+| M3-6 | Stage output is stored (`output_json`) but never shown | Intended for now; owner-visible artifacts come with M4 | M4 |

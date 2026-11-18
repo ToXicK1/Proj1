@@ -9,6 +9,7 @@ from app.core.errors import register_error_handlers
 from app.core.ratelimit import SlidingWindowLimiter
 from app.organizations.router import router as orgs_router
 from app.projects.router import router as projects_router
+from app.workflows.router import router as workflows_router
 
 
 def create_app(settings: Settings | None = None, engine: Engine | None = None) -> FastAPI:
@@ -37,5 +38,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(auth_router)
     app.include_router(orgs_router)
     app.include_router(projects_router)
+    app.include_router(workflows_router)
     return app
 
