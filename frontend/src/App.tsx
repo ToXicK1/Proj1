@@ -1,6 +1,6 @@
-import { api } from "./api";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { Sidebar } from "./components/Sidebar";
 import { useSession } from "./session";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 import { HomePage } from "./pages/HomePage";
@@ -23,35 +23,20 @@ function RequireAuth({ children }: { children: ReactNode }) {
 }
 
 function Shell({ children }: { children: ReactNode }) {
-  const { state, signOut } = useSession();
-  const location = useLocation();
-  const [isAdmin, setIsAdmin] = useState(false);
-  const userId = state.status === "authenticated" ? state.user.id : null;
-  useEffect(() => {
-    if (!userId) {
-      setIsAdmin(false);
-      return;
-    }
-    api.access().then((a) => setIsAdmin(a.is_admin)).catch(() => setIsAdmin(false));
-  }, [userId, location.pathname]);
+  const { state } = useSession();
+  if (state.status !== "authenticated") {
+    return (
+      <div className="shell public">
+        <header className="public-header">
+          <Link to="/" className="brand"><span className="brand-mark" aria-hidden="true">AI</span>AI-DLC Platform</Link>
+        </header>
+        <main className="content">{children}</main>
+      </div>
+    );
+  }
   return (
     <div className="shell">
-      <header className="topbar">
-        <Link to="/" className="brand">
-          AI-DLC Platform
-        </Link>
-        {state.status === "authenticated" && (
-          <nav className="topbar-actions">
-            <Link to="/notifications">Notifications</Link>
-            {isAdmin && <Link to="/team">Team</Link>}
-            {isAdmin && <Link to="/studio">Studio</Link>}
-            <span className="muted">{state.user.display_name}</span>
-            <button type="button" className="secondary" onClick={() => void signOut()}>
-              Sign out
-            </button>
-          </nav>
-        )}
-      </header>
+      <Sidebar />
       <main className="content">{children}</main>
     </div>
   );

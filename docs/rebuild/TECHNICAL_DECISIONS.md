@@ -14,3 +14,4 @@ Earlier decisions remain in `docs/DECISIONS.md` (ADR-001 to ADR-055). Rebuild de
 | RD-8 (D8) | Commit the current tree to main and push as the baseline | Accepted (user chose main and push) | Protects existing work |
 | RD-9 | Agents never call each other; the orchestrator routes all collaboration | Proposed | AWS principle, keeps every exchange recorded and permission-checked |
 | RD-10 | Conditions are deterministic expressions, never model text | Proposed | The engine must decide transitions |
+| RD-11 | Mandatory design system: forest green identity, beige workspaces, electric purple for AI and accents, separate status colours, central tokens (`docs/architecture/DESIGN_SYSTEM.md`) | Accepted (your specification) | Applies to every page and replaces Tailwind-first styling in RD-6: Tailwind, if added, must read these tokens |

@@ -1,0 +1,82 @@
+/*
+ * AI-DLC design tokens. The single source of colour for the whole platform.
+ * Forest green carries the identity, beige is the warm neutral, electric purple marks AI and key accents.
+ * Pages and components use the semantic tokens below, never raw colour values.
+ */
+:root {
+  /* Brand palette */
+  --green-900: #103629;
+  --green-700: #174b38;
+  --green-500: #28684f;
+  --green-100: #dce9e1;
+
+  --beige-300: #d6c8ac;
+  --beige-200: #e9dfc9;
+  --beige-100: #f5f0e5;
+  --beige-50: #faf7f0;
+
+  --purple-700: #7736c8;
+  --purple-500: #a855f7;
+  --purple-400: #b96cff;
+  --purple-100: #ebddfa;
+
+  /* Semantic status colours, kept apart from the brand palette */
+  --status-success: #1f7a43;
+  --status-success-bg: #e2f3e8;
+  --status-warning: #8a5300;
+  --status-warning-bg: #fdefc9;
+  --status-error: #b42318;
+  --status-error-bg: #fbe4e1;
+  --status-info: #1d4ed8;
+  --status-info-bg: #e2eaff;
+  --status-blocked: #8f1d1d;
+  --status-blocked-bg: #f6dcdc;
+  --status-pending: #9a3412;
+  --status-pending-bg: #fde3cf;
+  --status-progress: #0b6a8a;
+  --status-progress-bg: #dcf0f7;
+  --status-neutral: #5d5446;
+  --status-neutral-bg: #ece4d3;
+
+  /* Surfaces and text */
+  --page: var(--beige-100);
+  --surface: var(--beige-50);
+  --surface-raised: #fffdf8;
+  --surface-sunken: var(--beige-200);
+  --border: #ddd2bb;
+  --border-strong: var(--beige-300);
+  --text: #1b2a23;
+  --text-muted: #59675f;
+  --heading: var(--green-900);
+
+  /* Navigation */
+  --nav-bg: var(--green-700);
+  --nav-bg-strong: var(--green-900);
+  --nav-text: #e8f1ec;
+  --nav-text-muted: #a9c4b6;
+  --nav-active-bg: var(--green-500);
+
+  /* Actions and focus */
+  --action: var(--green-700);
+  --action-hover: var(--green-900);
+  --action-text: #ffffff;
+  --accent: var(--purple-700);
+  --accent-soft: var(--purple-100);
+  --focus: var(--purple-500);
+
+  /* Identity markers */
+  --identity-ai: var(--purple-700);
+  --identity-ai-bg: var(--purple-100);
+  --identity-human: var(--green-700);
+  --identity-human-bg: var(--green-100);
+  --identity-system: var(--status-neutral);
+  --identity-system-bg: var(--status-neutral-bg);
+
+  /* Shape and type */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgba(16, 54, 41, 0.06);
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  color-scheme: light;
+}

@@ -15,3 +15,14 @@ Fixes needed to get a clean run today:
 
 - An embedded test database left running by the interrupted session made 216 tests error at start-up. Stopping it resolved them (known issue RB-13).
 - `test_every_sensor_named_in_the_brief_exists` expected 17 sensors; it now allows the `code_builds` sandbox sensor added on 2026-11-18.
+
+## 2026-11-19 — Design system (RD-11)
+
+| Suite | Result | Notes |
+|---|---|---|
+| Frontend unit and typecheck | 10 passed, typecheck clean, production build clean | New tests for status and identity markers |
+| Browser, one-organization-per-account mode | 20 passed | Isolated Compose stack with the offline test connection |
+| Browser, shared-organization mode | 1 passed (full lifecycle spec with the real sandbox) | Same isolated stack, recreated empty |
+| Visual check | Desktop and 390px phone screenshots reviewed | Sidebar folds behind a Menu button on phones |
+
+Fixes made along the way: the sidebar's project switcher was renamed "Switch project" because its label clashed with the invite form's "Project" field; the browser warm-up now waits up to 120 s for a freshly built dev server.

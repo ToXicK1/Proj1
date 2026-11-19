@@ -7,7 +7,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   const browser = await chromium.launch({ channel });
   try {
     const page = await browser.newPage({ baseURL });
-    await page.goto("/login");
+    await page.goto("/login", { timeout: 120_000 }); // a fresh dev server compiles everything on first load
     await page.getByRole("button", { name: "Sign in" }).waitFor({ timeout: 60_000 });
   } finally {
     await browser.close();

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
+import { PROFILES } from "../components/Sidebar";
+import { IdentityTag, StatusPill } from "../components/ui";
 import { ApiError, api, type DeliverableDto, type FeedbackDto, type IntakeDto, type PortalMessageDto, type WorkspaceDto } from "../api";
 
-const TABS = ["Overview", "Project brief", "Deliverables", "Conversations", "Testing"] as const;
+const TABS = ["Overview", "Lifecycle", "Project brief", "Deliverables", "Conversations", "Testing"] as const;
 export type PortalTab = (typeof TABS)[number];
 
 function problem(err: unknown): string {
@@ -22,6 +24,30 @@ export function ContentView({ value }: { value: unknown }): ReactNode {
     );
   }
   return <>{String(value ?? "")}</>;
+}
+
+function Lifecycle({ data }: { data: WorkspaceDto }) {
+  if (data.phases.length === 0) return <p className="muted">The lifecycle starts when the project brief is confirmed.</p>;
+  return (
+    <div className="stack">
+      <section>
+        <h2>Lifecycle</h2>
+        {data.phases.map((phase) => (
+          <details key={phase.name} open={phase.stages.some((s) => !["Approved", "Completed", "Not Started"].includes(s.status))}>
+            <summary>{phase.name}</summary>
+            <ul className="list">
+              {phase.stages.map((s) => (
+                <li key={s.id} className="row">
+                  <span>{s.number} {s.name} <span className="muted">· {s.profile}</span></span>
+                  <StatusPill label={s.status} />
+                </li>
+              ))}
+            </ul>
+          </details>
+        ))}
+      </section>
+    </div>
+  );
 }
 
 function Overview({ data, projectId, onReview, onBrief, onChange }: {
@@ -72,34 +98,26 @@ function Overview({ data, projectId, onReview, onBrief, onChange }: {
           {data.team.map((m) => (
             <article key={m.profile} className="team-card" aria-label={m.representative}>
               <strong>{m.representative}</strong>
-              <span className="muted">{m.assigned.length ? m.assigned.join(", ") : "Nobody assigned yet"}</span>
+              <IdentityTag kind="ai">Specialist agents</IdentityTag>
+              {m.assigned.length
+                ? m.assigned.map((name) => <IdentityTag key={name} kind="human">{name}</IdentityTag>)
+                : <span className="muted">No professional assigned yet</span>}
               <span className="muted">{m.stages_done} of {m.stages_total} steps</span>
-              <span className="pill">{m.status}</span>
+              <StatusPill label={m.status} />
             </article>
           ))}
         </div>
       </section>
       <section>
-        <h2>Lifecycle</h2>
-        {data.phases.map((phase) => (
-          <details key={phase.name} open={phase.stages.some((s) => !["Approved", "Completed", "Not Started"].includes(s.status))}>
-            <summary>{phase.name}</summary>
-            <ul className="list">
-              {phase.stages.map((s) => (
-                <li key={s.id} className="row">
-                  <span>{s.number} {s.name} <span className="muted">· {s.profile}</span></span>
-                  <span className="pill">{s.status}</span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        ))}
-      </section>
-      <section>
         <h2>Recent activity</h2>
         {data.activity.length === 0 && <p className="muted">No activity yet.</p>}
         <ul className="list">
-          {data.activity.map((a, i) => <li key={i}>{a.text} <span className="muted">· {new Date(a.at).toLocaleString()}</span></li>)}
+          {data.activity.map((a, i) => (
+            <li key={i} className="row">
+              <span><IdentityTag kind="system" /> {a.text}</span>
+              <span className="muted">{new Date(a.at).toLocaleString()}</span>
+            </li>
+          ))}
         </ul>
       </section>
     </div>
@@ -167,7 +185,7 @@ function Brief({ projectId, isOwner, onChange }: { projectId: string; isOwner: b
         <ul className="list">
           {intake.items.map((item) => (
             <li key={item.field} className="row">
-              <span><strong>{item.label}</strong> <span className="pill">{TAG_NAMES[item.tag]}</span><br />{item.value}</span>
+              <span><strong>{item.label}</strong> <StatusPill label={TAG_NAMES[item.tag]} /><br />{item.value}</span>
               {open && (
                 <span className="actions">
                   {item.tag === "inferred" && (
@@ -201,8 +219,8 @@ function Brief({ projectId, isOwner, onChange }: { projectId: string; isOwner: b
   );
 }
 
-function Deliverables({ projectId, tick, role, wanted, onChange }: {
-  projectId: string; tick: number; role: string; wanted: string; onChange: () => void;
+function Deliverables({ projectId, tick, role, wanted, profile, onChange }: {
+  projectId: string; tick: number; role: string; wanted: string; profile: string | null; onChange: () => void;
 }) {
   const [items, setItems] = useState<DeliverableDto[] | null>(null);
   const [selected, setSelected] = useState(wanted);
@@ -221,8 +239,12 @@ function Deliverables({ projectId, tick, role, wanted, onChange }: {
   }, [projectId, tick]);
 
   if (!items) return error ? <p role="alert" className="error">{error}</p> : <p className="muted">Loading…</p>;
-  if (items.length === 0) return <p className="muted">Nothing is ready to view yet.</p>;
-  const item = items.find((d) => d.stage === selected) ?? items[items.length - 1];
+  const department = PROFILES.find(([key]) => key === profile)?.[1];
+  const shown = profile ? items.filter((d) => d.profile === profile) : items;
+  if (shown.length === 0) {
+    return <p className="muted">{department ? `The ${department} has nothing ready to view yet.` : "Nothing is ready to view yet."}</p>;
+  }
+  const item = shown.find((d) => d.stage === selected) ?? shown[shown.length - 1];
   const version = item.versions.find((v) => v.id === versionId) ?? item.versions[0];
   const other = item.versions.find((v) => v.id === compareId);
   const isCurrent = version.id === item.current_version_id;
@@ -250,10 +272,14 @@ function Deliverables({ projectId, tick, role, wanted, onChange }: {
       <label>
         Deliverable
         <select value={item.stage} onChange={(e) => { setSelected(e.target.value); setVersionId(""); setCompareId(""); setNotice(null); }}>
-          {items.map((d) => <option key={d.stage} value={d.stage}>{d.number} {d.name} ({d.status})</option>)}
+          {shown.map((d) => <option key={d.stage} value={d.stage}>{d.number} {d.name} ({d.status})</option>)}
         </select>
       </label>
-      <p className="muted">Prepared by your {item.representative}. Status: {item.status}.</p>
+      {department && <p className="eyebrow">{department} workspace</p>}
+      <div className="row">
+        <span>Prepared by <IdentityTag kind="ai">{item.representative} team</IdentityTag></span>
+        <StatusPill label={item.status} />
+      </div>
       <div className="row start">
         <label className="grow">
           Version
@@ -278,7 +304,7 @@ function Deliverables({ projectId, tick, role, wanted, onChange }: {
             {version.checks.map((c) => (
               <li key={c.name} className="row">
                 <span>{c.name}: {c.summary}</span>
-                <span className="pill">{c.passed ? "Passed" : "Failed"}</span>
+                <StatusPill label={c.passed ? "Passed" : "Failed"} />
               </li>
             ))}
           </ul>
@@ -352,7 +378,10 @@ function Conversations({ projectId, data, tick }: { projectId: string; data: Wor
       <ul className="messages" aria-label="Messages">
         {items.map((m) => (
           <li key={m.id} className={m.mine ? "message mine" : "message"}>
-            <strong>{m.mine ? "You" : m.from}</strong><div>{m.body}</div>
+            <div className="message-head">
+              {m.mine ? <IdentityTag kind="human">You</IdentityTag> : <IdentityTag kind="ai">{m.from}</IdentityTag>}
+            </div>
+            <div>{m.body}</div>
           </li>
         ))}
       </ul>
@@ -452,9 +481,18 @@ function Testing({ projectId, data, tick }: { projectId: string; data: Workspace
 
 export function ProjectPortal({ projectId }: { projectId: string }) {
   const [data, setData] = useState<WorkspaceDto | null>(null);
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [wanted, setWanted] = useState(params.get("review") ?? "");
-  const [tab, setTab] = useState<PortalTab>(wanted ? "Deliverables" : "Overview");
+  const asked = params.get("tab");
+  const tab: PortalTab = (TABS as readonly string[]).includes(asked ?? "") ? (asked as PortalTab)
+    : wanted ? "Deliverables" : "Overview";
+  const profile = tab === "Deliverables" ? params.get("profile") : null;
+  const setTab = (next: PortalTab) => setParams((prev) => {
+    const out = new URLSearchParams(prev);
+    out.set("tab", next);
+    out.delete("profile");
+    return out;
+  });
   const [tick, setTick] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(() => {
@@ -471,6 +509,7 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
   return (
     <section className="card stack">
       <div>
+        <p className="eyebrow">Project</p>
         <h1>{data.project.name}</h1>
         <p className="muted">{data.project.type} · {data.project.status}</p>
         {data.project.description && <p>{data.project.description}</p>}
@@ -480,10 +519,12 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
           className={tab === t ? "tab selected" : "tab"} onClick={() => setTab(t)}>{t}</button>)}
       </div>
       <div role="tabpanel" aria-label={tab}>
+        {tab === "Lifecycle" && <Lifecycle data={data} />}
         {tab === "Overview" && <Overview data={data} projectId={projectId} onChange={refresh} onBrief={() => setTab("Project brief")}
           onReview={(stage) => { setWanted(stage); setTab("Deliverables"); }} />}
         {tab === "Project brief" && <Brief projectId={projectId} isOwner={data.role === "project_owner"} onChange={refresh} />}
-        {tab === "Deliverables" && <Deliverables key={wanted} projectId={projectId} tick={tick} role={data.role} wanted={wanted} onChange={refresh} />}
+        {tab === "Deliverables" && <Deliverables key={`${wanted}-${profile ?? ""}`} projectId={projectId} tick={tick} role={data.role} wanted={wanted}
+          profile={profile} onChange={refresh} />}
         {tab === "Conversations" && <Conversations projectId={projectId} data={data} tick={tick} />}
         {tab === "Testing" && <Testing projectId={projectId} data={data} tick={tick} />}
       </div>
