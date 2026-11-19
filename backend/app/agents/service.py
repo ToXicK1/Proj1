@@ -23,7 +23,7 @@ from app.core.db import uuid7
 from app.core.errors import AppError
 from app.organizations.service import require_org_admin
 
-LEAD_SOURCES = frozenset({"project_input", "feedback"})
+LEAD_SOURCES = frozenset({"project_input", "feedback", "upstream_deliverables"})
 REVIEWER_SOURCES = frozenset({"stage_artifact"})
 KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_\-]{1,63}$")
 KEY_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")

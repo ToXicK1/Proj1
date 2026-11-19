@@ -7,7 +7,7 @@ Responses never reveal whether an email is registered (see signup).
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -45,7 +45,8 @@ def _enqueue_email(db: Session, *, kind: str, recipient: str, subject: str, body
     db.add(EmailOutbox(kind=kind, recipient=recipient, subject=subject, body=body))
 
 
-def signup(db: Session, settings: Settings, *, email: str, password: str, display_name: str) -> None:
+def signup(db: Session, settings: Settings, *, email: str, password: str, display_name: str,
+           requested_role: str = "project_owner") -> None:
     """Start signup. Always returns normally so callers cannot learn which emails exist."""
     email = normalize_email(email)
     validate_password(password, settings)
@@ -67,6 +68,7 @@ def signup(db: Session, settings: Settings, *, email: str, password: str, displa
         email=email,
         password_hash=hash_password(password),
         display_name=display_name.strip(),
+        requested_role=requested_role,
         status="pending_verification",
         failed_login_count=0,
     )
@@ -122,10 +124,25 @@ def verify_email(db: Session, settings: Settings, *, token: str) -> User:
     user.verified_at = now
     user.updated_at = now
 
+    shared = None
+    if settings.signup_mode == "shared":
+        db.execute(text("select pg_advisory_xact_lock(724010)"))  # two first signups cannot both become admin
+        shared = db.execute(select(Organization).where(Organization.is_default.is_(True))).scalar_one_or_none()
+    if shared is not None:
+        # Joining asks for access; nothing is granted until an administrator confirms it.
+        db.add(Membership(id=uuid7(), organization_id=shared.id, user_id=user.id, role="member", status="pending",
+                          requested_role=user.requested_role))
+        append_event(db, chain_key=PLATFORM_CHAIN, event_type="auth.email_verified", actor_type="human",
+                     actor_id=str(user.id))
+        append_event(db, chain_key=org_chain(shared.id), event_type="member.access_requested", actor_type="human",
+                     actor_id=str(user.id), organization_id=shared.id, payload={"requested_role": user.requested_role})
+        db.commit()
+        return user
     org = Organization(
         id=uuid7(),
-        name=f"{user.display_name}'s workspace"[:120],
+        name="Organization" if settings.signup_mode == "shared" else f"{user.display_name}'s workspace"[:120],
         slug=slugify(user.display_name, suffix=uuid.uuid4().hex[:8]),
+        is_default=settings.signup_mode == "shared",
     )
     db.add(org)
     db.flush()  # organization row first so the membership's foreign key is satisfied

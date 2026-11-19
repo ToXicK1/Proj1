@@ -49,11 +49,16 @@ class SensorEvidence(Base):
     """A result produced outside the artifact (lint, tests, scans), recorded by an authorized person."""
 
     __tablename__ = "sensor_evidence"
-    __table_args__ = (CheckConstraint("outcome in ('pass','fail')", name="outcome_valid"),)
+    __table_args__ = (
+        CheckConstraint("outcome in ('pass','fail')", name="outcome_valid"),
+        CheckConstraint("source in ('human','sandbox')", name="source_valid"),
+        CheckConstraint("source = 'sandbox' or recorded_by is not null", name="human_is_named"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id"), nullable=False)
     project_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("projects.id"), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="human", server_default="human")
     artifact_version_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("artifact_versions.id"), nullable=False, index=True
     )
@@ -61,7 +66,7 @@ class SensorEvidence(Base):
     outcome: Mapped[str] = mapped_column(String(8), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     findings: Mapped[list] = mapped_column(JSONB, nullable=False)
-    recorded_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    recorded_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

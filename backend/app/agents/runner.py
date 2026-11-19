@@ -93,7 +93,9 @@ def run_lead(
     parts: list[str] = []
     if "project_input" in sources:
         parts += [f"name: {context.project_name}", f"type: {context.project_type}",
-                  f"description: {context.project_description}"]
+                  f"description: {context.project_description}", *context.intake]
+    if "upstream_deliverables" in sources and context.upstream:
+        parts.append("approved earlier deliverables: " + " | ".join(context.upstream))
     if "feedback" in sources and context.feedback:
         parts.append("reviewer feedback to address: " + " | ".join(context.feedback))
     user = "<project_input>\n" + ("\n".join(parts) if parts else "(no input allowed)") + "\n</project_input>"
@@ -112,6 +114,8 @@ def run_lead(
         "version": version.version,
         "sources": sources,
         "feedback_count": len(context.feedback) if "feedback" in sources else 0,
+        "intake_items": len(context.intake) if "project_input" in sources else 0,
+        "upstream_count": len(context.upstream) if "upstream_deliverables" in sources else 0,
         "skills": list(version.skills),
         "rules": rule_service.references(rules),
     }

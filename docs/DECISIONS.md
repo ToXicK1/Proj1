@@ -257,3 +257,16 @@ Format: each decision has context, decision, consequences, and status. New decis
 ## ADR-052: The diagram edits the same dependencies as the form (Milestone 8)
 - Status: Accepted (2026-11-18)
 - Decision: React Flow draws `depends_on` and edits it by dragging; form checkboxes edit the same field. No position data enters the workflow definition, so a layout change cannot change a published hash.
+
+## ADR-053: The portal is a separate, allow-listed view over the same engine (Milestone 9)
+- Status: Accepted (2026-11-18)
+- Decision: Portal responses are built field by field. Decisions go through the existing approval service, so version binding, policy slots and mandatory checks apply unchanged. Internal error details are replaced by owner wording.
+
+## ADR-054: Owner message text selects a category and never an action (Milestone 9)
+- Status: Accepted (2026-11-18)
+- Decision: Routing uses fixed rules with a recorded version. A message cannot approve, reject, start work or name a tool. Generated answers have no tools and pass a wording guard.
+- Consequence: Routing is predictable and safe against injection, but less flexible than a model (M9-4).
+
+## ADR-055: Only stated or accepted items become requirements (Milestone 9)
+- Status: Accepted (2026-11-18)
+- Decision: Each intake answer carries how it is known. Assumptions reach the team labelled as unconfirmed unless the owner accepts them. The confirmed brief is fixed in the workflow's snapshot when delivery starts.

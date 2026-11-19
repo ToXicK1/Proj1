@@ -23,7 +23,7 @@ from app.rules import service as rules
 from app.rules.models import ChangeProposal, Rule, RuleVersion
 from app.sensors import service as sensors
 from app.sensors.models import RiskAcceptance, SensorEvidence
-from app.sensors.registry import EVIDENCE_KINDS, SECURITY_EVIDENCE, SENSORS
+from app.sensors.registry import EVIDENCE_KINDS, SANDBOX_ONLY_EVIDENCE, SECURITY_EVIDENCE, SENSORS
 from app.workflows import service as workflows
 from app.workflows.models import WorkflowVersion
 
@@ -137,8 +137,14 @@ def record_evidence(execution_id: uuid.UUID, stage_key: StageKey, body: Evidence
                                                       caller.user.id)
         if body.kind not in EVIDENCE_KINDS:
             raise AppError(422, "invalid_kind", "Unknown evidence kind")
+        ran_in_sandbox = db.execute(select(SensorEvidence.id).where(
+            SensorEvidence.artifact_version_id == version.id, SensorEvidence.kind == body.kind,
+            SensorEvidence.source == "sandbox")).first()
+        if body.kind in SANDBOX_ONLY_EVIDENCE or ran_in_sandbox:
+            raise AppError(409, "sandbox_result", "This result comes from the sandbox and cannot be recorded by hand")
         allowed = {"internal_reviewer"} if body.kind in SECURITY_EVIDENCE else {"internal_reviewer", "team_member"}
-        if role not in allowed:
+        holds_qa = "qa_security" in workflows.held_profiles(db, caller.user.id, execution.organization_id)
+        if role not in allowed and not holds_qa:
             raise AppError(403, "not_permitted", "Your project role cannot record this evidence")
         if version.author_user_id == caller.user.id:
             raise AppError(403, "separation_of_duties", "You cannot record evidence for your own artifact")

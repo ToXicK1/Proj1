@@ -15,6 +15,7 @@ from app.auth.models import User
 from app.core.db import uuid7
 from app.core.errors import AppError, not_found
 from app.hooks import service as hooks
+from app.organizations.models import MemberProfile
 from app.organizations.service import membership_for
 from app.projects.models import Project, ProjectMember
 
@@ -33,8 +34,11 @@ def create_project(
     project_type: str,
 ) -> Project:
     # Users who are not members of the organization get not_found, not forbidden.
-    if membership_for(db, user.id, organization_id) is None:
+    membership = membership_for(db, user.id, organization_id)
+    if membership is None:
         raise not_found()
+    if membership.role == "member":
+        raise AppError(403, "not_permitted", "Only project owners can create projects")
 
     name = name.strip()
     project_type = project_type.strip()
@@ -57,6 +61,10 @@ def create_project(
     db.add(project)
     db.flush()  # project row first so the membership's foreign key is satisfied
     db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=user.id, project_role="project_owner"))
+    holders = set(db.execute(select(MemberProfile.user_id).where(
+        MemberProfile.organization_id == organization_id)).scalars()) - {user.id}
+    for holder in holders:  # the people who hold a profile work on every project of the organization
+        db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=holder, project_role="team_member"))
     db.flush()
     append_event(
         db,

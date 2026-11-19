@@ -33,9 +33,11 @@ from app.auth.models import User
 from app.core.db import uuid7
 from app.core.errors import AppError, not_found
 from app.hooks import service as hooks
+from app.projects.models import Project
 from app.sensors import service as sensors
 from app.workflows.models import StageExecution, WorkflowExecution, WorkflowVersion
 from app.workflows.service import (
+    approval_roles,
     hook_scope,
     lock_stage,
     project_role,
@@ -93,7 +95,8 @@ def _dependents(db: Session, execution: WorkflowExecution, stage_key: str) -> li
 def _complete_if_done(db: Session, execution: WorkflowExecution) -> None:
     stages = stage_rows(db, execution.id).values()
     if execution.status == "RUNNING" and all(
-        s.status in {StageStatus.APPROVED.value, StageStatus.SKIPPED.value} for s in stages
+        s.status in {StageStatus.APPROVED.value, StageStatus.COMPLETED.value, StageStatus.SKIPPED.value}
+        for s in stages
     ):
         execution.status = "COMPLETED"
         append_event(
@@ -169,7 +172,9 @@ def submit_decision(
                 raise AppError(409, "sensor_blocking", f"Mandatory checks are not satisfied: {', '.join(blocked)}")
             if any(user.id in people for people in approvals.values()):
                 raise AppError(409, "already_approved", "You already approved this version")
-            slot = open_slot_for(slots, role, approvals, user.id)
+            project = db.get(Project, execution.project_id)
+            slot = next((found for r in approval_roles(db, user, project, role)
+                         if (found := open_slot_for(slots, r, approvals, user.id))), None)
             if slot is None:
                 raise AppError(403, "approval_not_permitted", "No open approval slot matches your role")
             hooks.enforce(db, scope, "stage.approved", "pre")
@@ -366,7 +371,8 @@ def review_view(db: Session, user: User, execution_id: uuid.UUID, stage_key: str
     sensor_results = sensors.summary(db, stage, spec, current[1]) if current is not None else []
     can_decide = False
     if current is not None and stage.status == StageStatus.AWAITING_HUMAN_REVIEW.value:
-        can_decide = open_slot_for(slots, role, approvals, user.id) is not None and (
+        roles = approval_roles(db, user, db.get(Project, execution.project_id), role)
+        can_decide = any(open_slot_for(slots, r, approvals, user.id) for r in roles) and (
             current[1].author_user_id != user.id
         ) and not any(s["blocking"] for s in sensor_results)
 

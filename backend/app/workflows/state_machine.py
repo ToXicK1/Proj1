@@ -17,6 +17,7 @@ class StageStatus(StrEnum):
     CHANGES_REQUESTED = "CHANGES_REQUESTED"
     REJECTED = "REJECTED"
     APPROVED = "APPROVED"
+    COMPLETED = "COMPLETED"  # validated system step with no human gate configured
     BLOCKED = "BLOCKED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -49,6 +50,7 @@ EDGES: dict[tuple[StageStatus, StageStatus], frozenset[ActorType]] = {
     (S.RUNNING, S.CANCELLED): HUMAN,
     (S.AI_COMPLETED, S.VALIDATING): SYS,
     (S.VALIDATING, S.AWAITING_HUMAN_REVIEW): SYS,
+    (S.VALIDATING, S.COMPLETED): SYS,
     (S.VALIDATING, S.BLOCKED): SYS,
     (S.VALIDATING, S.FAILED): SYS,
     (S.BLOCKED, S.RUNNING): SYS,
@@ -69,7 +71,7 @@ EDGES: dict[tuple[StageStatus, StageStatus], frozenset[ActorType]] = {
 TERMINAL = frozenset({S.SKIPPED, S.CANCELLED})
 
 # Statuses that satisfy a dependency for downstream stages.
-SATISFIES_DEPENDENCY = frozenset({S.APPROVED, S.SKIPPED})
+SATISFIES_DEPENDENCY = frozenset({S.APPROVED, S.COMPLETED, S.SKIPPED})
 
 
 class InvalidTransition(Exception):

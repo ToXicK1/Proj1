@@ -41,7 +41,8 @@ def status(key, config, context):
 
 
 def test_every_sensor_named_in_the_brief_exists():
-    assert set(SENSORS) == BRIEF_SENSORS
+    # code_builds reports the real sandbox build of generated code; it was added after the brief's list.
+    assert set(SENSORS) == BRIEF_SENSORS | {"code_builds"}
 
 
 def test_only_pass_and_warning_satisfy_a_mandatory_sensor():

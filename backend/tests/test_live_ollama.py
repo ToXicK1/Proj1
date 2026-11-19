@@ -121,3 +121,59 @@ def test_skill_rule_and_sensor_apply_on_the_local_model(client, engine, settings
         manifest = conn.execute(text("select context_manifest::text from agent_runs where status = 'succeeded'")).scalar_one()
     assert statuses == {"PASS"}
     assert "plain-language" in manifest and "state-assumptions" in manifest
+
+
+def test_a_project_completes_all_six_profiles_on_the_local_model(client, engine, settings):
+    """The live run: every stage of the full lifecycle, real model calls and a profile holder's approval each time."""
+    import json
+    import pathlib
+    import uuid
+
+    from sqlalchemy import text
+
+    from app.portal.lifecycle import STAGES, TEAM
+    from tests.test_portal import Portal
+
+    scope = os.environ.get("AIDLC_LIVE_SCOPE", "feature")
+    env = Portal(client, engine, settings, f"live-{uuid.uuid4().hex[:8]}@example.com")
+    client.app.state.provider_transport = None
+    client.app.state.settings = env.settings.model_copy(update={"provider_timeout_seconds": 600.0})
+    ollama = _provider(client, env.csrf, env.org, "ollama-local", "openai_compatible", base_url=URL)
+    _route(client, env.csrf, env.org, "local-lifecycle", ollama["id"], MODEL)
+    env.setup_team("local-lifecycle")
+    person, headers = env.holder()
+    env.start(scope=scope)
+    record = []
+    steps = [s for s in STAGES if s.gated and s.in_scope(scope)]
+    for step in steps:
+        for _ in range(3):  # a small local model sometimes returns unusable output; each attempt is recorded
+            if env.step_status(step.id) == "Awaiting Review":
+                break
+            assert env.post(f"/stages/{step.id}/retry").status_code == 202
+        with engine.connect() as conn:
+            why = conn.execute(text("select s.status, s.failure_reason, s.rework_count from stage_executions s "
+                                    "join workflow_executions e on e.id = s.workflow_execution_id "
+                                    "where e.project_id = :p and s.stage_key = :k"),
+                               {"p": uuid.UUID(env.project), "k": step.id}).one()
+        assert env.step_status(step.id) == "Awaiting Review", (step.id, tuple(why))
+        item = env.item(step.id, person)
+        assert set(step.keys) <= set(item["versions"][0]["content"])
+        record.append({"stage": step.number, "name": step.name, "profile": step.profile,
+                       "versions": len(item["versions"])})
+        assert env.decide(step.id, version=item["current_version_id"], client=person,
+                          headers=headers).status_code == 200
+    view = env.get()
+    assert view["completed"] and view["progress"] == 100
+    assert {r["profile"] for r in record} == {m.profile for m in TEAM}
+    with engine.connect() as conn:
+        runs = conn.execute(text(
+            "select kind, status, count(*), sum(latency_ms) from agent_runs where project_id = :p "
+            "group by kind, status order by kind, status"), {"p": uuid.UUID(env.project)}).all()
+        approvals = conn.execute(text("select count(*) from approval_decisions where project_id = :p and "
+                                      "decision = 'APPROVE'"), {"p": uuid.UUID(env.project)}).scalar()
+    assert approvals == len(steps)
+    target = os.environ.get("AIDLC_LIVE_RECORD")
+    if target:
+        pathlib.Path(target).write_text(json.dumps({
+            "model": MODEL, "scope": scope, "stages": record, "approvals": approvals,
+            "runs": [{"kind": r[0], "status": r[1], "count": r[2], "latency_ms": r[3]} for r in runs]}, indent=2))

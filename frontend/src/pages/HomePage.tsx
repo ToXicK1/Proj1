@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ApiError, api, type OrgDto, type ProjectDto } from "../api";
+import { ApiError, JOIN_ROLES, api, type AccessDto, type MyReviewDto, type OrgDto, type ProjectDto } from "../api";
 
 // Categories are starting points, not restrictions (USER_PORTAL.md section 4).
 export const PROJECT_TYPES = [
@@ -26,14 +26,18 @@ export function HomePage() {
   const [description, setDescription] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [access, setAccess] = useState<AccessDto | null>(null);
+  const [reviews, setReviews] = useState<MyReviewDto[]>([]);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.listOrgs(), api.listProjects()])
-      .then(([o, p]) => {
+    Promise.all([api.listOrgs(), api.listProjects(), api.access(), api.myReviews()])
+      .then(([o, p, a, r]) => {
         if (cancelled) return;
         setOrgs(o.items);
         setProjects(p.items);
+        setAccess(a);
+        setReviews(r.items);
       })
       .catch(() => {
         if (!cancelled) setLoadError("Could not load your projects.");
@@ -46,7 +50,7 @@ export function HomePage() {
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
-    const org = orgs.find((item) => item.role === "org_admin") ?? orgs[0];
+    const org = orgs.find((item) => item.role !== "member");
     if (!org) {
       setFormError("Your workspace is not ready yet.");
       return;
@@ -62,9 +66,33 @@ export function HomePage() {
     }
   }
 
+  if (access?.status === "pending") {
+    const asked = JOIN_ROLES.find(([value]) => value === access.requested_role)?.[1] ?? "a role";
+    return (
+      <section className="card narrow stack-sm">
+        <h1>Waiting for approval</h1>
+        <p>You asked to join {access.organization} as {asked}.</p>
+        <p className="muted">An administrator needs to confirm your role. You can use the platform as soon as they do.</p>
+      </section>
+    );
+  }
+
   return (
     <div className="stack">
-      <section className="card">
+      {reviews.length > 0 && (
+        <section className="card">
+          <h2>Waiting for your approval</h2>
+          <ul className="list">
+            {reviews.map((r) => (
+              <li key={`${r.project_id}-${r.stage}`} className="row">
+                <Link to={`/projects/${r.project_id}?review=${r.stage}`}>{r.name}</Link>
+                <span className="muted">{r.project} · {r.profile}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {access?.can_create_projects && <section className="card">
         <h1>What would you like to build today?</h1>
         <div className="type-grid" role="radiogroup" aria-label="Project type">
           {PROJECT_TYPES.map((t) => (
@@ -100,7 +128,7 @@ export function HomePage() {
             {busy ? "Creating…" : "Create project"}
           </button>
         </form>
-      </section>
+      </section>}
 
       <section className="card">
         <h2>My projects</h2>

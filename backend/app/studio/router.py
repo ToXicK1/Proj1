@@ -5,6 +5,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
+from app.portal import lifecycle
 from app.studio import service
 from app.studio.service import MAX_SPEC_BYTES
 
@@ -28,10 +29,19 @@ class PublishIn(_Strict):
     expected_revision: int = Field(ge=1)
 
 
+class LifecycleIn(_Strict):
+    model_route: str = Field(min_length=2, max_length=64)
+
+
 class ImportIn(_Strict):
     format: Format
     content: str = Field(min_length=1, max_length=MAX_SPEC_BYTES)
     expected_revision: int | None = Field(default=None, ge=1)
+
+
+@router.post("/default-lifecycle", status_code=201)
+def default_lifecycle(organization_id: uuid.UUID, body: LifecycleIn, caller: CsrfCaller, db: DbSession) -> dict:
+    return lifecycle.provision(db, caller.user, organization_id, body.model_route)
 
 
 @router.get("/catalog")

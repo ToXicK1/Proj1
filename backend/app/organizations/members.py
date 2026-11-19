@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.agents.models import Profile
 from app.audit.service import append_event, org_chain
 from app.auth.models import User
 from app.auth.service import normalize_email
@@ -22,7 +23,13 @@ from app.core.db import uuid7
 from app.core.errors import AppError, not_found
 from app.core.security import new_token, sha256_hex
 from app.notifications.models import EmailOutbox
-from app.organizations.models import ORG_ROLES, Membership, Organization, OrganizationInvitation
+from app.organizations.models import (
+    ORG_ROLES,
+    MemberProfile,
+    Membership,
+    Organization,
+    OrganizationInvitation,
+)
 from app.organizations.service import membership_for, require_org_admin
 from app.projects.models import PROJECT_ROLES, Project, ProjectMember
 
@@ -160,12 +167,16 @@ def list_org(db: Session, actor: User, organization_id: uuid.UUID) -> dict:
     require_org_admin(db, actor.id, organization_id)
     members = db.execute(select(Membership, User).join(User, User.id == Membership.user_id)
                          .where(Membership.organization_id == organization_id).order_by(User.display_name)).all()
+    held: dict[uuid.UUID, list[str]] = {}
+    for row in db.execute(select(MemberProfile).where(MemberProfile.organization_id == organization_id)).scalars():
+        held.setdefault(row.user_id, []).append(row.profile_key)
     invites = db.execute(select(OrganizationInvitation).where(
         OrganizationInvitation.organization_id == organization_id, OrganizationInvitation.status == "pending",
     ).order_by(OrganizationInvitation.created_at.desc())).scalars()
     return {
         "members": [{"user_id": str(u.id), "display_name": u.display_name, "email": u.email, "role": m.role,
-                     "is_you": u.id == actor.id} for m, u in members],
+                     "status": m.status, "requested_role": m.requested_role, "is_you": u.id == actor.id,
+                     "profiles": sorted(held.get(u.id, []))} for m, u in members],
         "invitations": [{"id": str(i.id), "email": i.email, "role": i.role, "project_role": i.project_role,
                          "project_id": str(i.project_id) if i.project_id else None,
                          "expires_at": i.expires_at.isoformat()} for i in invites if not _expired(i.expires_at)],
@@ -195,6 +206,40 @@ def set_org_role(db: Session, actor: User, *, organization_id: uuid.UUID, user_i
     _audit(db, organization_id, "member.role_changed", actor.id,
            {"user": str(user_id), "from": previous, "to": role})
     db.commit()
+
+
+def set_access(db: Session, actor: User, *, organization_id: uuid.UUID, user_id: uuid.UUID, role: str,
+               profiles: list[str]) -> None:
+    """Confirms a person's organization role and professional profiles. Only another administrator can."""
+    require_org_admin(db, actor.id, organization_id)
+    _not_self(actor, user_id)
+    if role not in ORG_ROLES:
+        raise AppError(422, "invalid_role", "Unknown organization role")
+    known = set(db.execute(select(Profile.key).where(Profile.organization_id == organization_id)).scalars())
+    if not set(profiles) <= known:
+        raise AppError(422, "unknown_profile", "Choose profiles that exist in this organization")
+    try:
+        row = _membership(db, organization_id, user_id)
+        previous = sorted(db.execute(select(MemberProfile.profile_key).where(
+            MemberProfile.organization_id == organization_id, MemberProfile.user_id == user_id)).scalars())
+        row.role, row.status = role, "active"
+        db.execute(delete(MemberProfile).where(MemberProfile.organization_id == organization_id,
+                                               MemberProfile.user_id == user_id))
+        for key in sorted(set(profiles)):
+            db.add(MemberProfile(id=uuid7(), organization_id=organization_id, user_id=user_id, profile_key=key,
+                                 confirmed_by=actor.id))
+        if profiles:
+            joined = set(db.execute(select(ProjectMember.project_id).where(ProjectMember.user_id == user_id)).scalars())
+            for project_id in db.execute(select(Project.id).where(Project.organization_id == organization_id)).scalars():
+                if project_id not in joined:
+                    db.add(ProjectMember(id=uuid7(), project_id=project_id, user_id=user_id,
+                                         project_role="team_member"))
+        _audit(db, organization_id, "member.access_confirmed", actor.id,
+               {"user": str(user_id), "role": role, "profiles": sorted(set(profiles)), "previous": previous})
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def _project_member(db: Session, project_id: uuid.UUID, user_id: uuid.UUID) -> ProjectMember | None:
@@ -229,6 +274,8 @@ def remove_from_org(db: Session, actor: User, *, organization_id: uuid.UUID, use
                     _assert_other_owner(db, db.get(Project, member.project_id), user_id)
             db.execute(delete(ProjectMember).where(ProjectMember.user_id == user_id,
                                                    ProjectMember.project_id.in_(project_ids)))
+        db.execute(delete(MemberProfile).where(MemberProfile.organization_id == organization_id,
+                                               MemberProfile.user_id == user_id))
         db.delete(row)
         _audit(db, organization_id, "member.removed", actor.id, {"user": str(user_id)})
         db.commit()

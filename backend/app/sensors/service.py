@@ -69,7 +69,8 @@ def context_for(db: Session, execution: WorkflowExecution, stage: StageExecution
             approved.add(key)
     evidence: dict[str, dict[str, Any]] = {}
     for row in db.execute(select(SensorEvidence).where(SensorEvidence.artifact_version_id == version.id)
-                          .order_by(SensorEvidence.id)).scalars():
+                          .order_by(SensorEvidence.source == "sandbox", SensorEvidence.id)).scalars():
+        # A real sandbox result sorts last, so it outranks anything recorded by hand.
         evidence[row.kind] = {"outcome": row.outcome, "findings": row.findings}
     return SensorContext(
         content=version.content_json,

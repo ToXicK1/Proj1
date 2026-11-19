@@ -109,3 +109,16 @@ def set_project_role(project_id: uuid.UUID, user_id: uuid.UUID, body: ProjectRol
 def remove_project_member(project_id: uuid.UUID, user_id: uuid.UUID, caller: CsrfCaller, db: DbSession) -> dict:
     members.remove_from_project(db, caller.user, project_id=project_id, user_id=user_id)
     return {"status": "removed"}
+
+
+class AccessIn(_Strict):
+    role: Literal["org_admin", "project_owner", "member"]
+    profiles: list[str] = Field(default_factory=list, max_length=20)
+
+
+@router.put("/orgs/{organization_id}/members/{user_id}/access")
+def set_access(organization_id: uuid.UUID, user_id: uuid.UUID, body: AccessIn, caller: CsrfCaller,
+               db: DbSession) -> dict:
+    members.set_access(db, caller.user, organization_id=organization_id, user_id=user_id, role=body.role,
+                       profiles=body.profiles)
+    return {"status": "active", "role": body.role, "profiles": sorted(set(body.profiles))}

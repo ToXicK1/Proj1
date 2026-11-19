@@ -7,6 +7,7 @@ version the approvers judged. Sequential policies open slots one at a time.
 Conditional policies are not supported yet and are refused by the compiler.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
@@ -20,9 +21,12 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+PROFILE_ROLE = re.compile(r"^profile:[a-z][a-z0-9_\-]{1,63}$")
+
+
 def _check_roles(roles: list[str]) -> list[str]:
     for role in roles:
-        if role not in KNOWN_ROLES:
+        if role not in KNOWN_ROLES and not PROFILE_ROLE.match(role):
             raise ValueError(f"unknown project role '{role}'")
     if len(set(roles)) != len(roles):
         raise ValueError("roles must be unique")

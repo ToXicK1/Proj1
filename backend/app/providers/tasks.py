@@ -18,6 +18,11 @@ class AiTask:
 
 
 AI_TASKS: dict[str, AiTask] = {
+    "ai:stage_work": AiTask(
+        key="ai:stage_work",
+        instructions="Produce the deliverable for this step of the software lifecycle.",
+        required_keys=("summary",),
+    ),
     "ai:requirements_draft": AiTask(
         key="ai:requirements_draft",
         instructions=(

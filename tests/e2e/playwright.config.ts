@@ -7,6 +7,8 @@ const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
 // Uses the Chrome installed on the machine. The bundled Chromium download is blocked by Windows
 // Application Control in this environment. Set E2E_CHANNEL="" to use the bundled browser instead.
 const channel = process.env.E2E_CHANNEL ?? "chrome";
+// lifecycle.spec.ts needs a clean stack in shared mode; the other specs need one account per organization.
+const shared = process.env.E2E_SIGNUP_MODE === "shared";
 
 export default defineConfig({
   testDir: "./specs",
@@ -24,7 +26,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testIgnore: /layout.spec.ts/ },
-    { name: "mobile-chromium", use: { ...devices["Pixel 5"], channel }, testMatch: /layout\.spec\.ts/ },
+    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testIgnore: shared ? /^(?!.*lifecycle\.spec).*$/ : /(layout|lifecycle)\.spec\.ts/ },
+    { name: "mobile-chromium", use: { ...devices["Pixel 5"], channel }, testMatch: shared ? /^$/ : /layout\.spec\.ts/ },
   ],
 });

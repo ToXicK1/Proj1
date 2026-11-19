@@ -1,9 +1,11 @@
+import { api } from "./api";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useSession } from "./session";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { SignupPage } from "./pages/SignupPage";
 import { StudioPage } from "./pages/StudioPage";
@@ -22,6 +24,16 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
 function Shell({ children }: { children: ReactNode }) {
   const { state, signOut } = useSession();
+  const location = useLocation();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const userId = state.status === "authenticated" ? state.user.id : null;
+  useEffect(() => {
+    if (!userId) {
+      setIsAdmin(false);
+      return;
+    }
+    api.access().then((a) => setIsAdmin(a.is_admin)).catch(() => setIsAdmin(false));
+  }, [userId, location.pathname]);
   return (
     <div className="shell">
       <header className="topbar">
@@ -30,8 +42,9 @@ function Shell({ children }: { children: ReactNode }) {
         </Link>
         {state.status === "authenticated" && (
           <nav className="topbar-actions">
-            <Link to="/studio">Studio</Link>
-            <Link to="/team">Team</Link>
+            <Link to="/notifications">Notifications</Link>
+            {isAdmin && <Link to="/team">Team</Link>}
+            {isAdmin && <Link to="/studio">Studio</Link>}
             <span className="muted">{state.user.display_name}</span>
             <button type="button" className="secondary" onClick={() => void signOut()}>
               Sign out
@@ -52,6 +65,14 @@ export function App() {
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/accept-invite" element={<AcceptInvitePage />} />
+        <Route
+          path="/notifications"
+          element={
+            <RequireAuth>
+              <NotificationsPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/studio"
           element={

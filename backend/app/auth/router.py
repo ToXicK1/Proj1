@@ -20,6 +20,7 @@ class SignupIn(_Strict):
     email: Annotated[str, BeforeValidator(str.strip), Field(min_length=3, max_length=254, pattern=service.EMAIL_PATTERN)]
     password: str = Field(min_length=1, max_length=256)
     display_name: str = Field(min_length=1, max_length=120)
+    requested_role: str = Field(default="project_owner", pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
 
 
 class VerifyIn(_Strict):
@@ -50,14 +51,20 @@ def _limit(request: Request, limiter: SlidingWindowLimiter, scope: str) -> None:
 @router.post("/signup", status_code=202)
 def signup(body: SignupIn, request: Request, db: DbSession, settings: AppSettings) -> dict[str, str]:
     _limit(request, request.app.state.auth_limiter, "signup")
-    service.signup(db, settings, email=body.email, password=body.password, display_name=body.display_name)
+    service.signup(db, settings, email=body.email, password=body.password, display_name=body.display_name,
+                   requested_role=body.requested_role)
     return {"status": "check_email"}
 
 
 @router.post("/verify-email")
 def verify_email(body: VerifyIn, request: Request, db: DbSession, settings: AppSettings) -> dict[str, str]:
     _limit(request, request.app.state.auth_limiter, "verify")
+    settings = request.app.state.settings
     user = service.verify_email(db, settings, token=body.token)
+    if settings.signup_mode == "shared":
+        from app.bootstrap import prepare_shared_org
+
+        prepare_shared_org(db, settings)  # the first account has just become the administrator
     return {"status": "verified", "email": user.email}
 
 

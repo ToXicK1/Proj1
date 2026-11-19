@@ -190,6 +190,12 @@ class GeminiAdapter(_Base):
         )
 
 
+_MOCK_PROJECT = [
+    {"path": "calc.py", "content": "def add(a, b):\n    return a + b\n"},
+    {"path": "test_calc.py", "content": "from calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n"},
+]
+
+
 @dataclass
 class MockAdapter(_Base):
     """Deterministic, offline. base_url selects the behaviour: 'ok', 'unavailable', 'auth',
@@ -213,7 +219,9 @@ class MockAdapter(_Base):
         elif mode == "missing_keys":
             text = json.dumps({"unrelated": True})
         else:
-            text = json.dumps({key: f"{key} drafted from {len(request.user)} characters of input" for key in keys})
+            text = json.dumps({"verdict": "pass", "findings": []}) if list(keys) == ["verdict", "findings"] else \
+                json.dumps({key: _MOCK_PROJECT if key == "source_files"
+                            else f"{key} drafted from {len(request.user)} characters of input" for key in keys})
         return CompletionResult(
             text=text,
             usage=Usage(input_tokens=max(1, len(request.user) // 4), output_tokens=max(1, len(text) // 4)),

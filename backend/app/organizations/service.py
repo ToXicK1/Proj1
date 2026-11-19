@@ -4,7 +4,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.organizations.models import Membership, Organization
+from app.organizations.models import MemberProfile, Membership, Organization
 
 
 def slugify(value: str, suffix: str) -> str:
@@ -16,7 +16,7 @@ def memberships_for_user(db: Session, user_id: uuid.UUID) -> list[tuple[Organiza
     rows = db.execute(
         select(Organization, Membership)
         .join(Membership, Membership.organization_id == Organization.id)
-        .where(Membership.user_id == user_id)
+        .where(Membership.user_id == user_id, Membership.status == "active")
         .order_by(Organization.name)
     ).all()
     return [(org, m) for org, m in rows]
@@ -25,7 +25,8 @@ def memberships_for_user(db: Session, user_id: uuid.UUID) -> list[tuple[Organiza
 def membership_for(db: Session, user_id: uuid.UUID, organization_id: uuid.UUID) -> Membership | None:
     return db.execute(
         select(Membership).where(
-            Membership.user_id == user_id, Membership.organization_id == organization_id
+            Membership.user_id == user_id, Membership.organization_id == organization_id,
+            Membership.status == "active",
         )
     ).scalar_one_or_none()
 
@@ -39,3 +40,18 @@ def require_org_admin(db: Session, user_id: uuid.UUID, organization_id: uuid.UUI
         raise not_found()
     if membership.role != "org_admin":
         raise AppError(403, "not_permitted", "Only organization administrators can do this")
+
+
+def access_for(db: Session, user_id: uuid.UUID) -> dict:
+    rows = db.execute(select(Organization, Membership).join(Membership).where(Membership.user_id == user_id)).all()
+    profiles = list(db.execute(select(MemberProfile.profile_key).where(MemberProfile.user_id == user_id)).scalars())
+    active = [m for _, m in rows if m.status == "active"]
+    pending = next(((o, m) for o, m in rows if m.status == "pending"), None)
+    return {
+        "status": "active" if active else "pending" if pending else "none",
+        "is_admin": any(m.role == "org_admin" for m in active),
+        "can_create_projects": any(m.role in ("org_admin", "project_owner") for m in active),
+        "profiles": sorted(profiles),
+        "requested_role": pending[1].requested_role if pending else None,
+        "organization": pending[0].name if pending else None,
+    }

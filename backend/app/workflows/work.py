@@ -18,6 +18,8 @@ class WorkContext:
     project_type: str
     revision: int = 1  # 1 for the first run; each rework increments it
     feedback: tuple[str, ...] = field(default_factory=tuple)  # open change requests this run answers
+    intake: tuple[str, ...] = field(default_factory=tuple)  # the brief the owner confirmed
+    upstream: tuple[str, ...] = field(default_factory=tuple)  # approved deliverables this stage builds on
 
 
 def intake_summary(ctx: WorkContext) -> dict[str, Any]:
@@ -41,9 +43,24 @@ def requirements_outline(ctx: WorkContext) -> dict[str, Any]:
     }
 
 
+def workspace_scaffold(ctx: WorkContext) -> dict[str, Any]:
+    return {"project_name": ctx.project_name, "project_type": ctx.project_type}
+
+
+def workspace_detection(ctx: WorkContext) -> dict[str, Any]:
+    return {"project_kind": ctx.project_type, "has_description": bool(ctx.project_description.strip())}
+
+
+def state_initialization(ctx: WorkContext) -> dict[str, Any]:
+    return {"brief_items": len(ctx.intake), "revision": ctx.revision}
+
+
 WORK_FUNCTIONS: dict[str, Callable[[WorkContext], dict[str, Any]]] = {
     "intake_summary": intake_summary,
     "requirements_outline": requirements_outline,
+    "workspace_scaffold": workspace_scaffold,
+    "workspace_detection": workspace_detection,
+    "state_initialization": state_initialization,
 }
 
 # Every work key a stage may name: deterministic functions and AI-backed tasks.

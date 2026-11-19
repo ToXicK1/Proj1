@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: aidlc
       POSTGRES_DB: aidlc
     ports:
-      - "5432:5432"
+      - "${AIDLC_DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -26,15 +26,52 @@ services:
     env_file: .env
     environment:
       AIDLC_DATABASE_URL: postgresql+pg8000://aidlc:aidlc@db:5432/aidlc
-      AIDLC_PUBLIC_BASE_URL: http://localhost:5173
+      AIDLC_PUBLIC_BASE_URL: http://localhost:${AIDLC_WEB_PORT:-5173}
+      AIDLC_SIGNUP_MODE: ${AIDLC_SIGNUP_MODE:-shared}
+      AIDLC_DEFAULT_LLM_BASE_URL: ${AIDLC_DEFAULT_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      AIDLC_DEFAULT_LLM_MODEL: ${AIDLC_DEFAULT_LLM_MODEL:-qwen3-vl:4b-instruct}
+      AIDLC_DEFAULT_LLM_ADAPTER: ${AIDLC_DEFAULT_LLM_ADAPTER:-openai_compatible}
+      AIDLC_PROVIDER_TIMEOUT_SECONDS: ${AIDLC_PROVIDER_TIMEOUT_SECONDS:-600}
+      AIDLC_SANDBOX_DIR: /sandbox-jobs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # lets a local model server on this machine be reached
     depends_on:
       db:
         condition: service_healthy
     command: >
       sh -c "alembic upgrade head &&
+             python -m app.bootstrap &&
              uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000"
+    volumes:
+      - sandbox_jobs:/sandbox-jobs
     ports:
-      - "8000:8000"
+      - "${AIDLC_API_PORT:-8000}:8000"
+
+  # Runs generated code. No network, read-only root, no secrets, hard limits. The job folder is its only link.
+  sandbox:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/sandbox.Dockerfile
+    init: true  # reaps processes orphaned by generated code
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1.0
+    tmpfs:
+      - /work:size=128m,mode=0711,nosuid,nodev,noexec
+      - /tmp:size=32m,mode=1777,nosuid,nodev,noexec
+    volumes:
+      - sandbox_jobs:/jobs
+    restart: unless-stopped
 
   web:
     build:
@@ -45,7 +82,8 @@ services:
     depends_on:
       - api
     ports:
-      - "5173:5173"
+      - "${AIDLC_WEB_PORT:-5173}:5173"
 
 volumes:
   pgdata:
+  sandbox_jobs:

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -32,6 +33,15 @@ class Settings(BaseSettings):
     # Base64 of 32 random bytes. Required outside development. Store in a secret manager.
     secret_encryption_key: str | None = None
     provider_backoff_seconds: float = 0.5
+    provider_timeout_seconds: float = 120.0  # a full deliverable takes longer than a short answer
+    provider_max_tokens: int = 4096
+    signup_mode: Literal["shared", "personal"] = "shared"  # one organization, or one per signup
+    bootstrap_admin_email: str | None = None  # an existing account that administers the shared organization
+    default_llm_base_url: str | None = None  # connected automatically for the shared organization
+    default_llm_model: str | None = None
+    default_llm_adapter: str = "openai_compatible"
+    sandbox_dir: str | None = None  # the job folder shared with the sandbox service
+    sandbox_timeout_seconds: float = 200.0
 
     def assert_safe_for_environment(self) -> None:
         """Refuse to run outside development with the placeholder signing key."""

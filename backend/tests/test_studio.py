@@ -295,5 +295,5 @@ def test_catalog_offers_only_what_the_platform_supports(admin):
     assert "drafting" in data["model_routes"] and data["profiles"][0]["key"] == "business_analyst"
     tools = {t["key"]: t for t in data["tools"]}
     assert tools["read_project"]["grantable"] and not tools["publish_release"]["grantable"]
-    assert len(data["sensors"]) == 17 and "properties" in data["sensors"][0]["config_schema"]
+    assert len(data["sensors"]) == 18 and "properties" in data["sensors"][0]["config_schema"]
     assert "api_key" not in json.dumps(data).lower()

@@ -30,7 +30,7 @@ export interface OrgDto {
   id: string;
   name: string;
   slug: string;
-  role: "org_admin" | "member";
+  role: "org_admin" | "project_owner" | "member";
 }
 
 export interface ProjectDto {
@@ -54,7 +54,10 @@ export interface OrgMemberDto {
   user_id: string;
   display_name: string;
   email: string;
-  role: "org_admin" | "member";
+  role: "org_admin" | "project_owner" | "member";
+  status: "active" | "pending";
+  requested_role: string | null;
+  profiles: string[];
   is_you: boolean;
 }
 
@@ -199,6 +202,122 @@ export interface AgentVersionBody {
   tools: string[];
 }
 
+export interface WorkspaceDto {
+  project: { id: string; name: string; description: string; type: string; status: string };
+  role: string;
+  can_triage: boolean;
+  started: boolean;
+  completed: boolean;
+  progress: number;
+  current_step: { name: string; phase: string; number: string; status: string; profile: string } | null;
+  team: { profile: string; representative: string; status: string; stages_done: number; stages_total: number; assigned: string[] }[];
+  phases: { name: string; stages: { id: string; number: string; name: string; profile: string; status: string }[] }[];
+  pending_actions: { kind: string; what: string; why: string; action: string; stage: string }[];
+  activity: { at: string; text: string }[];
+}
+
+export interface IntakeQuestionDto {
+  field: string;
+  question: string;
+  required: boolean;
+}
+
+export interface IntakeDto {
+  revision: number;
+  status: string;
+  started: boolean;
+  items: { field: string; label: string; value: string; tag: string; confirmed: boolean }[];
+  next_question: IntakeQuestionDto | null;
+  questions: IntakeQuestionDto[];
+  still_needed: string[];
+  can_confirm: boolean;
+  scopes: { key: string; label: string; stages: number }[];
+  default_scope: string;
+}
+
+export interface DeliverableDto {
+  stage: string;
+  profile: string;
+  number: string;
+  phase: string;
+  name: string;
+  representative: string;
+  status: string;
+  current_version_id: string;
+  can_decide: boolean;
+  checks_blocking: boolean;
+  can_view_code: boolean;
+  versions: {
+    id: string;
+    number: number;
+    created_at: string;
+    content: Record<string, unknown>;
+    has_code: boolean;
+    checks: { name: string; passed: boolean; summary: string }[];
+  }[];
+  change_requests: { comment: string; status: string }[];
+}
+
+export interface PortalMessageDto {
+  id: string;
+  profile: string;
+  from: string;
+  mine: boolean;
+  body: string;
+  created_at: string;
+}
+
+export interface FeedbackDto {
+  id: string;
+  kind: string;
+  status: string;
+  summary: string;
+  handled_by: string;
+}
+
+export interface NotificationDto {
+  id: string;
+  project_id: string;
+  kind: string;
+  message: string;
+  read: boolean;
+}
+
+export interface AccessDto {
+  status: "active" | "pending" | "none";
+  is_admin: boolean;
+  can_create_projects: boolean;
+  profiles: string[];
+  requested_role: string | null;
+  organization: string | null;
+}
+
+export interface MyReviewDto {
+  project_id: string;
+  project: string;
+  stage: string;
+  name: string;
+  phase: string;
+  profile: string;
+}
+
+export const JOIN_ROLES = [
+  ["project_owner", "Project Owner"],
+  ["business_analyst", "Business Analyst"],
+  ["solution_architect", "Solution Architect"],
+  ["ui_ux_designer", "UI/UX Designer"],
+  ["software_developer", "Software Developer"],
+  ["qa_security", "QA & Security Engineer"],
+  ["devops_release", "DevOps & Release Engineer"],
+] as const;
+
+export interface ProviderDto {
+  id: string;
+  name: string;
+  adapter_type: string;
+}
+
+const portalPath = (projectId: string) => `/api/v1/portal/projects/${encodeURIComponent(projectId)}`;
 const orgPath = (orgId: string) => `/api/v1/orgs/${encodeURIComponent(orgId)}`;
 const studioPath = (orgId: string) => `${orgPath(orgId)}/studio`;
 
@@ -233,11 +352,16 @@ export async function request<T>(method: "GET" | "POST" | "PUT" | "DELETE", path
 }
 
 export const api = {
-  signup: (email: string, password: string, displayName: string) =>
+  access: () => request<AccessDto>("GET", "/api/v1/orgs/access"),
+  myReviews: () => request<{ items: MyReviewDto[] }>("GET", "/api/v1/portal/my-reviews"),
+  setMemberAccess: (orgId: string, userId: string, role: string, profiles: string[]) =>
+    request("PUT", `${orgPath(orgId)}/members/${encodeURIComponent(userId)}/access`, { role, profiles }),
+  signup: (email: string, password: string, displayName: string, requestedRole = "project_owner") =>
     request<{ status: string }>("POST", "/api/v1/auth/signup", {
       email,
       password,
       display_name: displayName,
+      requested_role: requestedRole,
     }),
   verifyEmail: (token: string) => request<{ status: string }>("POST", "/api/v1/auth/verify-email", { token }),
   login: (email: string, password: string) =>
@@ -311,6 +435,41 @@ export const api = {
     request("PUT", `${orgPath(orgId)}/hooks/${encodeURIComponent(key)}`, body),
   setHookEnabled: (orgId: string, key: string, enabled: boolean) =>
     request("POST", `${orgPath(orgId)}/hooks/${encodeURIComponent(key)}/enabled`, { enabled }),
+  portalWorkspace: (id: string) => request<WorkspaceDto>("GET", portalPath(id)),
+  portalIntake: (id: string) => request<IntakeDto>("GET", `${portalPath(id)}/intake`),
+  portalAnswer: (id: string, field: string, kind: string, answer: string) =>
+    request<IntakeDto>("POST", `${portalPath(id)}/intake/answers`, { field, kind, answer }),
+  portalConfirm: (id: string, revision: number, acceptAssumptions: string[], scope: string) =>
+    request("POST", `${portalPath(id)}/intake/confirm`, { revision, accept_assumptions: acceptAssumptions, scope }),
+  portalDeliverables: (id: string) => request<{ items: DeliverableDto[] }>("GET", `${portalPath(id)}/deliverables`),
+  portalDecide: (id: string, stage: string, versionId: string, decision: string, comment: string, key: string) =>
+    request("POST", `${portalPath(id)}/deliverables/${encodeURIComponent(stage)}/decision`, {
+      version_id: versionId,
+      decision,
+      comment,
+      idempotency_key: key,
+    }),
+  portalRetry: (id: string, stage: string) =>
+    request("POST", `${portalPath(id)}/stages/${encodeURIComponent(stage)}/retry`),
+  portalMessages: (id: string) => request<{ items: PortalMessageDto[] }>("GET", `${portalPath(id)}/messages`),
+  portalSendMessage: (id: string, body: string, profile: string) =>
+    request("POST", `${portalPath(id)}/messages`, { body, profile }),
+  portalFeedback: (id: string) => request<{ items: FeedbackDto[] }>("GET", `${portalPath(id)}/feedback`),
+  portalTestReport: (id: string, report: { steps: string; expected: string; actual: string; severity: string }) =>
+    request("POST", `${portalPath(id)}/test-reports`, report),
+  portalTriage: (id: string, feedbackId: string, kind: string, status: string, reason: string) =>
+    request("POST", `${portalPath(id)}/feedback/${encodeURIComponent(feedbackId)}/triage`, { kind, status, reason }),
+  notifications: () => request<{ items: NotificationDto[] }>("GET", "/api/v1/notifications"),
+  readNotification: (id: string) => request("POST", `/api/v1/notifications/${encodeURIComponent(id)}/read`),
+  studioProviders: (orgId: string) => request<{ items: ProviderDto[] }>("GET", `${orgPath(orgId)}/providers`),
+  createProvider: (orgId: string, body: { name: string; adapter_type: string; base_url: string | null; api_key: string | null }) =>
+    request("POST", `${orgPath(orgId)}/providers`, body),
+  createRoute: (orgId: string, key: string, providerId: string, model: string) =>
+    request("POST", `${orgPath(orgId)}/model-routes`, { key, primary_provider_id: providerId, primary_model: model }),
+  testProvider: (orgId: string, providerId: string, model: string) =>
+    request<{ ok: boolean }>("POST", `${orgPath(orgId)}/providers/${encodeURIComponent(providerId)}/health`, { model }),
+  setupDeliveryTeam: (orgId: string, modelRoute: string) =>
+    request("POST", `${studioPath(orgId)}/default-lifecycle`, { model_route: modelRoute }),
   createProject: (orgId: string, name: string, description: string, projectType: string) =>
     request<ProjectDto>("POST", `/api/v1/orgs/${encodeURIComponent(orgId)}/projects`, {
       name,

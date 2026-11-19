@@ -95,7 +95,8 @@ def _store_secret(db: Session, settings: Settings, user: User, organization_id: 
 def _validate_base_url(adapter_type: str, base_url: str | None) -> None:
     if base_url is None:
         return
-    if not base_url.startswith(("https://", "http://localhost", "http://127.0.0.1")):
+    if not base_url.startswith(("https://", "http://localhost", "http://127.0.0.1",
+                                "http://host.docker.internal")):
         raise AppError(422, "invalid_base_url", "base_url must use https (plain http only for localhost)")
 
 
@@ -303,7 +304,8 @@ def run_structured(
     ]
     if not allow_fallback:
         candidates = candidates[:1]  # pinned: the primary provider only, no fallback
-    base = CompletionRequest(system=system, user=user, model="")
+    base = CompletionRequest(system=system, user=user, model="", max_tokens=settings.provider_max_tokens,
+                             timeout_seconds=settings.provider_timeout_seconds)
     attempts_total = 0
     last_kind = "unavailable"
     last_run_id: uuid.UUID | None = None

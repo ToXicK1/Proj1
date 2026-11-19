@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   ApiError,
   api,
+  JOIN_ROLES,
   type OrgDto,
+  type OrgMemberDto,
   type OrgMembersDto,
   type ProjectDto,
   type ProjectMemberDto,
@@ -17,6 +19,45 @@ const PROJECT_ROLES = [
 
 function message(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
+}
+
+const PROFILES = JOIN_ROLES.filter(([value]) => value !== "project_owner");
+
+function MemberAccess({ member, onSave }: {
+  member: OrgMemberDto;
+  onSave: (role: string, profiles: string[]) => void;
+}) {
+  const asked = member.requested_role;
+  const pending = member.status === "pending";
+  const [role, setRole] = useState<string>(pending && asked === "project_owner" ? "project_owner" : member.role);
+  const [profiles, setProfiles] = useState<string[]>(
+    pending && asked && asked !== "project_owner" ? [asked] : member.profiles);
+  return (
+    <div className="stack-sm">
+      {pending && <p className="notice">Asked to join as {JOIN_ROLES.find(([v]) => v === asked)?.[1] ?? "a team member"}.</p>}
+      <label>
+        Organization role for {member.display_name}
+        <select value={role} onChange={(e) => setRole(e.target.value)}>
+          <option value="member">Team member</option>
+          <option value="project_owner">Project Owner</option>
+          <option value="org_admin">Administrator</option>
+        </select>
+      </label>
+      <fieldset className="stack-sm">
+        <legend>Can approve work as</legend>
+        {PROFILES.map(([value, label]) => (
+          <label key={value} className="check">
+            <input type="checkbox" checked={profiles.includes(value)} aria-label={`${label} for ${member.display_name}`}
+              onChange={(e) => setProfiles(e.target.checked ? [...profiles, value] : profiles.filter((p) => p !== value))} />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      <button type="button" onClick={() => onSave(role, profiles)}>
+        {pending ? `Confirm ${member.display_name}` : `Save access for ${member.display_name}`}
+      </button>
+    </div>
+  );
 }
 
 export function TeamPage() {
@@ -144,20 +185,15 @@ export function TeamPage() {
             <li key={m.user_id} className="row">
               <span>{m.display_name} <span className="muted">· {m.email}</span></span>
               {m.is_you ? <span className="muted">You · {m.role === "org_admin" ? "Administrator" : "Member"}</span> : (
-                <span className="row">
-                  <select
-                    aria-label={`Organization role for ${m.display_name}`}
-                    value={m.role}
-                    onChange={(e) => void act(() => api.setOrgRole(orgId, m.user_id, e.target.value))}
-                  >
-                    <option value="member">Member</option>
-                    <option value="org_admin">Administrator</option>
-                  </select>
+                <div className="stack-sm grow">
+                  <MemberAccess key={`${m.user_id}-${m.status}-${m.role}-${m.profiles.join()}`} member={m}
+                    onSave={(role, profiles) => void act(() => api.setMemberAccess(orgId, m.user_id, role, profiles),
+                      `Access saved for ${m.display_name}.`)} />
                   <button type="button" className="secondary"
                     onClick={() => void act(() => api.removeMember(orgId, m.user_id), `${m.display_name} was removed.`)}>
                     Remove
                   </button>
-                </span>
+                </div>
               )}
             </li>
           ))}

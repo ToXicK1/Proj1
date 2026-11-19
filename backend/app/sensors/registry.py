@@ -436,6 +436,7 @@ SENSORS: dict[str, SensorDefinition] = {s.key: s for s in (
     _d("architecture_consistency", "architecture", "Components are unique, known and free of cycles",
        ArchitectureConfig, architecture_consistency),
     _d("api_contract", "architecture", "Endpoints are well formed and unique", ApiConfig, api_contract),
+    _e("code_builds", "code", "Generated code built in the sandbox", "build"),
     _e("code_lint", "code", "Recorded lint result", "lint"),
     _e("type_check", "code", "Recorded type-check result", "type_check"),
     _e("unit_tests", "test", "Recorded unit test result", "unit_tests"),
@@ -449,6 +450,7 @@ SENSORS: dict[str, SensorDefinition] = {s.key: s for s in (
        approval_verification),
 )}
 EVIDENCE_KINDS: frozenset[str] = frozenset(s.evidence_kind for s in SENSORS.values() if s.evidence_kind)
+SANDBOX_ONLY_EVIDENCE = frozenset({"build"})  # only the sandbox itself can report this
 SECURITY_EVIDENCE: frozenset[str] = frozenset(
     s.evidence_kind for s in SENSORS.values() if s.evidence_kind and s.category == "security")
 

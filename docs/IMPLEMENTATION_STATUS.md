@@ -15,7 +15,8 @@ Last updated: 2026-11-19 (Milestone 2)
 | M7 Hooks, sensors and rules | Backend done; see the limits in the M7 section | 289 backend tests, 4 live tests on a local model, 14 safeguard mutations caught; migration 0008 reversible |
 | Member invitations | Built and tested; email is still outbox-only | 305 backend tests, 14 browser tests, 18 safeguard mutations caught; migration 0009 reversible |
 | M8 Workflow Configuration Studio | Exit criterion met; see the limits in the M8 section | 325 backend tests, 19 browser tests, 25 safeguard mutations caught; migration 0010 reversible |
-| M9–M10 | Not started | — |
+| M9 Default lifecycle and User Portal | **Partly met:** live six-profile run passes; 15 of 20 owner criteria met, 5 partial | 343 backend tests, 21 browser tests, 24 safeguard mutations caught; live run in `operations/M9_LIVE_RUN.md`; migration 0011 reversible |
+| M10 | Not started | — |
 
 ## M2 scope and status
 
@@ -264,3 +265,40 @@ Status: **Exit criterion met: an administrator builds and publishes a custom pro
 - 25 deliberate breakages of Studio safeguards are caught.
 - Migration 0010 reverses and re-applies on a clean database. Downgrade refuses while organization workflows exist, because they would otherwise become platform templates.
 - Not done: M8-1 to M8-8 in `KNOWN_ISSUES.md`. A published workflow's run is proven through the API and engine tests, not through a browser screen.
+
+## Milestone 9: default lifecycle and User Portal (2026-11-18)
+
+Status: **The live six-profile run passes on a local model. The milestone is not fully complete: 5 of the 20 owner acceptance criteria are only partly met.**
+
+| # | Owner criterion | Result | Notes |
+|---|---|---|---|
+| 1 | Lands on creation portal after sign-in | Met | |
+| 2 | Choose a type or describe an idea | Met | |
+| 3 | Explain the idea conversationally | Met | One question at a time from a fixed list |
+| 4 | Structured intake package | Met | Each item records how it is known |
+| 5 | Business Analyst receives the package | Met | Fixed in the workflow snapshot |
+| 6 | Review and correct understanding | Met | |
+| 7 | Real-time progress | **Partial** | Polling every 4 seconds (M9-7) |
+| 8 | Communicate with the relevant profile | Met | Questions are answered; other messages are recorded and routed |
+| 9 | Review and change UI/UX work | **Partial** | Written design only, no prototype (M9-2) |
+| 10 | Design feedback tied to a version | Met | |
+| 11 | Participate in testing, report defects | **Partial** | Report form only, no test environment (M9-3) |
+| 12 | QA classifies and routes feedback | **Partial** | Rules plus reviewer triage; no automatic defect rework (M9-5) |
+| 13 | Approve or reject deliverables | Met | |
+| 14 | Approvals tied to exact versions | Met | |
+| 15 | Invalidation when an artifact changes | **Partial** | Engine tested, not reachable from the portal (M9-10) |
+| 16 | No access to credentials, prompts or orchestration | Met | Allow-listed responses, tested by scanning them |
+| 17 | Cannot bypass mandatory validation | Met | |
+| 18 | Messages, feedback, changes and approvals are auditable | Met | |
+| 19 | Frontend is never the authority for state | Met | |
+| 20 | Multi-project, multi-user isolation | Met | |
+
+- Studio Setup connects an AI provider, adds a route and creates the six profiles with independent reviewers.
+- `backend/`: 343 tests pass, 5 live tests skipped by default; 18 are in `tests/test_portal.py`.
+- `frontend/`: 8 unit tests, typecheck and production build pass.
+- Browser: 21 Playwright tests pass on Compose using the offline test connection. They prove the screens, not model quality.
+- Live: see `operations/M9_LIVE_RUN.md`.
+- 24 deliberate breakages of portal safeguards are caught. The first pass missed 2, so tests were added.
+- Migration 0011 reverses and re-applies on a clean database.
+- Provider calls now default to a 120 second timeout and 4096 output tokens, both configurable, because full deliverables did not fit the old limits.
+- Open limits: M9-1 to M9-10 in `KNOWN_ISSUES.md`. Email is still written to the outbox only.

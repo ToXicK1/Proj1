@@ -67,6 +67,7 @@ def settings(db_url: str) -> Settings:
         login_max_failures=5,
         login_lockout_minutes=15,
         auth_rate_limit_per_minute=1000,
+        signup_mode="personal",  # most tests work inside one private organization per account
     )
 
 

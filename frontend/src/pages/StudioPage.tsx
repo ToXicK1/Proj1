@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type OrgDto, type StudioCatalogDto } from "../api";
 import { HooksPanel, ProfilesPanel, RulesPanel, SensorsPanel } from "../studio/ConfigPanels";
+import { SetupPanel } from "../studio/SetupPanel";
 import { WorkflowsPanel } from "../studio/WorkflowsPanel";
 
-const TABS = ["Workflows", "Profiles and agents", "Rules", "Hooks", "Sensors"] as const;
+const TABS = ["Workflows", "Profiles and agents", "Rules", "Hooks", "Sensors", "AI Settings"] as const;
 type Tab = (typeof TABS)[number];
 
 export function StudioPage() {
@@ -60,6 +61,7 @@ export function StudioPage() {
           {tab === "Rules" && <RulesPanel {...props} />}
           {tab === "Hooks" && <HooksPanel {...props} />}
           {tab === "Sensors" && <SensorsPanel catalog={props.catalog} />}
+          {tab === "AI Settings" && <SetupPanel {...props} />}
         </div>
       )}
     </section>

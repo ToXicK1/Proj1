@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ApiError, api } from "../api";
+import { ApiError, JOIN_ROLES, api } from "../api";
 
 export function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [role, setRole] = useState("project_owner");
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -15,7 +16,7 @@ export function SignupPage() {
     setError(null);
     setBusy(true);
     try {
-      await api.signup(email, password, displayName);
+      await api.signup(email, password, displayName, role);
       // Same message whether or not the email is already registered.
       setSent(true);
     } catch (err) {
@@ -42,7 +43,7 @@ export function SignupPage() {
   return (
     <section className="card narrow">
       <h1>Create your account</h1>
-      <p className="muted">You will get your own workspace. You can create projects right away.</p>
+      <p className="muted">The first account becomes the administrator. Everyone else joins once an administrator confirms their role.</p>
       <form onSubmit={(e) => void onSubmit(e)} noValidate>
         <label>
           Your name
@@ -63,6 +64,12 @@ export function SignupPage() {
             required
             autoComplete="new-password"
           />
+        </label>
+        <label>
+          I am joining as
+          <select value={role} onChange={(e) => setRole(e.target.value)}>
+            {JOIN_ROLES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
         </label>
         {error && <p role="alert" className="error">{error}</p>}
         <button type="submit" disabled={busy}>

@@ -36,6 +36,10 @@ class StageSpec(_Strict):
     name: str = Field(min_length=1, max_length=120)
     depends_on: list[str] = Field(default_factory=list)
     protected: bool = False
+    owner_visible: bool = False  # the project owner may see this stage's deliverable
+    human_gate: bool = True  # only deterministic work may run without a human decision
+    sandbox: bool = False  # build and test generated files in the sandbox before the gate
+    sandbox_source: str | None = None  # test the files from this earlier stage instead of this stage's own
     approval_policy: dict[str, Any] | None = None
     work: str = Field(min_length=1, max_length=64)
     output_required_keys: list[str] = Field(default_factory=list)
@@ -126,12 +130,20 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
                 problems.append(f"{path}.reviewer: a reviewer needs a lead agent")
             elif stage.reviewer == stage.agent:
                 problems.append(f"{path}.reviewer: the reviewer must not be the lead agent")
+        if stage.sandbox and not is_ai:
+            problems.append(f"{path}.sandbox: only AI-generated work is sent to the sandbox")
+        if stage.sandbox_source and not stage.sandbox:
+            problems.append(f"{path}.sandbox_source: this needs sandbox to be on")
+        if not stage.human_gate and is_ai:
+            problems.append(f"{path}.human_gate: AI output always needs a human decision")
         if stage.condition is not None:
             problems.append(f"{path}.condition: conditional execution is not supported yet")
 
     graph = {s.id: [d for d in s.depends_on if d in ids] for s in spec.stages}
     for i, stage in enumerate(spec.stages):
         problems += _sensor_problems(f"stages[{i}].sensors", stage, graph)
+        if stage.sandbox_source and stage.sandbox_source not in _upstream(stage.id, graph):
+            problems.append(f"stages[{i}].sandbox_source: stage '{stage.sandbox_source}' is not upstream")
     order: list[str] = []
     if not problems:
         order, cycle = _topological(graph)

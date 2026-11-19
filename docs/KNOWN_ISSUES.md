@@ -170,11 +170,26 @@ Still open: the GitHub connection (Q-8) must be fixed before the repo can be cre
 
 | ID | Issue | Impact | Plan |
 |---|---|---|---|
-| M8-1 | No screen starts a published workflow or runs its stages | The API starts it; stage runs are triggered in code. A published workflow cannot yet be followed end to end in the browser | Portal and run controls, M9 |
-| M8-2 | Providers, model routes, skills and teams have no Studio screen | An AI stage or agent needs a route created through the API first | Later Studio work |
+| M8-1 | Closed for the default lifecycle: confirming the brief starts delivery and the portal shows it. Custom Studio workflows still have no start screen | Custom workflows start through the API | Workflow picker |
+| M8-2 | AI connections and model routes are in Studio Setup. Skills and teams still have no screen | Those stay API only | Later Studio work |
 | M8-3 | Evidence and risk acceptance have no screen | Reviewers use the API | Reviewer workspace, M9 |
 | M8-4 | The permission editor covers agent tool grants only, and only READ tools can be granted. Project and organization roles are managed on the Team page | No custom roles or permission policies | Needs a permission model first |
 | M8-5 | No visual comparison between workflow versions | An older version can be loaded into the draft and republished, but differences are not highlighted | Diff view |
 | M8-6 | Sequential execution only; conditional stages and conditional approval policies are refused | Parallel branches cannot be designed | Engine work |
 | M8-7 | Diagram positions are computed, not saved. Linking needs a pointer; the "Runs after" checkboxes are the keyboard route | Administrators cannot arrange the diagram | Add saved layout if needed |
 | M8-8 | No automated accessibility scan has been run on the Studio | Accessibility is only partly checked | axe checks |
+
+## Milestone 9: owner portal and default lifecycle
+
+| ID | Issue | Impact | Plan |
+|---|---|---|---|
+| M9-1 | Deliverables are written documents. No code is generated into a sandbox, nothing is built, tested or deployed | The Developer, QA and DevOps profiles produce plans, not running results | Development sandbox (ADR-017) and CI integration |
+| M9-2 | Design has no running prototype or preview origin | Owners review a written design, not screens | Needs M9-1 |
+| M9-3 | Owner testing has no test environment or credentials, and no attachments | Owners can only file structured reports | Needs M9-1 and scanned uploads |
+| M9-4 | Message routing uses fixed keyword rules | Unusual wording can be misrouted; a reviewer can correct it | Validated classifier later |
+| M9-5 | Feedback is recorded and triaged but does not start rework by itself. Only "Request changes" on a deliverable does | Defects need a person to act | Defect workflow |
+| M9-6 | Only questions get a generated answer, and answers containing internal terms are replaced by a fallback | Some harmless answers are discarded | Tune the wording guard |
+| M9-7 | Progress updates by polling every 4 seconds, not a live stream | Small delay | Server-sent events |
+| M9-8 | Lifecycle work runs in the API process as a background task. A restart during a run leaves that step unfinished | The step may need attention by hand; no automatic recovery exists | Worker with durable jobs, M10 |
+| M9-9 | Reminders for waiting approvals, file uploads, deliverable comments and downloads are not built | Parts of USER_PORTAL.md sections 6, 12 and 13 are missing | Later portal work |
+| M9-10 | An approved deliverable cannot be reopened from the portal, so invalidation of later approvals is proven only in engine tests | No owner path reaches it yet | Change management |

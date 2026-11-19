@@ -8,6 +8,7 @@ Atomicity: callers that combine several transitions (an approval, a rework run) 
 and commit once at the end. Any error rolls the whole unit back.
 """
 
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -15,6 +16,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import sandbox_client
 from app.agents import runner as agent_runner
 from app.agents import service as agent_service
 from app.agents.models import ReviewRecord
@@ -26,12 +28,14 @@ from app.core.config import Settings, get_settings
 from app.core.db import uuid7
 from app.core.errors import AppError, not_found
 from app.hooks import service as hooks
+from app.organizations.models import MemberProfile
 from app.projects.models import Project, ProjectMember
 from app.providers import service as providers
 from app.providers.models import AgentRun
 from app.providers.tasks import AI_TASKS, is_ai_task
 from app.rules import service as rule_service
 from app.sensors import service as sensors
+from app.sensors.models import SensorEvidence
 from app.workflows.compiler import CompiledWorkflow, compile_workflow
 from app.workflows.models import (
     StageExecution,
@@ -96,12 +100,47 @@ def store_version(db: Session, compiled: CompiledWorkflow, *, organization_id: u
     return version
 
 
+def held_profiles(db: Session, user_id: uuid.UUID, organization_id: uuid.UUID) -> list[str]:
+    return list(db.execute(select(MemberProfile.profile_key).where(
+        MemberProfile.organization_id == organization_id, MemberProfile.user_id == user_id)).scalars())
+
+
+def approval_roles(db: Session, user: User, project: Project, role: str) -> list[str]:
+    """The project role plus one entry per professional profile this person was confirmed for."""
+    return [role, *(f"profile:{key}" for key in held_profiles(db, user.id, project.organization_id))]
+
+
 def project_role(db: Session, user: User, project_id: uuid.UUID) -> str | None:
     return db.execute(
         select(ProjectMember.project_role).where(
             ProjectMember.project_id == project_id, ProjectMember.user_id == user.id
         )
     ).scalar_one_or_none()
+
+
+def stage_spec_from(spec: dict[str, Any], stage_key: str) -> dict[str, Any]:
+    return next((s for s in spec["stages"] if s["id"] == stage_key), {})
+
+
+def _work_context(db: Session, execution: WorkflowExecution, project: Project, spec: dict[str, Any], revision: int,
+                  feedback: tuple[str, ...] = ()) -> WorkContext:
+    """What this run may draw on: the confirmed brief and the approved deliverables it depends on."""
+    stages = stage_rows(db, execution.id)
+    specs = {s["id"]: s for s in db.get(WorkflowVersion, execution.workflow_version_id).spec_json["stages"]}
+    upstream: list[str] = []
+    frontier, seen = list(spec["depends_on"]), set()
+    while frontier and len(upstream) < 5:  # the nearest approved work; a prompt cannot hold everything
+        key = frontier.pop(0)
+        if key in seen:
+            continue
+        seen.add(key)
+        frontier.extend(specs[key]["depends_on"])
+        current = artifacts.current_version(db, stages[key].id)
+        if current is not None and stages[key].status == StageStatus.APPROVED.value:
+            upstream.append(f"{specs[key]['name']}: {json.dumps(current[1].content_json, sort_keys=True)[:2000]}")
+    return WorkContext(project_name=project.name, project_description=project.description,
+                       project_type=project.project_type, revision=revision, feedback=feedback,
+                       intake=tuple(execution.config_snapshot.get("intake", [])), upstream=tuple(upstream))
 
 
 def stage_spec(version: WorkflowVersion, stage_key: str) -> dict[str, Any]:
@@ -111,7 +150,8 @@ def stage_spec(version: WorkflowVersion, stage_key: str) -> dict[str, Any]:
     return spec
 
 
-def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_version_id: uuid.UUID) -> WorkflowExecution:
+def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_version_id: uuid.UUID,
+                    intake: list[str] | None = None) -> WorkflowExecution:
     role = project_role(db, user, project_id)
     if role is None:
         raise not_found()
@@ -136,6 +176,7 @@ def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_
         config_snapshot={
             "agent_versions": agent_service.snapshot_versions(db, project.organization_id, agent_keys),
             **rule_service.snapshot(db, project.organization_id, project.id),
+            "intake": intake or [],
         },
     )
     db.add(execution)
@@ -431,6 +472,39 @@ def _block(db: Session, execution: WorkflowExecution, stage_key: str, reason: st
                             actor=ActorType.SYSTEM, reason=reason[:300], commit=False)
 
 
+def _verify_in_sandbox(db: Session, execution: WorkflowExecution, stage: StageExecution, spec: dict[str, Any],
+                       version: Any, settings: Settings) -> None:
+    """Builds and tests the generated files for real. Without a result, no evidence exists and the gate stays shut."""
+    if not spec.get("sandbox"):
+        return
+    source = version
+    if spec.get("sandbox_source"):
+        upstream = artifacts.current_version(db, stage_rows(db, execution.id)[spec["sandbox_source"]].id)
+        if upstream is None:
+            return
+        source = upstream[1]
+    try:
+        result = sandbox_client.sandbox_for(settings).run(sandbox_client.project_files(source.content_json))
+    except (sandbox_client.SandboxUnavailable, OSError, ValueError):
+        result = {"status": "unavailable"}
+    outcome: dict[str, bool] = {}
+    if result.get("status") == "completed":
+        for kind, name in (("build", "build"), ("unit_tests", "unit_tests")):
+            check = result["checks"][name]
+            outcome[kind] = bool(check["passed"])
+            lines = [line[:500] for line in str(check.get("output", "")).splitlines() if line.strip()][-20:]
+            db.add(SensorEvidence(organization_id=execution.organization_id, project_id=execution.project_id,
+                                  artifact_version_id=version.id, kind=kind, source="sandbox",
+                                  outcome="pass" if check["passed"] else "fail", summary=str(check["summary"])[:500],
+                                  findings=[] if check["passed"] else [str(check["summary"])[:500], *lines]))
+        db.flush()
+    append_event(db, chain_key=org_chain(execution.organization_id), event_type="sandbox.completed",
+                 actor_type=ActorType.SYSTEM.value, organization_id=execution.organization_id,
+                 project_id=execution.project_id,
+                 payload={"stage": stage.stage_key, "artifact_version": str(version.id),
+                          "status": result.get("status"), "language": result.get("language"), "passed": outcome})
+
+
 def _gate(
     db: Session, *, execution: WorkflowExecution, stage_key: str, spec: dict[str, Any], settings: Settings,
     transport: Any, lead_run_ids: list[uuid.UUID],
@@ -446,6 +520,7 @@ def _gate(
     if failures:
         return _block(db, execution, stage_key, f"hook: {'; '.join(failures)}")
     hooks.run_hooks(db, scope, "stage.validation_started")
+    _verify_in_sandbox(db, execution, stage, spec, version, settings)
     sensors.run_stage_sensors(db, execution, stage, spec, version)
     blocked = sensors.blocking(db, stage, spec, version)
     if blocked:
@@ -458,6 +533,9 @@ def _gate(
                                  transport=transport, lead_run_ids=lead_run_ids)
         if review_failure is not None:
             return review_failure
+    if not spec.get("human_gate", True):
+        return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.COMPLETED,
+                                actor=ActorType.SYSTEM, reason="validated; no human gate configured", commit=False)
     failures, _ = hooks.run_hooks(db, scope, "stage.approval_requested", "pre")
     if failures:
         return _block(db, execution, stage_key, f"hook: {'; '.join(failures)}")
@@ -536,8 +614,7 @@ def run_deterministic_stage(db: Session, *, execution_id: uuid.UUID, stage_key: 
         transition_stage(db, execution_id=execution_id, stage_key=stage_key,
                          to_status=StageStatus.RUNNING, actor=ActorType.SYSTEM, commit=False)
         hooks.run_hooks(db, scope, "stage.started")
-        context = WorkContext(project_name=project.name, project_description=project.description,
-                              project_type=project.project_type, revision=1)
+        context = _work_context(db, execution, project, spec, 1)
         result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
                                     settings=settings or get_settings(), transport=transport)
         db.commit()
@@ -573,13 +650,8 @@ def run_rework(db: Session, *, execution_id: uuid.UUID, stage_key: str,
                          actor=ActorType.SYSTEM, commit=False)
         hooks.run_hooks(db, scope, "stage.started")
         stage.rework_count += 1
-        context = WorkContext(
-            project_name=project.name,
-            project_description=project.description,
-            project_type=project.project_type,
-            revision=stage.rework_count + 1,
-            feedback=(*(cr.comment for cr in open_requests), *sensor_feedback),
-        )
+        context = _work_context(db, execution, project, spec, stage.rework_count + 1,
+                                (*(cr.comment for cr in open_requests), *sensor_feedback))
         result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
                                     settings=settings or get_settings(), transport=transport)
         if result.status == StageStatus.AWAITING_HUMAN_REVIEW.value:
