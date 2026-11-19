@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { PROFILES } from "../components/Sidebar";
-import { IdentityTag, StatusPill } from "../components/ui";
-import { ApiError, api, type DeliverableDto, type FeedbackDto, type IntakeDto, type PortalMessageDto, type WorkspaceDto } from "../api";
+import { PROFILES, TABS_FOR, type PortalTab } from "./roles";
+import { IdentityTag, LiveIndicator, Skeleton, StatusPill } from "../components/ui";
+import { DepartmentStatus, TeamChat, Tickets, projectChat } from "./Collaboration";
+import { ApiError, api, type ScopeDto, type DeliverableDto, type FeedbackDto, type IntakeDto, type PortalMessageDto, type WorkspaceDto } from "../api";
 
-const TABS = ["Overview", "Lifecycle", "Project brief", "Deliverables", "Conversations", "Testing"] as const;
-export type PortalTab = (typeof TABS)[number];
 
 function problem(err: unknown): string {
   return err instanceof ApiError ? err.message : "That did not work. Please try again.";
@@ -137,7 +136,7 @@ function Brief({ projectId, isOwner, onChange }: { projectId: string; isOwner: b
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => api.portalIntake(projectId).then(setIntake), [projectId]);
   useEffect(() => { load().catch((e: unknown) => setError(problem(e))); }, [load]);
-  if (!intake) return error ? <p role="alert" className="error">{error}</p> : <p className="muted">Loading…</p>;
+  if (!intake) return error ? <p role="alert" className="error">{error}</p> : <Skeleton title={false} />;
   const asked = field ? intake.questions.find((q) => q.field === field) ?? null : intake.next_question;
   const open = isOwner && !intake.started;
 
@@ -238,7 +237,7 @@ function Deliverables({ projectId, tick, role, wanted, profile, onChange }: {
     }).catch((e: unknown) => setError(problem(e)));
   }, [projectId, tick]);
 
-  if (!items) return error ? <p role="alert" className="error">{error}</p> : <p className="muted">Loading…</p>;
+  if (!items) return error ? <p role="alert" className="error">{error}</p> : <Skeleton title={false} lines={4} />;
   const department = PROFILES.find(([key]) => key === profile)?.[1];
   const shown = profile ? items.filter((d) => d.profile === profile) : items;
   if (shown.length === 0) {
@@ -275,7 +274,7 @@ function Deliverables({ projectId, tick, role, wanted, profile, onChange }: {
           {shown.map((d) => <option key={d.stage} value={d.stage}>{d.number} {d.name} ({d.status})</option>)}
         </select>
       </label>
-      {department && <p className="eyebrow">{department} workspace</p>}
+      {department && profile && role === "project_owner" && <DepartmentStatus projectId={projectId} profile={profile} tick={tick} />}
       <div className="row">
         <span>Prepared by <IdentityTag kind="ai">{item.representative} team</IdentityTag></span>
         <StatusPill label={item.status} />
@@ -355,6 +354,7 @@ function Deliverables({ projectId, tick, role, wanted, profile, onChange }: {
 function Conversations({ projectId, data, tick }: { projectId: string; data: WorkspaceDto; tick: number }) {
   const [items, setItems] = useState<PortalMessageDto[]>([]);
   const [profile, setProfile] = useState(data.team[0]?.profile ?? "");
+  const professional = data.scope === "professional" || data.scope === "admin";
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => api.portalMessages(projectId).then((r) => setItems(r.items)), [projectId]);
@@ -364,7 +364,8 @@ function Conversations({ projectId, data, tick }: { projectId: string; data: Wor
     e.preventDefault();
     setError(null);
     try {
-      await api.portalSendMessage(projectId, body, profile);
+      if (data.role === "project_owner") await api.portalSendMessage(projectId, body, profile);
+      else await api.replyToOwner(projectId, profile, body);
       setBody("");
       await load();
     } catch (err) {
@@ -379,23 +380,25 @@ function Conversations({ projectId, data, tick }: { projectId: string; data: Wor
         {items.map((m) => (
           <li key={m.id} className={m.mine ? "message mine" : "message"}>
             <div className="message-head">
-              {m.mine ? <IdentityTag kind="human">You</IdentityTag> : <IdentityTag kind="ai">{m.from}</IdentityTag>}
+              {m.mine ? <IdentityTag kind="human">You</IdentityTag>
+                : <IdentityTag kind={m.author_type === "professional" || m.author_type === "owner" ? "human" : "ai"}>
+                  {m.author_type === "owner" ? "Project owner" : m.from}</IdentityTag>}
             </div>
             <div>{m.body}</div>
           </li>
         ))}
       </ul>
       {error && <p role="alert" className="error">{error}</p>}
-      {data.role === "project_owner" && (
+      {(data.role === "project_owner" || professional) && (
         <form className="stack-sm" onSubmit={(e) => void send(e)}>
           <label>
-            Send to
+            {data.role === "project_owner" ? "Send to" : "Reply as"}
             <select value={profile} onChange={(e) => setProfile(e.target.value)}>
               {data.team.map((m) => <option key={m.profile} value={m.profile}>{m.representative}</option>)}
             </select>
           </label>
           <label>Your message<textarea required rows={3} maxLength={4000} value={body} onChange={(e) => setBody(e.target.value)} /></label>
-          <button type="submit" disabled={!body.trim()}>Send message</button>
+          <button type="submit" disabled={!body.trim()}>{data.role === "project_owner" ? "Send message" : "Reply to owner"}</button>
         </form>
       )}
     </div>
@@ -483,10 +486,15 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
   const [data, setData] = useState<WorkspaceDto | null>(null);
   const [params, setParams] = useSearchParams();
   const [wanted, setWanted] = useState(params.get("review") ?? "");
+  const [scope, setScope] = useState<ScopeDto | null>(null);
+  useEffect(() => { api.portalScope(projectId).then(setScope).catch(() => setScope(null)); }, [projectId]);
+  const chat = useMemo(() => (scope ? projectChat(projectId, scope) : null), [projectId, scope]);
+  const allowed = TABS_FOR[scope?.kind ?? "member"];
   const asked = params.get("tab");
-  const tab: PortalTab = (TABS as readonly string[]).includes(asked ?? "") ? (asked as PortalTab)
-    : wanted ? "Deliverables" : "Overview";
-  const profile = tab === "Deliverables" ? params.get("profile") : null;
+  const fallback: PortalTab = wanted ? (scope?.kind === "professional" ? "Workspace" : "Deliverables") : allowed[0];
+  const tab: PortalTab = allowed.includes(asked as PortalTab) ? (asked as PortalTab) : fallback;
+  const profile = tab === "Deliverables" || tab === "Workspace" ? params.get("profile") : null;
+  const department = tab === "Workspace" ? (profile && scope?.profiles.includes(profile) ? profile : scope?.profiles[0] ?? "") : "";
   const setTab = (next: PortalTab) => setParams((prev) => {
     const out = new URLSearchParams(prev);
     out.set("tab", next);
@@ -494,9 +502,10 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
     return out;
   });
   const [tick, setTick] = useState(0);
+  const [updated, setUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(() => {
-    api.portalWorkspace(projectId).then((d) => { setData(d); setError(null); setTick((n) => n + 1); })
+    api.portalWorkspace(projectId).then((d) => { setData(d); setError(null); setTick((n) => n + 1); setUpdated(new Date()); })
       .catch((e: unknown) => setError(e instanceof ApiError && e.status === 404 ? "Project not found." : "Could not load the project."));
   }, [projectId]);
   useEffect(() => {
@@ -505,21 +514,46 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  if (!data) return error ? <p role="alert" className="error">{error}</p> : <p className="muted">Loading…</p>;
+  if (!data || !scope) return error ? <p role="alert" className="error">{error}</p> : <section className="card"><Skeleton lines={5} /></section>;
+  const departmentName = PROFILES.find(([key]) => key === department)?.[1] ?? "";
   return (
     <section className="card stack">
       <div>
-        <p className="eyebrow">Project</p>
+        <div className="page-header">
+          <p className="eyebrow">{scope.kind === "professional" ? `Project · your role: ${scope.profiles.map((p) => PROFILES.find(([k]) => k === p)?.[1]).join(", ")}` : "Project"}</p>
+          <LiveIndicator updated={updated} />
+        </div>
         <h1>{data.project.name}</h1>
         <p className="muted">{data.project.type} · {data.project.status}</p>
         {data.project.description && <p>{data.project.description}</p>}
       </div>
       <div className="tabs" role="tablist" aria-label="Project sections">
-        {TABS.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t}
+        {allowed.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t}
           className={tab === t ? "tab selected" : "tab"} onClick={() => setTab(t)}>{t}</button>)}
       </div>
-      <div role="tabpanel" aria-label={tab}>
+      <div role="tabpanel" aria-label={tab} className="tabpanel-enter" key={tab}>
         {tab === "Lifecycle" && <Lifecycle data={data} />}
+        {tab === "Workspace" && department && (
+          <div className="stack">
+            <p className="eyebrow">{departmentName} workspace</p>
+            <div className="split">
+              <DepartmentStatus projectId={projectId} profile={department} tick={tick} />
+              {scope?.channels.some((c) => c.key === department) && (
+                <section className="stack-sm">
+                  <h2>{departmentName} discussion on this project</h2>
+                  <TeamChat key={department} source={chat!} tick={tick} initial={department}
+                    label="Message your department about this project" />
+                </section>
+              )}
+            </div>
+            <section className="stack-sm">
+              <h2>Work to review</h2>
+              <Deliverables key={`ws-${department}-${wanted}`} projectId={projectId} tick={tick} role={data.role} wanted={wanted}
+                profile={department} onChange={refresh} />
+            </section>
+          </div>
+        )}
+        {tab === "Tickets" && <Tickets projectId={projectId} scope={scope} tick={tick} />}
         {tab === "Overview" && <Overview data={data} projectId={projectId} onChange={refresh} onBrief={() => setTab("Project brief")}
           onReview={(stage) => { setWanted(stage); setTab("Deliverables"); }} />}
         {tab === "Project brief" && <Brief projectId={projectId} isOwner={data.role === "project_owner"} onChange={refresh} />}

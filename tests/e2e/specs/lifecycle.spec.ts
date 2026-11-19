@@ -38,7 +38,7 @@ test("a shared team takes a project through the ready-made lifecycle", async ({ 
   const analyst = await join(browser, "Asha Analyst", "Business Analyst");
   await expect(analyst.getByText("as Business Analyst")).toBeVisible();
 
-  await admin.getByRole("link", { name: "Team" }).click();
+  await admin.getByRole("link", { name: "Team", exact: true }).click();
   await admin.getByRole("button", { name: "Confirm Olivia Owner" }).click();
   await expect(admin.getByRole("status")).toHaveText("Access saved for Olivia Owner.");
   for (const profile of ["Solution Architect", "UI/UX Designer", "Software Developer", "QA & Security Engineer", "DevOps & Release Engineer"]) {

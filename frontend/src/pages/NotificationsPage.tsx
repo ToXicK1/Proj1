@@ -16,7 +16,7 @@ export function NotificationsPage() {
       <ul className="list">
         {items?.map((n) => (
           <li key={n.id} className="row">
-            <Link to={`/projects/${n.project_id}`} onClick={() => { if (!n.read) void api.readNotification(n.id); }}>
+            <Link to={n.project_id ? `/projects/${n.project_id}` : "/team-chat"} onClick={() => { if (!n.read) void api.readNotification(n.id); }}>
               {n.read ? n.message : <strong>{n.message}</strong>}
             </Link>
             {!n.read && (

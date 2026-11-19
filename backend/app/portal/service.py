@@ -8,6 +8,7 @@ import io
 import json
 import uuid
 import zipfile
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
@@ -62,6 +63,7 @@ from app.workflows.models import (
 from app.workflows.state_machine import ActorType, StageStatus
 
 S = StageStatus
+_MESSAGE_NAMES: ContextVar[dict | None] = ContextVar("_message_names", default=None)
 QUESTIONS: tuple[tuple[str, str, bool], ...] = (
     ("problem", "What problem should this project solve?", True),
     ("users", "Who will use it?", True),
@@ -277,7 +279,14 @@ def _announce(db: Session, execution: WorkflowExecution) -> None:
             _notify_users(db, project, _holders(db, project, step.profile), kind, f"{name} is ready for your approval.")
             _notify(db, project, {"project_owner"}, kind, f"{name} is ready. You can read it and send feedback.")
         elif stage.status in (S.FAILED.value, S.BLOCKED.value):
-            _notify(db, project, {"project_owner"}, f"needs_attention:{stage.id}:{stage.version}",
+            kind = f"needs_attention:{stage.id}:{stage.version}"
+            if not db.execute(select(Notification.id).where(Notification.kind == kind)).first() and step:
+                from app.collab.service import explain, post_system
+
+                post_system(db, project, step.profile, f"{name} stopped: {explain(stage.failure_reason, True)}")
+                _notify_users(db, project, _holders(db, project, step.profile), kind,
+                              f"{name} stopped and needs attention.")
+            _notify(db, project, {"project_owner"}, kind,
                     f"{name} needs attention. You can try it again from your project.")
     if execution.status == "COMPLETED":
         _notify(db, project, {"project_owner"}, f"delivery_complete:{execution.id}", "All deliverables are approved.")
@@ -408,10 +417,13 @@ ACTIVITY = {S.AWAITING_HUMAN_REVIEW.value: "{} is ready for approval", S.APPROVE
 
 
 def workspace(db: Session, user: User, project_id: uuid.UUID) -> dict[str, Any]:
+    from app.collab.service import scope_for
+
     project, role = _access(db, user, project_id)
+    _, scope = scope_for(db, user, project_id)
     intake = _intake(db, project_id)
     execution = _execution(db, project_id)
-    steps = _in_workflow(db, execution)
+    steps = [(step, stage) for step, stage in _in_workflow(db, execution) if step.profile in scope.profiles]
     actions: list[dict[str, str]] = []
     if execution is None and role == "project_owner":
         ready = _intake_out(intake, False)["can_confirm"]
@@ -462,7 +474,11 @@ def workspace(db: Session, user: User, project_id: uuid.UUID) -> dict[str, Any]:
         "completed": bool(execution and execution.status == "COMPLETED"),
         "progress": progress([stage.status for _, stage in steps if stage]),
         "current_step": current_step,
-        "team": _stage_cards(db, project, steps, bool(intake and intake.status == "confirmed")),
+        "scope": scope.kind,
+        "my_profiles": sorted(scope.profiles) if scope.kind == "professional" else [],
+        "team": [c for c in _stage_cards(db, project, _in_workflow(db, execution),
+                                         bool(intake and intake.status == "confirmed"))
+                 if c["profile"] in scope.profiles],
         "phases": phases,
         "pending_actions": actions,
         "activity": activity,
@@ -482,6 +498,7 @@ def my_reviews(db: Session, user: User) -> list[dict[str, Any]]:
             if stage.status == S.AWAITING_HUMAN_REVIEW.value and \
                     approvals.review_view(db, user, execution.id, step.id)["can_decide"]:
                 out.append({"project_id": str(project.id), "project": project.name, "stage": step.id,
+                            "profile_key": step.profile,
                             "name": step.name, "phase": step.phase, "profile": BY_PROFILE[step.profile].title})
     return out
 
@@ -534,7 +551,10 @@ def code_archive(db: Session, user: User, project_id: uuid.UUID, version_id: uui
 
 
 def deliverables(db: Session, user: User, project_id: uuid.UUID) -> list[dict[str, Any]]:
+    from app.collab.service import scope_for
+
     project, _ = _access(db, user, project_id)
+    _, scope = scope_for(db, user, project_id)
     execution = _execution(db, project_id)
     if execution is None:
         return []
@@ -546,7 +566,7 @@ def deliverables(db: Session, user: User, project_id: uuid.UUID) -> list[dict[st
         step = BY_STAGE.get(spec["id"])
         stage = stages[spec["id"]]
         current = current_version(db, stage.id)
-        if step is None or not spec.get("owner_visible") or current is None:
+        if step is None or not spec.get("owner_visible") or current is None or step.profile not in scope.profiles:
             continue
         review = approvals.review_view(db, user, execution.id, spec["id"])
         out.append({
@@ -605,16 +625,42 @@ def _owner_visible_version(db: Session, project_id: uuid.UUID, version_id: uuid.
 
 def _message_out(m: PortalMessage) -> dict[str, Any]:
     member = BY_PROFILE[m.profile_key]
-    return {"id": str(m.id), "profile": m.profile_key, "from": "you" if m.author_type == "owner" else member.title,
+    sender = "you" if m.author_type == "owner" else member.title
+    if m.author_type == "professional":
+        author = db_names.get(m.author_user_id, "") if (db_names := _MESSAGE_NAMES.get()) else ""
+        sender = f"{author} ({member.title})" if author else member.title
+    return {"id": str(m.id), "profile": m.profile_key, "from": sender, "author_type": m.author_type,
             "mine": m.author_type == "owner", "body": m.body, "created_at": m.created_at.isoformat(),
             "artifact_version_id": str(m.artifact_version_id) if m.artifact_version_id else None}
 
 
 def messages(db: Session, user: User, project_id: uuid.UUID) -> list[dict[str, Any]]:
-    _access(db, user, project_id)
-    rows = db.execute(select(PortalMessage).where(PortalMessage.project_id == project_id)
-                      .order_by(PortalMessage.id)).scalars()
-    return [_message_out(m) for m in rows]
+    from app.collab.service import scope_for
+
+    _, scope = scope_for(db, user, project_id)
+    rows = [m for m in db.execute(select(PortalMessage).where(PortalMessage.project_id == project_id)
+                                  .order_by(PortalMessage.created_at)).scalars() if m.profile_key in scope.profiles]
+    ids = {m.author_user_id for m in rows if m.author_type == "professional" and m.author_user_id}
+    token = _MESSAGE_NAMES.set(dict(db.execute(select(User.id, User.display_name).where(User.id.in_(ids))).all()))
+    try:
+        return [_message_out(m) for m in rows]
+    finally:
+        _MESSAGE_NAMES.reset(token)
+
+
+def reply_as_professional(db: Session, user: User, project_id: uuid.UUID, *, profile: str, body: str) -> dict[str, Any]:
+    """A department's professional answers the owner directly, in the owner's conversation."""
+    from app.collab.service import scope_for
+
+    project, scope = scope_for(db, user, project_id)
+    if scope.kind not in ("professional", "manager", "admin") or profile not in scope.profiles:
+        raise AppError(403, "not_permitted", "Only this department's professional can reply here")
+    row = _store(db, project, profile, "professional", user.id, body.strip())
+    _notify(db, project, {"project_owner"}, f"reply:{row.id}",
+            f"{user.display_name} ({BY_PROFILE[profile].title}) replied to you.")
+    _audit(db, project, "portal.professional_reply", "human", user.id, {"department": profile})
+    db.commit()
+    return _message_out(row)
 
 
 def _reply_text(result: Classification, member_title: str, kind_recorded: bool) -> str:
@@ -659,6 +705,10 @@ def post_message(db: Session, user: User, project_id: uuid.UUID, *, body: str, p
     member = BY_PROFILE[target]
     reply = _store(db, project, target, "representative", None,
                    _reply_text(result, member.title, bool(result.feedback_kind)))
+    from app.collab.service import holders
+
+    _notify_users(db, project, holders(db, project, target), f"owner_message:{owner_row.id}",
+                  f"The project owner wrote to {BY_PROFILE[target].title}: {body[:140]}")
     _audit(db, project, "portal.message_received", "human", user.id,
            {"message": str(owner_row.id), "intent": result.intent, "routed_to": target,
             "classifier": CLASSIFIER_VERSION, "feedback": result.feedback_kind})

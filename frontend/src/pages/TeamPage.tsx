@@ -29,9 +29,9 @@ function MemberAccess({ member, onSave }: {
 }) {
   const asked = member.requested_role;
   const pending = member.status === "pending";
-  const [role, setRole] = useState<string>(pending && asked === "project_owner" ? "project_owner" : member.role);
-  const [profiles, setProfiles] = useState<string[]>(
-    pending && asked && asked !== "project_owner" ? [asked] : member.profiles);
+  const roleAsked = asked === "project_owner" || asked === "project_manager" || asked === "org_admin";
+  const [role, setRole] = useState<string>(pending && roleAsked ? asked : member.role);
+  const [profiles, setProfiles] = useState<string[]>(pending && asked && !roleAsked ? [asked] : member.profiles);
   return (
     <div className="stack-sm">
       {pending && <p className="notice">Asked to join as {JOIN_ROLES.find(([v]) => v === asked)?.[1] ?? "a team member"}.</p>}
@@ -40,6 +40,7 @@ function MemberAccess({ member, onSave }: {
         <select value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="member">Team member</option>
           <option value="project_owner">Project Owner</option>
+          <option value="project_manager">Project Manager</option>
           <option value="org_admin">Administrator</option>
         </select>
       </label>
@@ -184,7 +185,7 @@ export function TeamPage() {
           {data?.members.map((m) => (
             <li key={m.user_id} className="row">
               <span>{m.display_name} <span className="muted">· {m.email}</span></span>
-              {m.is_you ? <span className="muted">You · {m.role === "org_admin" ? "Administrator" : "Member"}</span> : (
+              {m.is_you ? <span className="muted">You · {({ org_admin: "Administrator", project_manager: "Project Manager", project_owner: "Project Owner" } as Record<string, string>)[m.role] ?? "Member"}</span> : (
                 <div className="stack-sm grow">
                   <MemberAccess key={`${m.user_id}-${m.status}-${m.role}-${m.profiles.join()}`} member={m}
                     onSave={(role, profiles) => void act(() => api.setMemberAccess(orgId, m.user_id, role, profiles),

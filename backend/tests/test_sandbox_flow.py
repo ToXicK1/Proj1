@@ -127,9 +127,8 @@ def test_profiles_only_count_inside_their_own_organization(env):  # noqa: F811
     from tests.test_approvals import _add_member
 
     _add_member(env.engine, uuid.UUID(env.project), user_id, "team_member")
-    first = env.item("intent_capture", person)
-    assert not first["can_decide"]
-    r = env.decide("intent_capture", version=first["current_version_id"], client=person, headers=h)
+    assert env.get("/deliverables", person)["items"] == []  # a profile from another organization grants nothing here
+    r = env.decide("intent_capture", version=env.item("intent_capture")["current_version_id"], client=person, headers=h)
     assert r.status_code == 403
 
 

@@ -42,7 +42,7 @@ class PortalMessage(Base):
     """The owner's conversation. Kept apart from every internal agent record."""
 
     __tablename__ = "portal_messages"
-    __table_args__ = (CheckConstraint("author_type in ('owner','representative')", name="author_valid"),)
+    __table_args__ = (CheckConstraint("author_type in ('owner','representative','professional')", name="author_valid"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id"), nullable=False)

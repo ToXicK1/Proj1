@@ -205,6 +205,8 @@ export interface AgentVersionBody {
 export interface WorkspaceDto {
   project: { id: string; name: string; description: string; type: string; status: string };
   role: string;
+  scope: "owner" | "admin" | "professional" | "member";
+  my_profiles: string[];
   can_triage: boolean;
   started: boolean;
   completed: boolean;
@@ -258,9 +260,95 @@ export interface DeliverableDto {
   change_requests: { comment: string; status: string }[];
 }
 
+export interface ScopeDto {
+  kind: "owner" | "admin" | "manager" | "professional" | "member";
+  role: string;
+  profiles: string[];
+  channels: { key: string; name: string }[];
+}
+
+export interface PersonDto {
+  user_id: string;
+  name: string;
+  profiles: string[];
+  is_owner: boolean;
+  is_you: boolean;
+  kind?: string;
+  role?: string;
+}
+
+export interface TeamMessageDto {
+  id: string;
+  channel: string;
+  author_type: "human" | "ai" | "system";
+  author: string;
+  mine: boolean;
+  body: string;
+  mentions: string[];
+  mentions_me: boolean;
+  author_id?: string | null;
+  direct?: boolean;
+  to?: string | null;
+  to_id?: string | null;
+  created_at: string;
+}
+
+export interface OversightStepDto {
+  stage: string;
+  name: string;
+  status: string;
+  note: string | null;
+}
+
+export interface OversightDto {
+  role: string;
+  totals: { projects: number; approvals: number; working: number; issues: number; open_tickets: number };
+  projects: {
+    id: string;
+    name: string;
+    owners: string[];
+    started: boolean;
+    open_tickets: number;
+    departments: { profile: string; title: string; people: string[]; current: OversightStepDto | null; steps: number; done: number; issues: number }[];
+    approvals: { step: string; department: string; who: string }[];
+    working: { step: string; department: string; note: string | null; slow: boolean }[];
+    issues: { text: string; kind: string; department: string }[];
+  }[];
+}
+
+export interface DepartmentStatusDto {
+  profile: string;
+  title: string;
+  people: string[];
+  started: boolean;
+  summary: string;
+  steps: { stage: string; number: string; name: string; status: string; note: string | null; slow: boolean; since: string | null }[];
+  issues: { stage: string; kind: string; text: string }[];
+}
+
+export interface TicketDto {
+  id: string;
+  number: number;
+  title: string;
+  body: string;
+  kind: string;
+  profile: string;
+  department: string;
+  status: string;
+  raised_by: string;
+  assignee: string | null;
+  ai_proposal: string | null;
+  can_act: boolean;
+  is_mine: boolean;
+  created_at: string;
+  updated_at: string;
+  comments?: { author_type: "human" | "ai" | "system"; author: string; body: string; created_at: string }[];
+}
+
 export interface PortalMessageDto {
   id: string;
   profile: string;
+  author_type?: string;
   from: string;
   mine: boolean;
   body: string;
@@ -277,7 +365,7 @@ export interface FeedbackDto {
 
 export interface NotificationDto {
   id: string;
-  project_id: string;
+  project_id: string | null;
   kind: string;
   message: string;
   read: boolean;
@@ -286,6 +374,8 @@ export interface NotificationDto {
 export interface AccessDto {
   status: "active" | "pending" | "none";
   is_admin: boolean;
+  is_manager: boolean;
+  oversees: boolean;
   can_create_projects: boolean;
   profiles: string[];
   requested_role: string | null;
@@ -296,6 +386,7 @@ export interface MyReviewDto {
   project_id: string;
   project: string;
   stage: string;
+  profile_key: string;
   name: string;
   phase: string;
   profile: string;
@@ -303,6 +394,8 @@ export interface MyReviewDto {
 
 export const JOIN_ROLES = [
   ["project_owner", "Project Owner"],
+  ["project_manager", "Project Manager"],
+  ["org_admin", "Administrator"],
   ["business_analyst", "Business Analyst"],
   ["solution_architect", "Solution Architect"],
   ["ui_ux_designer", "UI/UX Designer"],
@@ -452,6 +545,31 @@ export const api = {
   portalRetry: (id: string, stage: string) =>
     request("POST", `${portalPath(id)}/stages/${encodeURIComponent(stage)}/retry`),
   portalMessages: (id: string) => request<{ items: PortalMessageDto[] }>("GET", `${portalPath(id)}/messages`),
+  globalChannels: () => request<{ items: { key: string; name: string }[]; kind: string }>("GET", "/api/v1/team-chat/channels"),
+  oversight: () => request<OversightDto>("GET", "/api/v1/oversight"),
+  globalPeople: () => request<{ items: PersonDto[] }>("GET", "/api/v1/team-chat/people"),
+  globalMessages: (channel: string) =>
+    request<{ items: TeamMessageDto[] }>("GET", `/api/v1/team-chat/messages/${encodeURIComponent(channel)}`),
+  postGlobalMessage: (channel: string, body: string, to: string | null) =>
+    request<TeamMessageDto>("POST", "/api/v1/team-chat/messages", { channel, body, to }),
+  portalScope: (id: string) => request<ScopeDto>("GET", `${portalPath(id)}/scope`),
+  projectPeople: (id: string) => request<{ items: PersonDto[] }>("GET", `${portalPath(id)}/people`),
+  teamChat: (id: string, channel: string) =>
+    request<{ items: TeamMessageDto[] }>("GET", `${portalPath(id)}/team-chat/${encodeURIComponent(channel)}`),
+  postTeamMessage: (id: string, channel: string, body: string, mentions: string[]) =>
+    request<TeamMessageDto>("POST", `${portalPath(id)}/team-chat`, { channel, body, mentions }),
+  departmentStatus: (id: string, profile: string) =>
+    request<DepartmentStatusDto>("GET", `${portalPath(id)}/departments/${encodeURIComponent(profile)}/status`),
+  tickets: (id: string) => request<{ items: TicketDto[] }>("GET", `${portalPath(id)}/tickets`),
+  ticket: (id: string, ticketId: string) => request<TicketDto>("GET", `${portalPath(id)}/tickets/${encodeURIComponent(ticketId)}`),
+  createTicket: (id: string, body: { title: string; body: string; kind: string; profile: string; assignee: string | null }) =>
+    request<TicketDto>("POST", `${portalPath(id)}/tickets`, body),
+  ticketComment: (id: string, ticketId: string, body: string) =>
+    request<TicketDto>("POST", `${portalPath(id)}/tickets/${encodeURIComponent(ticketId)}/comments`, { body }),
+  ticketAction: (id: string, ticketId: string, action: string, note: string) =>
+    request<TicketDto>("POST", `${portalPath(id)}/tickets/${encodeURIComponent(ticketId)}/actions`, { action, note }),
+  replyToOwner: (id: string, profile: string, body: string) =>
+    request("POST", `${portalPath(id)}/messages/replies`, { profile, body }),
   portalSendMessage: (id: string, body: string, profile: string) =>
     request("POST", `${portalPath(id)}/messages`, { body, profile }),
   portalFeedback: (id: string) => request<{ items: FeedbackDto[] }>("GET", `${portalPath(id)}/feedback`),

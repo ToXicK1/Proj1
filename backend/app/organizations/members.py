@@ -25,6 +25,7 @@ from app.core.security import new_token, sha256_hex
 from app.notifications.models import EmailOutbox
 from app.organizations.models import (
     ORG_ROLES,
+    OVERSEER_ROLES,
     MemberProfile,
     Membership,
     Organization,
@@ -183,6 +184,19 @@ def list_org(db: Session, actor: User, organization_id: uuid.UUID) -> dict:
     }
 
 
+def sync_overseer(db: Session, organization_id: uuid.UUID, user_id: uuid.UUID, previous: str, role: str) -> None:
+    """Administrators and project managers see every project; losing that role takes the access away again."""
+    projects = set(db.execute(select(Project.id).where(Project.organization_id == organization_id)).scalars())
+    joined = set(db.execute(select(ProjectMember.project_id).where(ProjectMember.user_id == user_id,
+                                                                   ProjectMember.project_id.in_(projects))).scalars())
+    if role in OVERSEER_ROLES:
+        for project_id in sorted(projects - joined):
+            db.add(ProjectMember(id=uuid7(), project_id=project_id, user_id=user_id, project_role="viewer"))
+    elif previous in OVERSEER_ROLES:
+        db.execute(delete(ProjectMember).where(ProjectMember.user_id == user_id, ProjectMember.project_role == "viewer",
+                                               ProjectMember.project_id.in_(projects)))
+
+
 def _not_self(actor: User, target: uuid.UUID) -> None:
     if actor.id == target:
         raise AppError(403, "cannot_change_own_role", "Another administrator must change your access")
@@ -203,6 +217,7 @@ def set_org_role(db: Session, actor: User, *, organization_id: uuid.UUID, user_i
         raise AppError(422, "invalid_role", "Unknown organization role")
     row = _membership(db, organization_id, user_id)
     previous, row.role = row.role, role
+    sync_overseer(db, organization_id, user_id, previous, role)
     _audit(db, organization_id, "member.role_changed", actor.id,
            {"user": str(user_id), "from": previous, "to": role})
     db.commit()
@@ -222,7 +237,9 @@ def set_access(db: Session, actor: User, *, organization_id: uuid.UUID, user_id:
         row = _membership(db, organization_id, user_id)
         previous = sorted(db.execute(select(MemberProfile.profile_key).where(
             MemberProfile.organization_id == organization_id, MemberProfile.user_id == user_id)).scalars())
+        previous_role = row.role
         row.role, row.status = role, "active"
+        sync_overseer(db, organization_id, user_id, previous_role, role)
         db.execute(delete(MemberProfile).where(MemberProfile.organization_id == organization_id,
                                                MemberProfile.user_id == user_id))
         for key in sorted(set(profiles)):

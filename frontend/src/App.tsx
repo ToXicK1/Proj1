@@ -1,6 +1,7 @@
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Sidebar } from "./components/Sidebar";
+import { Skeleton } from "./components/ui";
 import { useSession } from "./session";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 import { HomePage } from "./pages/HomePage";
@@ -9,13 +10,15 @@ import { NotificationsPage } from "./pages/NotificationsPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { SignupPage } from "./pages/SignupPage";
 import { StudioPage } from "./pages/StudioPage";
+import { OversightPage } from "./pages/OversightPage";
+import { TeamChatPage } from "./pages/TeamChatPage";
 import { TeamPage } from "./pages/TeamPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { state } = useSession();
   const location = useLocation();
-  if (state.status === "loading") return <p className="muted">Loading…</p>;
+  if (state.status === "loading") return <Skeleton />;
   if (state.status === "anonymous") {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
@@ -34,10 +37,37 @@ function Shell({ children }: { children: ReactNode }) {
       </div>
     );
   }
+  return <Frame>{children}</Frame>;
+}
+
+const COLLAPSED_KEY = "aidlc.nav.collapsed";
+
+function readCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function Frame({ children }: { children: ReactNode }) {
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const location = useLocation();
+  const toggle = (next: boolean) => {
+    setCollapsed(next);
+    try {
+      window.localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0");
+    } catch {
+      // Remembering the choice is a convenience; the layout works without it.
+    }
+  };
   return (
-    <div className="shell">
-      <Sidebar />
-      <main className="content">{children}</main>
+    <div className={collapsed ? "shell nav-collapsed" : "shell"}>
+      <Sidebar onCollapse={() => toggle(true)} />
+      <main className="content" key={location.pathname}>
+        {collapsed && <button type="button" className="nav-expand" onClick={() => toggle(false)}>Show menu</button>}
+        {children}
+      </main>
     </div>
   );
 }
@@ -63,6 +93,22 @@ export function App() {
           element={
             <RequireAuth>
               <StudioPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/oversight"
+          element={
+            <RequireAuth>
+              <OversightPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/team-chat"
+          element={
+            <RequireAuth>
+              <TeamChatPage />
             </RequireAuth>
           }
         />

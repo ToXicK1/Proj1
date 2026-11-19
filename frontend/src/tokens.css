@@ -78,5 +78,29 @@
   --shadow: 0 1px 2px rgba(16, 54, 41, 0.06);
   --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  /* Fluid scale: sizes grow smoothly between phone and wide desktop, with no jumps */
+  --space-xs: clamp(0.35rem, 0.3rem + 0.2vw, 0.5rem);
+  --space-sm: clamp(0.6rem, 0.5rem + 0.35vw, 0.85rem);
+  --space-md: clamp(0.9rem, 0.75rem + 0.6vw, 1.35rem);
+  --space-lg: clamp(1.25rem, 0.9rem + 1.4vw, 2.25rem);
+  --text-body: clamp(0.94rem, 0.9rem + 0.18vw, 1.04rem);
+  --text-h1: clamp(1.4rem, 1.1rem + 1.25vw, 2.1rem);
+  --text-h2: clamp(1.08rem, 1rem + 0.4vw, 1.3rem);
+  --sidebar-width: clamp(220px, 17vw, 280px);
+  --content-max: 1440px;
+
+  /* Motion: short and purposeful. Turned off for people who ask for reduced motion. */
+  --motion-fast: 120ms;
+  --motion: 200ms;
+  --motion-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
   color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion: 0ms;
+    --motion-slow: 0ms;
+  }
 }

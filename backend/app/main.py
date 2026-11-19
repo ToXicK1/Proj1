@@ -5,6 +5,8 @@ from sqlalchemy.engine import Engine
 from app.agents.router import router as agents_router
 from app.approvals.router import router as approvals_router
 from app.auth.router import router as auth_router
+from app.collab.router import oversight_router, team_router
+from app.collab.router import router as collab_router
 from app.core.config import Settings, get_settings
 from app.core.db import make_engine, make_session_factory
 from app.core.errors import register_error_handlers
@@ -58,5 +60,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(governance_router)
     app.include_router(studio_router)
     app.include_router(portal_router)
+    app.include_router(collab_router)
+    app.include_router(team_router)
+    app.include_router(oversight_router)
     return app
 

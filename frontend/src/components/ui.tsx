@@ -44,3 +44,26 @@ export function IdentityTag({ kind, children }: { kind: Identity; children?: Rea
     </span>
   );
 }
+
+
+/** A loading placeholder shaped like the content it stands in for. Marked busy for screen readers. */
+export function Skeleton({ lines = 3, title = true }: { lines?: number; title?: boolean }) {
+  return (
+    <div className="stack-sm" aria-busy="true" aria-label="Loading">
+      {title && <span className="skeleton skeleton-title" />}
+      {Array.from({ length: lines }, (_, i) => (
+        <span key={i} className="skeleton skeleton-line" style={{ width: `${92 - i * 14}%` }} />
+      ))}
+    </div>
+  );
+}
+
+/** Shows that a page refreshes itself, and when it last did. */
+export function LiveIndicator({ updated }: { updated: Date | null }) {
+  return (
+    <span className="live">
+      <span className="live-dot" aria-hidden="true" />
+      {updated ? `Live · updated ${updated.toLocaleTimeString()}` : "Live"}
+    </span>
+  );
+}

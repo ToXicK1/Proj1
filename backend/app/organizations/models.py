@@ -17,7 +17,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 
-ORG_ROLES = ("org_admin", "project_owner", "member")
+ORG_ROLES = ("org_admin", "project_manager", "project_owner", "member")
+# Administrators and project managers can see every project of their organization.
+OVERSEER_ROLES = ("org_admin", "project_manager")
 MEMBER_STATUSES = ("pending", "active")
 
 
@@ -40,7 +42,7 @@ class Membership(Base):
     __tablename__ = "memberships"
     __table_args__ = (
         UniqueConstraint("organization_id", "user_id", name="uq_membership_org_user"),
-        CheckConstraint("role in ('org_admin','project_owner','member')", name="role_valid"),
+        CheckConstraint("role in ('org_admin','project_manager','project_owner','member')", name="role_valid"),
         CheckConstraint("status in ('pending','active')", name="status_valid"),
     )
 

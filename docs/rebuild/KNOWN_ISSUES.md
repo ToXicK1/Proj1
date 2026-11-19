@@ -17,3 +17,5 @@ Earlier issues remain in `docs/KNOWN_ISSUES.md`. This list tracks what the rebui
 | RB-11 | Email is outbox-only | People must read links from the database | 14 |
 | RB-12 | 33-stage lifecycle never run live | Unknown behaviour on a real model | 7 |
 | RB-13 | An interrupted test run can leave the embedded test database running | Next test run times out until it is stopped | Test tooling |
+| RB-14 | Shared-mode browser specs each need their own empty stack (the first account becomes administrator) | Specs must run one at a time | Test tooling |
+| RB-15 | Ticket triage and owner answers use the local 4B model; quality of AI answers is limited | Many tickets will go to a professional | Cloud provider when available |

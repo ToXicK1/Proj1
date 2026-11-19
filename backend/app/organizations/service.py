@@ -50,6 +50,8 @@ def access_for(db: Session, user_id: uuid.UUID) -> dict:
     return {
         "status": "active" if active else "pending" if pending else "none",
         "is_admin": any(m.role == "org_admin" for m in active),
+        "is_manager": any(m.role == "project_manager" for m in active),
+        "oversees": any(m.role in ("org_admin", "project_manager") for m in active),
         "can_create_projects": any(m.role in ("org_admin", "project_owner") for m in active),
         "profiles": sorted(profiles),
         "requested_role": pending[1].requested_role if pending else None,

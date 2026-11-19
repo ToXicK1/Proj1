@@ -11,7 +11,7 @@ from app.organizations import members
 
 router = APIRouter(prefix="/api/v1", tags=["members"])
 
-OrgRole = Literal["org_admin", "member"]
+OrgRole = Literal["org_admin", "project_manager", "member"]
 ProjectRole = Literal["project_owner", "internal_reviewer", "team_member", "viewer"]
 
 
@@ -112,7 +112,7 @@ def remove_project_member(project_id: uuid.UUID, user_id: uuid.UUID, caller: Csr
 
 
 class AccessIn(_Strict):
-    role: Literal["org_admin", "project_owner", "member"]
+    role: Literal["org_admin", "project_manager", "project_owner", "member"]
     profiles: list[str] = Field(default_factory=list, max_length=20)
 
 

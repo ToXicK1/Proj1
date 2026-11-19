@@ -137,6 +137,16 @@ def post_message(project_id: uuid.UUID, body: MessageIn, request: Request, tasks
     return {"items": items}
 
 
+class ReplyIn(_Strict):
+    profile: str = Field(max_length=64)
+    body: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/projects/{project_id}/messages/replies", status_code=201)
+def reply(project_id: uuid.UUID, body: ReplyIn, caller: CsrfCaller, db: DbSession) -> dict:
+    return service.reply_as_professional(db, caller.user, project_id, profile=body.profile, body=body.body)
+
+
 @router.get("/projects/{project_id}/feedback")
 def feedback(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
     return {"items": service.feedback(db, caller.user, project_id)}

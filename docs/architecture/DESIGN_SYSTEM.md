@@ -46,3 +46,10 @@ All six share these tokens and components but get their own layout in Phase 10: 
 ## Not allowed
 
 Unrelated palettes, per-page hex colours, heavy gradients, glass effects, glowing borders, decorative animation, purple or green as status colours.
+
+## Fluid layout and motion (added 2026-11-19)
+
+- Spacing, type and the sidebar width scale smoothly with the screen using `clamp()` tokens (`--space-*`, `--text-*`, `--sidebar-width`). Content fills the screen up to 1440px.
+- Grids reflow by available width: six team cards settle as 3 by 2, 2 by 3 or a single column.
+- On wide screens the sidebar can be hidden and shown again (remembered per browser). On phones it folds behind a Menu button.
+- Motion is short and purposeful: hover, press, focus, tab and progress transitions, a gentle page and tab entrance, shimmer placeholders while loading, and a pulsing "Live" dot on pages that refresh themselves. All motion stops when the system asks for reduced motion.

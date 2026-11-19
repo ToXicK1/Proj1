@@ -1,7 +1,7 @@
 """Project creation and project-scoped access.
 
-Access rule: a user sees a project only through a ProjectMember row. Organization admins are not
-implicitly members. Anything the caller may not see returns not_found, never forbidden, so the
+Access rule: a user sees a project only through a ProjectMember row. Administrators and project managers
+are given a viewer row on every project of their organization; nobody else is implicitly a member. Anything the caller may not see returns not_found, never forbidden, so the
 existence of other tenants' projects cannot be probed.
 """
 
@@ -15,7 +15,7 @@ from app.auth.models import User
 from app.core.db import uuid7
 from app.core.errors import AppError, not_found
 from app.hooks import service as hooks
-from app.organizations.models import MemberProfile
+from app.organizations.models import OVERSEER_ROLES, MemberProfile, Membership
 from app.organizations.service import membership_for
 from app.projects.models import Project, ProjectMember
 
@@ -65,6 +65,11 @@ def create_project(
         MemberProfile.organization_id == organization_id)).scalars()) - {user.id}
     for holder in holders:  # the people who hold a profile work on every project of the organization
         db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=holder, project_role="team_member"))
+    overseers = set(db.execute(select(Membership.user_id).where(
+        Membership.organization_id == organization_id, Membership.status == "active",
+        Membership.role.in_(OVERSEER_ROLES))).scalars()) - holders - {user.id}
+    for person in overseers:  # administrators and project managers see every project
+        db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=person, project_role="viewer"))
     db.flush()
     append_event(
         db,

@@ -223,9 +223,9 @@ def test_a_person_can_only_approve_their_own_profiles_stages(env):
     architect, ah = env.holder("solution_architect")
     env.start()
     assert POC[0].profile == "business_analyst"
-    r = env.decide(FIRST, client=architect, headers=ah)
+    assert all(d["stage"] != FIRST for d in env.get("/deliverables", architect)["items"])  # not their department
+    r = env.decide(FIRST, version=env.item(FIRST)["current_version_id"], client=architect, headers=ah)
     assert r.status_code == 403 and r.json()["code"] == "approval_not_permitted"
-    assert not env.item(FIRST, architect)["can_decide"]
     assert env.get()["pending_actions"][0]["kind"] == "unassigned"  # nobody holds Business Analyst yet
     assert env.step_status(FIRST) == "Awaiting Review"
     analyst, h = env.holder("business_analyst")

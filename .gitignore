@@ -36,3 +36,6 @@ storage/
 .pgdev/
 test-results/
 playwright-report/
+
+# Local demo account details (never committed)
+demo-accounts.local.md

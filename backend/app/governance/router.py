@@ -322,7 +322,7 @@ def learn(change_request_id: uuid.UUID, body: LearnIn, request: Request, caller:
 def my_notifications(caller: CurrentCaller, db: DbSession) -> dict:
     rows = db.execute(select(Notification).where(Notification.user_id == caller.user.id)
                       .order_by(Notification.created_at.desc()).limit(100)).scalars()
-    return {"items": [{"id": str(n.id), "project_id": str(n.project_id), "kind": n.kind, "message": n.message,
+    return {"items": [{"id": str(n.id), "project_id": str(n.project_id) if n.project_id else None, "kind": n.kind, "message": n.message,
                        "read": n.read_at is not None} for n in rows]}
 
 

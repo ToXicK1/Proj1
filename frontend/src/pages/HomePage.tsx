@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Skeleton } from "../components/ui";
 import { ApiError, JOIN_ROLES, api, type AccessDto, type MyReviewDto, type OrgDto, type ProjectDto } from "../api";
 
 // Categories are starting points, not restrictions (USER_PORTAL.md section 4).
@@ -85,7 +86,7 @@ export function HomePage() {
           <ul className="list">
             {reviews.map((r) => (
               <li key={`${r.project_id}-${r.stage}`} className="row">
-                <Link to={`/projects/${r.project_id}?review=${r.stage}`}>{r.name}</Link>
+                <Link to={`/projects/${r.project_id}?review=${r.stage}&profile=${r.profile_key}`}>{r.name}</Link>
                 <span className="muted">{r.project} · {r.profile}</span>
               </li>
             ))}
@@ -133,7 +134,7 @@ export function HomePage() {
       <section className="card">
         <h2>My projects</h2>
         {loadError && <p role="alert" className="error">{loadError}</p>}
-        {projects === null && !loadError && <p className="muted">Loading…</p>}
+        {projects === null && !loadError && <Skeleton title={false} />}
         {projects !== null && projects.length === 0 && <p className="muted">No projects yet.</p>}
         {projects !== null && projects.length > 0 && (
           <ul className="list">
