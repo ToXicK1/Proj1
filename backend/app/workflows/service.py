@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import sandbox_client
+from app.activity import service as activity
 from app.agents import runner as agent_runner
 from app.agents import service as agent_service
 from app.agents.models import ReviewRecord
@@ -122,25 +123,56 @@ def stage_spec_from(spec: dict[str, Any], stage_key: str) -> dict[str, Any]:
     return next((s for s in spec["stages"] if s["id"] == stage_key), {})
 
 
+def _compact(content: Any) -> str:
+    return json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
 def _work_context(db: Session, execution: WorkflowExecution, project: Project, spec: dict[str, Any], revision: int,
-                  feedback: tuple[str, ...] = ()) -> WorkContext:
-    """What this run may draw on: the confirmed brief and the approved deliverables it depends on."""
+                  feedback: tuple[str, ...] = (), budget: int | None = None) -> WorkContext:
+    """What this run may draw on: the confirmed brief and approved earlier work, within a size budget.
+
+    The stage's own `reads` list comes first, most important first; the nearest earlier work fills what is left.
+    The budget is shared fairly, so one long deliverable cannot push out the others, and every cut is recorded.
+    """
+    budget = budget if budget is not None else get_settings().context_budget_chars
     stages = stage_rows(db, execution.id)
     specs = {s["id"]: s for s in db.get(WorkflowVersion, execution.workflow_version_id).spec_json["stages"]}
-    upstream: list[str] = []
+    nearest: list[str] = []
     frontier, seen = list(spec["depends_on"]), set()
-    while frontier and len(upstream) < 5:  # the nearest approved work; a prompt cannot hold everything
+    while frontier:
         key = frontier.pop(0)
         if key in seen:
             continue
         seen.add(key)
+        nearest.append(key)
         frontier.extend(specs[key]["depends_on"])
-        current = artifacts.current_version(db, stages[key].id)
+    wanted = list(dict.fromkeys([*spec.get("reads", []), *nearest]))
+    chosen: list[tuple[str, str, str]] = []  # (stage, reason, full text)
+    for key in wanted:
+        current = artifacts.current_version(db, stages[key].id) if key in stages else None
         if current is not None and stages[key].status == StageStatus.APPROVED.value:
-            upstream.append(f"{specs[key]['name']}: {json.dumps(current[1].content_json, sort_keys=True)[:2000]}")
+            reason = "needed by this step" if key in spec.get("reads", []) else "nearest earlier work"
+            chosen.append((key, reason, _compact(current[1].content_json)))
+        if len(chosen) >= 8:
+            break
+    upstream: list[str] = []
+    info: list[dict[str, Any]] = []
+    left = budget
+    for index, (key, reason, text) in enumerate(chosen):
+        share = max(0, left // (len(chosen) - index))
+        part = text if len(text) <= share else text[:max(0, share - 12)] + "…(cut)"
+        if share < 200:  # too little room to be useful
+            info.append({"stage": key, "name": specs[key]["name"], "reason": reason, "chars": 0,
+                         "full_chars": len(text), "included": False})
+            continue
+        upstream.append(f"{specs[key]['name']}: {part}")
+        info.append({"stage": key, "name": specs[key]["name"], "reason": reason, "chars": len(part),
+                     "full_chars": len(text), "included": True})
+        left -= len(part)
     return WorkContext(project_name=project.name, project_description=project.description,
                        project_type=project.project_type, revision=revision, feedback=feedback,
-                       intake=tuple(execution.config_snapshot.get("intake", [])), upstream=tuple(upstream))
+                       intake=tuple(execution.config_snapshot.get("intake", [])), upstream=tuple(upstream),
+                       upstream_info=tuple(info))
 
 
 def stage_spec(version: WorkflowVersion, stage_key: str) -> dict[str, Any]:
@@ -469,6 +501,21 @@ def _work_and_validate(
                  lead_run_ids=lead_sink)
 
 
+_RESULT_TITLES = {
+    StageStatus.AWAITING_HUMAN_REVIEW.value: "{name} is ready and waiting for a professional's approval",
+    StageStatus.COMPLETED.value: "{name} is done (no approval needed)",
+    StageStatus.BLOCKED.value: "{name} is blocked",
+    StageStatus.FAILED.value: "{name} stopped",
+}
+
+
+def _note_result(spec: dict[str, Any], stage: StageExecution) -> None:
+    title = _RESULT_TITLES.get(stage.status, "{name}: " + stage.status.lower())
+    activity.note("result", title.format(name=spec["name"]),
+                  {"status": stage.status, "reason": stage.failure_reason} if stage.failure_reason else
+                  {"status": stage.status})
+
+
 def _block(db: Session, execution: WorkflowExecution, stage_key: str, reason: str) -> StageExecution:
     return transition_stage(db, execution_id=execution.id, stage_key=stage_key, to_status=StageStatus.BLOCKED,
                             actor=ActorType.SYSTEM, reason=reason[:300], commit=False)
@@ -490,16 +537,26 @@ def _verify_in_sandbox(db: Session, execution: WorkflowExecution, stage: StageEx
     except (sandbox_client.SandboxUnavailable, OSError, ValueError):
         result = {"status": "unavailable"}
     outcome: dict[str, bool] = {}
+    checks_seen: list[dict[str, Any]] = []
     if result.get("status") == "completed":
         for kind, name in (("build", "build"), ("unit_tests", "unit_tests")):
             check = result["checks"][name]
             outcome[kind] = bool(check["passed"])
             lines = [line[:500] for line in str(check.get("output", "")).splitlines() if line.strip()][-20:]
+            checks_seen.append({"name": "Build" if kind == "build" else "Tests", "passed": bool(check["passed"]),
+                                "summary": str(check["summary"])[:500], "output": lines[-8:]})
             db.add(SensorEvidence(organization_id=execution.organization_id, project_id=execution.project_id,
                                   artifact_version_id=version.id, kind=kind, source="sandbox",
                                   outcome="pass" if check["passed"] else "fail", summary=str(check["summary"])[:500],
                                   findings=[] if check["passed"] else [str(check["summary"])[:500], *lines]))
         db.flush()
+    if checks_seen:
+        verdict = ", ".join(f"{c['name'].lower()} {'passed' if c['passed'] else 'failed'}" for c in checks_seen)
+        activity.note("checks", f"Built and tested the generated code in the sandbox: {verdict}",
+                      {"checks": checks_seen, "files": activity.files_of(source.content_json.get("source_files"))})
+    else:
+        activity.note("checks", "The sandbox could not run the code, so no build or test result exists yet",
+                      {"status": result.get("status")})
     append_event(db, chain_key=org_chain(execution.organization_id), event_type="sandbox.completed",
                  actor_type=ActorType.SYSTEM.value, organization_id=execution.organization_id,
                  project_id=execution.project_id,
@@ -617,8 +674,11 @@ def run_deterministic_stage(db: Session, *, execution_id: uuid.UUID, stage_key: 
                          to_status=StageStatus.RUNNING, actor=ActorType.SYSTEM, commit=False)
         hooks.run_hooks(db, scope, "stage.started")
         context = _work_context(db, execution, project, spec, 1)
-        result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
-                                    settings=settings or get_settings(), transport=transport)
+        with activity.scope(stage_key=stage_key, profile_key=spec.get("profile")):
+            activity.note("stage", f"Started {spec['name']}")
+            result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
+                                        settings=settings or get_settings(), transport=transport)
+            _note_result(spec, result)
         db.commit()
         return result
     except Exception:
@@ -654,8 +714,12 @@ def run_rework(db: Session, *, execution_id: uuid.UUID, stage_key: str,
         stage.rework_count += 1
         context = _work_context(db, execution, project, spec, stage.rework_count + 1,
                                 (*(cr.comment for cr in open_requests), *sensor_feedback))
-        result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
-                                    settings=settings or get_settings(), transport=transport)
+        with activity.scope(stage_key=stage_key, profile_key=spec.get("profile")):
+            activity.note("stage", f"Reworking {spec['name']} (version {stage.rework_count + 1})",
+                          {"addressing": list(context.feedback)[:10]})
+            result = _work_and_validate(db, execution=execution, stage_key=stage_key, spec=spec, context=context,
+                                        settings=settings or get_settings(), transport=transport)
+            _note_result(spec, result)
         if result.status == StageStatus.AWAITING_HUMAN_REVIEW.value:
             _, version = artifacts.current_version(db, stage.id)
             now = datetime.now(UTC)

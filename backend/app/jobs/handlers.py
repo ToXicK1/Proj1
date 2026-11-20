@@ -2,6 +2,7 @@
 
 import uuid
 
+from app.activity import service as activity
 from app.jobs.service import Handler, JobContext
 
 
@@ -20,16 +21,26 @@ def _resume(ctx: JobContext) -> None:
 
 def _answer(ctx: JobContext) -> None:
     from app.portal import service as portal
+    from app.portal.models import PortalMessage
 
-    portal.answer_question(ctx.factory, ctx.settings, ctx.transport, uuid.UUID(ctx.payload["message_id"]),
-                           finish=ctx.finish_in)
+    message_id = uuid.UUID(ctx.payload["message_id"])
+    with ctx.factory() as db:
+        message = db.get(PortalMessage, message_id)
+        department = message.profile_key if message else None
+    with activity.scope(profile_key=department):  # the answer belongs to that department's log
+        portal.answer_question(ctx.factory, ctx.settings, ctx.transport, message_id, finish=ctx.finish_in)
 
 
 def _triage(ctx: JobContext) -> None:
     from app.collab import service as collab
+    from app.collab.models import Ticket
 
-    collab.triage(ctx.factory, ctx.settings, ctx.transport, uuid.UUID(ctx.payload["ticket_id"]),
-                  finish=ctx.finish_in)
+    ticket_id = uuid.UUID(ctx.payload["ticket_id"])
+    with ctx.factory() as db:
+        ticket = db.get(Ticket, ticket_id)
+        department = ticket.profile_key if ticket else None
+    with activity.scope(profile_key=department):
+        collab.triage(ctx.factory, ctx.settings, ctx.transport, ticket_id, finish=ctx.finish_in)
 
 
 HANDLERS: dict[str, Handler] = {

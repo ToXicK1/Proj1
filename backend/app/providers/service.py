@@ -23,6 +23,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.activity import service as activity
 from app.audit.service import append_event, org_chain
 from app.auth.models import User
 from app.core.config import Settings
@@ -55,6 +56,7 @@ class _Outcome:
     output_tokens: int
     latency_ms: int
     kind: str | None
+    thinking: str = ""
 
 
 def cost_micro_usd(adapter_type: str, model: str, input_tokens: int, output_tokens: int) -> int | None:
@@ -200,7 +202,7 @@ def _call_with_retries(adapter: ProviderAdapter, request: CompletionRequest, set
         try:
             result = adapter.complete(request)
             outcomes.append(_Outcome(result.text, result.usage.input_tokens, result.usage.output_tokens,
-                                     result.latency_ms, None))
+                                     result.latency_ms, None, result.thinking))
             return outcomes
         except ProviderError as exc:
             outcomes.append(_Outcome(None, 0, 0, 0, exc.kind))
@@ -211,10 +213,11 @@ def _call_with_retries(adapter: ProviderAdapter, request: CompletionRequest, set
 
 
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
+_THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
 def parse_output(text: str, required: tuple[str, ...]) -> dict[str, Any] | None:
-    cleaned = _FENCE.sub("", text.strip()).strip()
+    cleaned = _FENCE.sub("", _THINK.sub("", text).strip()).strip()
     try:
         data = json.loads(cleaned)
     except (ValueError, TypeError):
@@ -271,6 +274,12 @@ def _record(db: Session, *, organization_id, project_id, stage_execution_id, rou
     return run.id
 
 
+_ROLE = {"lead": "doing the work", "reviewer": "independent review", "specialist": "specialist"}
+_PURPOSES = {"owner_answer": "answer to the project owner", "ticket_triage": "ticket triage"}
+_ERRORS = {"timeout": "it took too long", "rate_limited": "too many requests", "unavailable": "the service was down",
+           "auth": "the connection was refused", "bad_response": "the reply was unusable"}
+
+
 def run_structured(
     db: Session,
     settings: Settings,
@@ -309,6 +318,7 @@ def run_structured(
     attempts_total = 0
     last_kind = "unavailable"
     last_run_id: uuid.UUID | None = None
+    who = str((manifest or {}).get("agent") or _PURPOSES.get(str((manifest or {}).get("purpose")), "AI task"))
     for provider_id, model in candidates:
         provider = db.get(AiProvider, provider_id)
         if provider is None or provider.organization_id != organization_id or provider.status != "active":
@@ -322,7 +332,18 @@ def run_structured(
         request = replace(base, model=model)
         for repair in (False, True):
             attempts_total += 1
-            outcomes = _call_with_retries(adapter, request, settings)
+            live = activity.LiveCall.start(
+                f"Asking the AI model for the {who} ({_ROLE.get(kind, kind)})"
+                + (", asking again in the required shape" if repair else ""),
+                agent=who, role=kind, attempt=attempts_total, system=request.system, user=request.user,
+                max_tokens=request.max_tokens, context_tokens=settings.model_context_tokens)
+            call = replace(request, on_delta=live.delta) if live and settings.provider_stream else request
+            outcomes = _call_with_retries(adapter, call, settings)
+            if live:
+                last = outcomes[-1]
+                live.finish(ok=last.kind is None, seconds=round(sum(o.latency_ms for o in outcomes) / 1000, 1),
+                            tokens={"in": last.input_tokens, "out": last.output_tokens} if last.kind is None else None,
+                            final_text=last.text, thinking=last.thinking, error=last.kind)
             for index, outcome in enumerate(outcomes):
                 if index > 0:
                     attempts_total += 1
@@ -334,12 +355,20 @@ def run_structured(
             outcome = outcomes[-1]
             if outcome.kind is not None:
                 last_kind = outcome.kind
+                activity.note("model_error", f"The AI model did not answer ({_ERRORS.get(outcome.kind, outcome.kind)})",
+                              {"agent": who, "error": outcome.kind, "seconds": round(outcome.latency_ms / 1000, 1)})
                 break
             parsed = parse_output(outcome.text or "", required_keys)
             if parsed is not None and (accept is None or accept(parsed) is None):
                 if sink is not None:
                     sink.append(last_run_id)
+                if kind != "reviewer":  # the reviewer's verdict is shown on its own, with its findings
+                    activity.note("output", f"The {who} returned its work", {
+                        "agent": who, "seconds": round(outcome.latency_ms / 1000, 1),
+                        "tokens": {"in": outcome.input_tokens, "out": outcome.output_tokens}, **activity.preview(parsed)})
                 return parsed
+            activity.note("retry", "The reply was not in the required shape, so it was not used",
+                          {"agent": who, "seconds": round(outcome.latency_ms / 1000, 1)})
             last_kind = "bad_response"
             request = replace(
                 request,

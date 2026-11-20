@@ -7,11 +7,11 @@ A configurable, governed platform that runs a software project through a profess
 ## Layout
 
 ```
-backend/         FastAPI service, bounded contexts under backend/app, Alembic migrations, pytest suite
+backend/         FastAPI service and worker: bounded contexts under backend/app, Alembic migrations, pytest suite
 frontend/        React + TypeScript app (Vite)
-shared/          JSON schemas, API contracts, workflow templates (empty until used)
-infrastructure/  Dockerfiles and deployment (see docker-compose.yml)
-tests/           integration, end-to-end and security suites (planned)
+sandbox/         isolated runner that builds and tests generated code
+infrastructure/  Dockerfiles; deployment/ is reserved for a real target (see docker-compose.yml)
+tests/           browser end-to-end (Playwright) and security suites
 docs/            research, architecture, plan, decisions, known issues
 ```
 

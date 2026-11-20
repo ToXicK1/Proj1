@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from app.activity import service as activity
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
 from app.jobs.api import queue
 from app.portal import service
@@ -70,6 +71,12 @@ def my_reviews(caller: CurrentCaller, db: DbSession) -> dict:
 @router.get("/projects/{project_id}")
 def workspace(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
     return service.workspace(db, caller.user, project_id)
+
+
+@router.get("/projects/{project_id}/activity")
+def ai_activity(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    """What the AI is doing on this project, live. Professional team only; owners get 403."""
+    return activity.project_activity(db, caller.user, project_id)
 
 
 @router.get("/projects/{project_id}/intake")

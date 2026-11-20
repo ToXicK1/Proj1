@@ -20,6 +20,8 @@ class WorkContext:
     feedback: tuple[str, ...] = field(default_factory=tuple)  # open change requests this run answers
     intake: tuple[str, ...] = field(default_factory=tuple)  # the brief the owner confirmed
     upstream: tuple[str, ...] = field(default_factory=tuple)  # approved deliverables this stage builds on
+    # For each item in upstream: its name, why it was chosen, and how much of it fitted
+    upstream_info: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
 
 def intake_summary(ctx: WorkContext) -> dict[str, Any]:

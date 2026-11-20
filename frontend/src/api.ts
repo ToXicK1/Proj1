@@ -260,6 +260,65 @@ export interface DeliverableDto {
   change_requests: { comment: string; status: string }[];
 }
 
+export interface ActivityFieldDto {
+  key: string;
+  text?: string;
+  count?: number;
+  items?: string[];
+  files?: { path: string; lines: number; bytes: number }[];
+}
+
+export interface ActivityItemDto {
+  id: string;
+  kind: "job" | "stage" | "context" | "model_call" | "output" | "retry" | "model_error" | "review" | "checks" | "result" | string;
+  title: string;
+  stage: string | null;
+  stage_name: string | null;
+  department: string | null;
+  profile: string | null;
+  at: string;
+  detail: {
+    agent?: string;
+    seconds?: number;
+    tokens?: { in: number; out: number };
+    fields?: ActivityFieldDto[];
+    brief?: string[];
+    earlier_work?: { stage: string; name: string; reason: string; chars: number; full_chars: number; included: boolean }[];
+    feedback?: string[];
+    addressing?: string[];
+    must_return?: string[];
+    rules?: unknown[];
+    revision?: number;
+    verdict?: string;
+    findings?: string[];
+    checks?: { name: string; passed: boolean; summary: string; output: string[] }[];
+    files?: { path: string; lines: number; bytes: number }[];
+    status?: string;
+    reason?: string | null;
+    error?: string | null;
+    note?: string;
+    // a live model call
+    role?: string;
+    attempt?: number;
+    state?: "waiting" | "streaming" | "done" | "failed";
+    text?: string;
+    thinking?: string;
+    elapsed?: number;
+    prompt?: { system: string; user: string; cut: boolean };
+    prompt_tokens_est?: number;
+    context_tokens?: number;
+    reply_room_est?: number;
+    max_reply_tokens?: number;
+    warning?: string | null;
+    hidden?: string;
+  };
+}
+
+export interface ActivityDto {
+  items: ActivityItemDto[];
+  jobs: { kind: string; status: string; attempts: number; since: string }[];
+}
+
 export interface ScopeDto {
   kind: "owner" | "admin" | "manager" | "professional" | "member";
   role: string;
@@ -553,6 +612,7 @@ export const api = {
   postGlobalMessage: (channel: string, body: string, to: string | null) =>
     request<TeamMessageDto>("POST", "/api/v1/team-chat/messages", { channel, body, to }),
   portalScope: (id: string) => request<ScopeDto>("GET", `${portalPath(id)}/scope`),
+  projectActivity: (id: string) => request<ActivityDto>("GET", `${portalPath(id)}/activity`),
   projectPeople: (id: string) => request<{ items: PersonDto[] }>("GET", `${portalPath(id)}/people`),
   teamChat: (id: string, channel: string) =>
     request<{ items: TeamMessageDto[] }>("GET", `${portalPath(id)}/team-chat/${encodeURIComponent(channel)}`),

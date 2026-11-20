@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.activity import service as activity
 from app.agents import service as agents
 from app.agents.models import AgentConfiguration
 from app.approvals import service as approvals
@@ -777,6 +778,8 @@ def answer_question(factory: sessionmaker[Session], settings: Settings, transpor
             message = db.get(PortalMessage, message_id)
             project = db.get(Project, message.project_id)
         _store(db, project, member.profile, "representative", None, text)
+        activity.note("result", "Answered the project owner" if text != FALLBACK_ANSWER
+                      else "Could not answer the project owner; a holding reply was sent")
         if finish:
             finish(db)  # the job is done exactly when its answer is stored
         db.commit()

@@ -77,3 +77,25 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - It appears on the response, every log line, every job, and every audit event (`payload.correlation_id`), and the worker carries it into the work it runs.
 - **Readiness**: `GET /readyz` checks the database and (when configured) storage, and returns 503 if either is down.
 - **Tests only**: `AIDLC_JOBS_INLINE=true` makes the API run queued jobs after responding. Refused outside development and test.
+
+## 2026-11-20 — Live AI activity panel and the context fix
+
+- **AI activity menu** (top right of every project page, for the professional team: professionals, project managers, administrators; never owners or plain members). API `GET /api/v1/portal/projects/{id}/activity`; table `ai_activity` (migration `0018_ai_activity`).
+  - Every step is written in its own short transaction the moment it happens, so it is visible while the stage's own transaction is still open: job started and finished, stage started, what the agent was given, each model call, the result, the independent review, sandbox build and test results, and the outcome.
+  - **Live model calls, like a chat app's thinking view:**
+    - The exact prompt the agent received: its instructions and its input.
+    - An estimate of the prompt's size against the model's context window, with a warning when it may not fit.
+    - Any reasoning the model reports, kept separate.
+    - The reply streaming in, saved about once a second.
+    - While a call runs it shows open with a cursor ("Waiting…", "Thinking…", "Writing…"); when it ends it folds away ("Wrote N characters in Ns").
+  - **Streaming:** OpenAI and OpenAI-compatible providers (including Ollama) stream. Reasoning is taken from a `reasoning` / `reasoning_content` field or from `<think>` tags. Anthropic, Gemini and the offline mock still answer in one piece, which then appears whole.
+  - **Honest about thinking:** the local `qwen3-vl:4b-instruct` reports no reasoning, so for it the panel shows the reply being written and says so. A reasoning model will show its reasoning.
+  - **Who sees what:**
+    - Professionals see their own departments only (plus job-level lines).
+    - Generated source code, inside prompts or replies, is shown only to people allowed to see code (developers, QA, administrators). Others see a note in its place, and sandbox output lines (which can quote code) are withheld from them too.
+    - Writing to the log never breaks the work.
+- **Context gap fixed:**
+  - Each lifecycle step now lists the earlier work it needs (`reads`, validated by the compiler to be upstream). For example, Code Generation reads requirements, user stories, functional design, contracts, domain design, refined mockups, NFRs and units first.
+  - The nearest earlier work fills any space left, up to 8 items, inside a shared budget (`AIDLC_CONTEXT_BUDGET_CHARS`, default 8,000) split fairly so no single deliverable crowds out the rest.
+  - Every cut is recorded and shown in the panel ("2,000 of 5,400 chars").
+  - Running projects keep the workflow version they started with; new projects get the new `reads`.

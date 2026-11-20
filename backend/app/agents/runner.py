@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.activity import service as activity
 from app.agents import service
 from app.agents.models import AgentConfiguration, Profile, ReviewRecord
 from app.agents.tools import grant_problems
@@ -119,6 +120,13 @@ def run_lead(
         "skills": list(version.skills),
         "rules": rule_service.references(rules),
     }
+    activity.note("context", f"Gathered what the {agent_key} agent may use", {
+        "agent": agent_key, "agent_version": version.version, "must_return": list(version.required_keys),
+        "brief": list(context.intake)[:20] if "project_input" in sources else [],
+        "earlier_work": list(context.upstream_info) if "upstream_deliverables" in sources else [],
+        "feedback": list(context.feedback)[:10] if "feedback" in sources else [],
+        "rules": manifest["rules"], "revision": context.revision,
+    })
     return providers.run_structured(
         db, settings, transport=transport, organization_id=organization_id, project_id=project_id,
         stage_execution_id=stage_execution_id, route_key=version.model_route, system=system, user=user,
@@ -208,6 +216,9 @@ def run_reviewer(
     )
     db.add(record)
     db.flush()
+    activity.note("review", "Independent reviewer: " + ("no changes needed" if parsed["verdict"] == "pass"
+                                                         else "recommends changes"),
+                  {"reviewer": reviewer_key, "verdict": parsed["verdict"], "findings": parsed["findings"][:10]})
     append_event(
         db,
         chain_key=org_chain(organization_id),

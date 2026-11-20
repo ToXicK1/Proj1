@@ -12,7 +12,7 @@ Earlier issues remain in `docs/KNOWN_ISSUES.md`. This list tracks what the rebui
 | RB-6 | One generic project page instead of department workspaces | Poor professional experience; design is text-only | 10 |
 | RB-7 | Sandbox runs unit tests only; no running application, integration tests, lint or type check | QA evidence is limited | 6 and 13 |
 | RB-8 | No real deployment target | Release stages produce plans only | 13, needs a target from you |
-| RB-9 | No streaming or tool calling in provider adapters | Long runs show no progress; agents cannot use tools | 6 |
+| RB-9 | ~~No streaming~~ **Streaming done 2026-11-20** for OpenAI and OpenAI-compatible providers (Anthropic and Gemini still answer in one piece). No tool calling yet | Agents cannot use tools | 6 |
 | RB-10 | Parallel and conditional stages refused | Lifecycle cannot branch | 5 |
 | RB-11 | Email is outbox-only | People must read links from the database | 14 |
 | RB-12 | 33-stage lifecycle never run live | Unknown behaviour on a real model | 7 |
@@ -23,3 +23,5 @@ Earlier issues remain in `docs/KNOWN_ISSUES.md`. This list tracks what the rebui
 | RB-17 | Enqueueing a job commits just after the triggering change, not in the same transaction (the services commit internally) | If the API dies between the two commits, the work waits until the worker's sweep (every 60 s, after 120 s grace) queues it. Lost owner questions are not swept; the owner can ask again | 5 |
 | RB-18 | Object storage is used for code archives only so far; uploads, evidence and large artifacts come with Phase 11 | Most content still lives in PostgreSQL | 11 |
 | RB-19 | Job delivery is at least once. Handlers are written to be safe to repeat and this is tested, but a new handler must follow the same rule | A careless new handler could act twice | Review rule |
+| RB-20 | The local Ollama model runs with a 4,096-token context window (prompt and reply together), while the platform allows replies of up to 4,096 tokens. Large prompts make Ollama silently drop the start of the prompt, where the instructions are | Long stages (Code Generation in larger scopes) can lose their instructions or get cut off. The activity panel now warns per call. Fix on the machine running Ollama: raise its context length (for example `OLLAMA_CONTEXT_LENGTH=16384`), then set `AIDLC_MODEL_CONTEXT_TOKENS` and `AIDLC_CONTEXT_BUDGET_CHARS` to match | Your setting |
+| RB-21 | The activity panel refreshes by polling (every second while work runs and the panel is open), not by server push | Up to about a second of delay; no updates while the browser tab is hidden | Later |

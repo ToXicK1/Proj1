@@ -66,3 +66,25 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - The SeaweedFS store refused anonymous and wrong-key requests (403) and served the platform client's put, get, head and delete.
 - **Browser (Playwright, stack now with worker and object store):** personal 19 passed; shared `lifecycle.spec.ts` and `collab.spec.ts` each passed on a fresh stack.
 - **Correction to earlier entries:** "frontend lint clean" meant the TypeScript check only. The frontend has no linter configured.
+
+## 2026-11-20 — Live AI activity panel and the context fix
+
+- **Backend full suite:** 420 tests: 415 passed, 5 skipped (live model tests), 0 failed.
+- **`tests/test_activity.py` (12):**
+  - The story of a stage in order.
+  - Entries readable while the stage's own transaction is still open.
+  - Owners refused, professionals limited to their departments.
+  - Generated code shown only to people allowed to see code.
+  - A model outage recorded plainly; a broken log never breaks the work.
+  - The adapter streams and separates reasoning (`reasoning` field and split `<think>` tags).
+  - A model call visible half-written mid-stream, with its exact prompt.
+  - Prompts that may not fit the window flagged.
+  - Code Generation reads the approved work it needs.
+  - The budget shared and every cut recorded.
+  - `reads` refused unless upstream.
+- **Frontend:** typecheck and build clean; 17 unit tests (new: the activity menu lists steps and file names, treats AI text as text, closes on Escape, shows a running call live and folds it when done, explains withheld code).
+- **Browser:** personal 17 passed and 2 failed at browser launch ("Target page, context or browser has been closed", page-open timeout) while the backend suite was loading the machine; `auth.spec.ts` re-run alone: 5 of 5 passed.
+- **Live (local `qwen3-vl:4b-instruct`, Ollama 0.40.16, context window 4,096):**
+  - A model call sampled once a second went `waiting` → `streaming` with the reply growing 1 → 27 → 95 → … → 360 characters → `done` at 15.7 s.
+  - In the browser the menu showed the live call ("Waiting for the model…", cursor, prompt block) as the project manager.
+  - The model reports no separate reasoning.

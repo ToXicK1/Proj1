@@ -98,7 +98,7 @@ Not introduced now (on purpose): Kubernetes, Kafka, a separate vector database, 
 
 ## 5. Repository layout
 
-As created in this milestone (`backend/app/*` maps one-to-one to the bounded contexts above; `frontend/src/*` maps to the navigation in `USER_PORTAL.md` and the internal console). `shared/` holds JSON Schemas and contract fixtures used by both sides. See `SYSTEM_DESIGN.md` section 2.
+As created in this milestone (`backend/app/*` maps one-to-one to the bounded contexts above; `frontend/src/*` maps to the navigation in `USER_PORTAL.md` and the internal console). There is no `shared/` folder: the API contract lives in the backend's Pydantic models and the frontend's `api.ts`. See `SYSTEM_DESIGN.md` section 2 for the current layout.
 
 ## 6. Non-negotiable invariants (checked by tests)
 

@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.activity import service as activity
 from app.agents import service as agents
 from app.approvals import service as approvals
 from app.artifacts.service import current_version
@@ -420,6 +421,9 @@ def triage(factory: sessionmaker[Session], settings: Settings, transport: Any, t
                 post_system(db, project, ticket.profile_key, f"Ticket #{ticket.number} is waiting, but nobody is "
                             f"assigned as {member.title}.")
         _audit(db, project, "ticket.triaged", None, {"ticket": ticket.number, "status": ticket.status})
+        activity.note("result", f"Ticket #{ticket.number}: " + (
+            "answered by the AI" if ticket.status == "ai_resolved" else
+            "passed to a professional with a proposal" if ticket.ai_proposal else "passed to a professional"))
         if finish:
             finish(db)
         db.commit()

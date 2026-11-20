@@ -19,6 +19,7 @@ from sqlalchemy import and_, exists, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.activity import service as activity
 from app.core import correlation
 from app.core.config import Settings
 from app.core.db import uuid7
@@ -168,27 +169,35 @@ def run_one(factory: sessionmaker[Session], settings: Settings, transport: Any, 
         if job is None:
             return False
         job_id, kind, payload, cid = job.id, job.kind, dict(job.payload), job.correlation_id
+        attempt, org_id, project_id = job.attempts, job.organization_id, job.project_id
     token = correlation.bind(cid or correlation.new_id())
     beat = _Heartbeat(factory, job_id, worker_id, lease)
     beat.start()
-    try:
-        handler = handlers.get(kind)
-        if handler is None:
-            raise LookupError(f"no handler for job kind {kind!r}")
-        context = JobContext(factory, settings, transport, job_id, worker_id, payload)
-        log.info("running %s %s", kind, job_id)
-        handler(context)
-        if not context.finished:
-            with factory() as db:
-                mark_done(db, job_id, worker_id)
-                db.commit()
-        log.info("finished %s %s", kind, job_id)
-    except Exception:
-        status = record_failure(factory, job_id, worker_id, traceback.format_exc())
-        log.exception("job %s %s did not finish; now %s", kind, job_id, status)
-    finally:
-        beat.stopped.set()
-        correlation.reset(token)
+    label = activity.JOB_LABELS.get(kind, kind)
+    with activity.scope(factory=factory, organization_id=org_id, project_id=project_id, job_id=job_id):
+        try:
+            handler = handlers.get(kind)
+            if handler is None:
+                raise LookupError(f"no handler for job kind {kind!r}")
+            context = JobContext(factory, settings, transport, job_id, worker_id, payload)
+            log.info("running %s %s", kind, job_id)
+            activity.note("job", f"{label}: started" + (f" (attempt {attempt})" if attempt > 1 else ""))
+            handler(context)
+            if not context.finished:
+                with factory() as db:
+                    mark_done(db, job_id, worker_id)
+                    db.commit()
+            log.info("finished %s %s", kind, job_id)
+            activity.note("job", f"{label}: finished")
+        except Exception as exc:  # every failure is recorded on the job and retried or reported
+            status = record_failure(factory, job_id, worker_id, traceback.format_exc())
+            log.exception("job %s %s did not finish; now %s", kind, job_id, status)
+            activity.note("job", f"{label}: stopped by an error; " +
+                          ("it will be tried again shortly" if status == "queued" else "no attempts left"),
+                          {"error": type(exc).__name__})
+        finally:
+            beat.stopped.set()
+            correlation.reset(token)
     return True
 
 

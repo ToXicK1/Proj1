@@ -1702,6 +1702,346 @@ button.channel.selected:not(:disabled):hover {
   color: var(--purple-700);
 }
 
+/* AI activity menu (top right of the workspace) --------------------------------------------------------------- */
+.page-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 2.25rem;
+}
+
+.page > .page-topbar + .page-head {
+  margin-top: 0.35rem;
+}
+
+.act-menu {
+  position: relative;
+  margin-left: auto;
+}
+
+.act-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--surface-raised);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+button.act-button:not(:disabled):hover {
+  background: var(--surface-sunken);
+}
+
+.act-button.working {
+  border-color: var(--purple-400);
+  color: var(--purple-700);
+}
+
+.act-pulse {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+.act-button.working .act-pulse {
+  background: var(--purple-500);
+  animation: act-pulse 1.6s var(--ease) infinite;
+}
+
+@keyframes act-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(168, 85, 247, 0); }
+}
+
+.act-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  z-index: 40;
+  width: min(540px, calc(100vw - 2rem));
+  max-height: min(72vh, 680px);
+  overflow-y: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(16, 54, 41, 0.16);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  text-align: left;
+}
+
+.act-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.act-status {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.act-status.working {
+  color: var(--purple-700);
+  font-weight: 600;
+}
+
+.act-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.act-entry {
+  border-top: 1px solid var(--border);
+}
+
+.act-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.5rem 0.1rem;
+  list-style: none;
+}
+
+summary.act-row {
+  cursor: pointer;
+  font-weight: 400;
+}
+
+summary.act-row::-webkit-details-marker {
+  display: none;
+}
+
+.act-dot {
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: 0.45rem;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+.act-output,
+.act-context,
+.act-model_call {
+  background: var(--purple-500);
+}
+
+.act-review { background: var(--status-info); }
+.act-checks { background: var(--status-progress); }
+.act-result { background: var(--green-700); }
+.act-model_error,
+.act-retry { background: var(--status-error); }
+
+.act-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.act-title {
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+details[open] > summary .act-title {
+  font-weight: 600;
+}
+
+.act-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.act-detail {
+  margin: 0 0 0.6rem 1.15rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.act-field + .act-field {
+  margin-top: 0.5rem;
+}
+
+.act-field dt {
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.act-field dd {
+  margin: 0.1rem 0 0;
+}
+
+.act-field ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.act-files {
+  list-style: none;
+  padding: 0 !important;
+}
+
+.act-files li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.act-files code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.act-pass { color: var(--status-success); }
+.act-fail { color: var(--status-error); }
+
+.act-detail .code {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}
+
+.act-cut { color: var(--status-warning); }
+
+/* Live model calls: shown like a chat app's thinking panel */
+.act-call.running > details > summary .act-title {
+  font-weight: 600;
+}
+
+.act-dot.pulsing {
+  animation: act-pulse 1.4s var(--ease) infinite;
+}
+
+.act-thinking {
+  background: linear-gradient(90deg, var(--text-muted) 20%, var(--purple-500) 50%, var(--text-muted) 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2s linear infinite;
+}
+
+.act-call-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.act-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.act-block-label {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.act-thought,
+.act-reply {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+}
+
+.act-thought {
+  font-style: italic;
+  color: var(--text-muted);
+  border-left: 3px solid var(--purple-400);
+  background: var(--purple-100);
+}
+
+.act-reply {
+  font-family: var(--font-mono);
+  background: #fff;
+  border: 1px solid var(--border);
+}
+
+.act-caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--purple-500);
+  animation: act-blink 1s steps(2, start) infinite;
+}
+
+@keyframes act-blink {
+  to { visibility: hidden; }
+}
+
+.act-warning {
+  margin: 0;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+  font-size: 0.8rem;
+}
+
+.act-hidden {
+  margin: 0;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  font-size: 0.8rem;
+}
+
+.act-prompt > summary {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--green-700);
+}
+
+.act-prompt[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .act-thinking,
+  .act-dot.pulsing,
+  .act-caret {
+    animation: none;
+  }
+
+  .act-thinking {
+    color: var(--purple-700);
+    background: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .act-panel {
+    position: fixed;
+    top: 3.5rem;
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+  }
+}
+
 /* Loading and live updates ----------------------------------------------------------------------------------- */
 .skeleton {
   display: block;
@@ -1809,6 +2149,7 @@ details[open] > :not(summary) {
 @media (prefers-reduced-motion: reduce) {
   .skeleton,
   .live-dot,
+  .act-pulse,
   .content,
   .tabpanel-enter,
   details[open] > :not(summary) {

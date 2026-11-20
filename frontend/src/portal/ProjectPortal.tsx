@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { Link, useSearchParams } from "react-router-dom";
 import { PROFILES, TABS_FOR, type PortalTab } from "./roles";
 import { Avatar, EmptyState, IdentityTag, LiveIndicator, PageHeader, Panel, Skeleton, StatusPill, When } from "../components/ui";
+import { ActivityMenu } from "./ActivityMenu";
 import { DepartmentStatus, TeamChat, Tickets, projectChat } from "./Collaboration";
 import { ApiError, api, type ScopeDto, type DeliverableDto, type FeedbackDto, type IntakeDto, type PortalMessageDto, type WorkspaceDto } from "../api";
 
@@ -563,8 +564,12 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
     : views[scope.kind];
   return (
     <div className="page project-page">
+      <div className="page-topbar">
+        <nav aria-label="Breadcrumb" className="crumbs"><Link to="/">My projects</Link><span aria-hidden="true">/</span><span>{data.project.name}</span></nav>
+        {(scope.kind === "admin" || scope.kind === "manager" || scope.kind === "professional") &&
+          <ActivityMenu projectId={projectId} />}
+      </div>
       <PageHeader
-        eyebrow={<nav aria-label="Breadcrumb" className="crumbs"><Link to="/">My projects</Link><span aria-hidden="true">/</span><span>{data.project.name}</span></nav>}
         title={data.project.name}
         meta={`${data.project.type} · ${data.project.status}`}
         actions={<><LiveIndicator updated={updated} />{yourRole && <span className="role-tag">{yourRole}</span>}</>}>

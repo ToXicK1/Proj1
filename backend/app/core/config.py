@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     provider_backoff_seconds: float = 0.5
     provider_timeout_seconds: float = 120.0  # a full deliverable takes longer than a short answer
     provider_max_tokens: int = 4096
+    # How much earlier approved work (characters) goes into one agent's input. Keep the whole prompt plus the reply
+    # inside the model's context window: a local model with a 4,096-token window silently drops what does not fit.
+    context_budget_chars: int = 8000
+    model_context_tokens: int = 4096  # used only to warn when a prompt may not fit
+    provider_stream: bool = True  # stream replies so the activity log can show them as they are written
     signup_mode: Literal["shared", "personal"] = "shared"  # one organization, or one per signup
     bootstrap_admin_email: str | None = None  # an existing account that administers the shared organization
     default_llm_base_url: str | None = None  # connected automatically for the shared organization

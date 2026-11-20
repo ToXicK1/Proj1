@@ -144,6 +144,38 @@ STAGES: tuple[Stage, ...] = (
 )
 BY_STAGE = {s.id: s for s in STAGES}
 
+# The approved earlier work each step needs, most important first. Steps not listed get their nearest earlier work.
+# Only stages that are in the chosen scope and come earlier are used.
+READS: dict[str, tuple[str, ...]] = {
+    "requirements_analysis": ("intent_capture", "scope_definition", "feasibility", "market_research",
+                              "reverse_engineering"),
+    "user_stories": ("requirements_analysis", "scope_definition", "intent_capture"),
+    "refined_mockups": ("user_stories", "rough_mockups", "requirements_analysis"),
+    "domain_design": ("requirements_analysis", "user_stories"),
+    "units_generation": ("domain_design", "user_stories", "requirements_analysis"),
+    "contract_design": ("units_generation", "domain_design", "requirements_analysis"),
+    "delivery_planning": ("units_generation", "scope_definition", "requirements_analysis"),
+    "functional_design": ("units_generation", "domain_design", "contract_design", "user_stories",
+                          "requirements_analysis"),
+    "nfr_requirements": ("requirements_analysis", "feasibility", "practices_discovery"),
+    "nfr_design": ("nfr_requirements", "functional_design"),
+    "infrastructure_design": ("nfr_design", "nfr_requirements", "practices_discovery"),
+    "code_generation": ("requirements_analysis", "user_stories", "functional_design", "contract_design",
+                        "domain_design", "refined_mockups", "nfr_requirements", "units_generation",
+                        "reverse_engineering", "intent_capture"),
+    "build_and_test": ("code_generation", "requirements_analysis", "user_stories", "nfr_requirements",
+                       "practices_discovery"),
+    "ci_pipeline": ("practices_discovery", "build_and_test", "code_generation"),
+    "deployment_pipeline": ("ci_pipeline", "infrastructure_design"),
+    "environment_provisioning": ("infrastructure_design", "nfr_requirements"),
+    "deployment_execution": ("deployment_pipeline", "environment_provisioning", "build_and_test"),
+    "observability_setup": ("nfr_requirements", "infrastructure_design"),
+    "incident_response": ("observability_setup", "deployment_execution"),
+    "performance_validation": ("nfr_requirements", "build_and_test"),
+    "feedback_optimization": ("observability_setup", "incident_response", "requirements_analysis"),
+    "approval_handoff": ("intent_capture", "scope_definition", "feasibility", "rough_mockups"),
+}
+
 
 def template_key(scope: str) -> str:
     return f"aidlc-{scope}"
@@ -166,6 +198,10 @@ def workflow_spec(scope: str) -> dict[str, Any]:
             "work": stage.work, "output_required_keys": list(stage.keys), "profile": stage.profile,
             "human_gate": stage.gated, "owner_visible": stage.gated,
         }
+        earlier = {c.id for c in chosen[:index]}
+        reads = [r for r in READS.get(stage.id, ()) if r in earlier]
+        if reads:
+            item["reads"] = reads
         if stage.gated:
             item |= {"protected": True, "approval_policy": {"type": "single", "role": f"profile:{stage.profile}"},
                      "agent": lead_key(stage), "reviewer": reviewer_key(stage.profile),

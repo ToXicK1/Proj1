@@ -110,19 +110,24 @@ Conventions: UUIDv7 primary keys; `created_at`, `updated_at` (UTC); `version` in
 
 Indexes (initial): `(organization_id, project_id, occurred_at)`, `(stage_execution_id)`, `(correlation_id)`, `(artifact_version_id)` on approvals, partial unique index for `ACTIVE` approvals per slot.
 
-## 2. Repository layout (as created)
+## 2. Repository layout (current, 2026-11-20)
 
 ```
-backend/app/{api,core,auth,organizations,projects,profiles,workflows,stages,approvals,agents,
-             providers,hooks,sensors,rules,tools,skills,artifacts,audit,notifications,portal}
-backend/migrations   backend/tests
-frontend/src/{components,pages,workspaces,workflow-studio,profiles,approvals,services}
-shared/{schemas,contracts,workflow-templates}
-infrastructure/{docker,deployment}
-tests/{integration,e2e,security}
-docs/{research,architecture (reserved),development,operations}  + top-level architecture docs
-.claude/{agents,skills,hooks}   (development-time Claude Code assets; M2+)
+backend/app/{core,auth,organizations,projects,agents,workflows,approvals,providers,hooks,sensors,rules,
+             skills,artifacts,audit,notifications,portal,collab,studio,governance,jobs,storage,activity,tools}
+backend/app/worker.py   backend/migrations   backend/tests
+frontend/src/{components,pages,portal,studio}
+sandbox/   infrastructure/{docker,deployment}
+tests/{e2e,security}
+docs/{research,architecture,development,operations,rebuild,reference-research}  + top-level architecture docs
+.claude/{agents,skills,hooks}   (development-time Claude Code assets, none yet)
 ```
+
+Placeholder folders from the first layout that were never used were removed on 2026-11-20: `backend/app/{api,stages,profiles}`
+(routes live in each module's `router.py`, the stage engine in `workflows`, profiles in `agents`),
+`frontend/src/{approvals,profiles,services,workflow-studio,workspaces}` (built as `portal` and `studio`), `shared/` and
+`tests/integration` (the backend suite covers integration). `backend/app/tools` and `infrastructure/deployment` stay as
+placeholders for tool calling (Phase 6) and a real deployment target.
 
 Rule: a module may call another module's *service* interface; it may not import another module's repository or write its tables.
 
@@ -136,7 +141,7 @@ Rule: a module may call another module's *service* interface; it may not import 
 - Errors: RFC 9457 problem details; typed codes (`invalid_transition`, `version_conflict`, `approval_not_permitted`, `sensor_blocking`, `tenant_mismatch` mapped to 404).
 - Responses never include secrets, provider names unless the caller is an admin, or internal agent prompts.
 - Pagination: cursor-based on audit and messages.
-- OpenAPI generated and committed; the frontend client is generated from it so the contract is shared (`shared/contracts/`).
+- OpenAPI is served by the API at `/api/docs`. Not yet done: committing it and generating the frontend client from it; today `frontend/src/api.ts` is written by hand.
 
 Portal API is a separate prefix `/api/v1/portal/...` with its own response models (see `USER_PORTAL.md`).
 

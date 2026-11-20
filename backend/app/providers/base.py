@@ -4,6 +4,7 @@ Every adapter returns a CompletionResult or raises ProviderError with a normaliz
 never see vendor status codes or payloads, and they never see a credential.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
@@ -22,6 +23,8 @@ class CompletionRequest:
     max_tokens: int = 1024
     temperature: float = 0.0
     timeout_seconds: float = 30.0
+    # Called with ("text" | "thinking", chunk) as a streamed reply arrives. Adapters that cannot stream ignore it.
+    on_delta: Callable[[str, str], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,7 @@ class CompletionResult:
     usage: Usage
     model: str
     latency_ms: int
+    thinking: str = ""  # reasoning the model reported separately from its answer, when it does
 
 
 class ProviderError(Exception):

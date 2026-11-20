@@ -49,6 +49,7 @@ class StageSpec(_Strict):
     agent: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
     reviewer: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
     sensors: list[SensorSpec] = Field(default_factory=list, max_length=30)
+    reads: list[str] = Field(default_factory=list, max_length=20)  # earlier stages whose approved work it needs
 
 
 class WorkflowSpec(_Strict):
@@ -144,6 +145,9 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
         problems += _sensor_problems(f"stages[{i}].sensors", stage, graph)
         if stage.sandbox_source and stage.sandbox_source not in _upstream(stage.id, graph):
             problems.append(f"stages[{i}].sandbox_source: stage '{stage.sandbox_source}' is not upstream")
+        for ref in stage.reads:
+            if ref not in _upstream(stage.id, graph):
+                problems.append(f"stages[{i}].reads: stage '{ref}' is not upstream, so its work cannot exist yet")
     order: list[str] = []
     if not problems:
         order, cycle = _topological(graph)
