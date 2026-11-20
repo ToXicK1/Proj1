@@ -10,6 +10,7 @@ and commit once at the end. Any error rolls the whole unit back.
 
 import json
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -152,18 +153,18 @@ def _work_context(db: Session, execution: WorkflowExecution, project: Project, s
         nearest.append(key)
         frontier.extend(specs[key]["depends_on"])
     wanted = list(dict.fromkeys([*spec.get("reads", []), *nearest]))
-    chosen: list[tuple[str, str, str]] = []  # (stage, reason, full text)
+    chosen: list[tuple[str, str, str, str]] = []  # (stage, reason, full text, version id)
     for key in wanted:
         current = artifacts.current_version(db, stages[key].id) if key in stages else None
         if current is not None and stages[key].status == StageStatus.APPROVED.value:
             reason = "needed by this step" if key in spec.get("reads", []) else "nearest earlier work"
-            chosen.append((key, reason, _compact(current[1].content_json)))
+            chosen.append((key, reason, _compact(current[1].content_json), str(current[1].id)))
         if len(chosen) >= 8:
             break
     upstream: list[str] = []
     info: list[dict[str, Any]] = []
     left = budget
-    for index, (key, reason, text) in enumerate(chosen):
+    for index, (key, reason, text, version_id) in enumerate(chosen):
         share = max(0, left // (len(chosen) - index))
         part = text if len(text) <= share else text[:max(0, share - 12)] + "…(cut)"
         if share < 200:  # too little room to be useful
@@ -172,7 +173,7 @@ def _work_context(db: Session, execution: WorkflowExecution, project: Project, s
             continue
         upstream.append(f"{specs[key]['name']}: {part}")
         info.append({"stage": key, "name": specs[key]["name"], "reason": reason, "chars": len(part),
-                     "full_chars": len(text), "included": True})
+                     "full_chars": len(text), "included": True, "version_id": version_id})
         left -= len(part)
     return WorkContext(project_name=project.name, project_description=project.description,
                        project_type=project.project_type, revision=revision, feedback=feedback,
@@ -202,7 +203,8 @@ def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_
         raise AppError(404, "unknown_workflow_version", "Workflow version does not exist")
     compiled = compile_workflow(version.spec_json, known_work=set(KNOWN_WORK))
 
-    agent_keys = {k for s in version.spec_json["stages"] for k in (s.get("agent"), s.get("reviewer")) if k}
+    agent_keys = {k for s in version.spec_json["stages"]
+                  for k in (s.get("agent"), s.get("reviewer"), *s.get("specialists", [])) if k}
     execution = WorkflowExecution(
         id=uuid7(),
         project_id=project.id,
@@ -468,6 +470,15 @@ def _run_ai(
 ) -> dict[str, Any]:
     stage_key = stage.stage_key
     config = execution.config_snapshot
+    if spec.get("agent") and spec.get("specialists"):
+        notes = []
+        for key in spec["specialists"]:  # each is its own recorded execution; the orchestrator routes, agents never
+            contribution = agent_runner.run_specialist(  # call each other (RD-9)
+                db, settings, transport=transport, organization_id=execution.organization_id,
+                project_id=execution.project_id, stage_execution_id=stage.id, stage_key=stage_key, agent_key=key,
+                profile_key=spec.get("profile"), context=context, config=config)
+            notes.append(f"{key}: {json.dumps(contribution, sort_keys=True)[:1500]}")
+        context = replace(context, contributions=tuple(notes))
     if spec.get("agent"):
         return agent_runner.run_lead(
             db, settings, transport=transport, organization_id=execution.organization_id,
@@ -547,6 +558,10 @@ def _finish_run(db: Session, *, execution_id: uuid.UUID, stage_key: str, spec: d
         return result
     transition_stage(db, execution_id=execution_id, stage_key=stage_key, to_status=StageStatus.AI_COMPLETED,
                      actor=ActorType.SYSTEM, output=output, commit=False)
+    if lead_sink:
+        _, produced = artifacts.current_version(db, stage.id)
+        for run in db.execute(select(AgentRun).where(AgentRun.id.in_(lead_sink))).scalars():
+            run.output_artifact_version_id = produced.id
     failures, _ = hooks.run_hooks(db, hook_scope(db, execution, stage_key), "stage.ai_completed")
     transition_stage(db, execution_id=execution_id, stage_key=stage_key, to_status=StageStatus.VALIDATING,
                      actor=ActorType.SYSTEM, commit=False)

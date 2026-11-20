@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type OrgDto, type StudioCatalogDto } from "../api";
 import { HooksPanel, ProfilesPanel, RulesPanel, SensorsPanel } from "../studio/ConfigPanels";
+import { RoutingPanel } from "../studio/RoutingPanel";
 import { SetupPanel } from "../studio/SetupPanel";
 import { WorkflowsPanel } from "../studio/WorkflowsPanel";
 
-const TABS = ["Workflows", "Profiles and agents", "Rules", "Hooks", "Sensors", "AI Settings"] as const;
+const TABS = ["Workflows", "Profiles and agents", "Agents and routing", "Rules", "Hooks", "Sensors",
+  "AI Settings"] as const;
 type Tab = (typeof TABS)[number];
 
 export function StudioPage() {
@@ -58,6 +60,7 @@ export function StudioPage() {
         <div role="tabpanel" aria-label={tab} key={orgId}>
           {tab === "Workflows" && <WorkflowsPanel orgId={orgId} catalog={props.catalog} />}
           {tab === "Profiles and agents" && <ProfilesPanel {...props} />}
+          {tab === "Agents and routing" && <RoutingPanel orgId={orgId} catalog={props.catalog} />}
           {tab === "Rules" && <RulesPanel {...props} />}
           {tab === "Hooks" && <HooksPanel {...props} />}
           {tab === "Sensors" && <SensorsPanel catalog={props.catalog} />}

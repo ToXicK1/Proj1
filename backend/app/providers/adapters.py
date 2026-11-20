@@ -146,6 +146,7 @@ def _stream_chat(client: httpx.Client, url: str, headers: dict[str, str], body: 
     usage: dict[str, Any] = {}
     model = request.model
     splitter = ThinkSplitter()
+    calls: dict[int, dict[str, str]] = {}
 
     def deliver(parts: list[tuple[str, str]]) -> None:
         for kind, piece in parts:
@@ -166,7 +167,8 @@ def _stream_chat(client: httpx.Client, url: str, headers: dict[str, str], body: 
                 deliver([("thinking", result.thinking)] if result.thinking else [])
                 deliver(splitter.feed(result.text) + splitter.flush())
                 return CompletionResult(text="".join(text), usage=result.usage, model=result.model,
-                                        latency_ms=result.latency_ms, thinking="".join(thinking))
+                                        latency_ms=result.latency_ms, thinking="".join(thinking),
+                                        tool_calls=result.tool_calls)
             for line in response.iter_lines():
                 if not line.startswith("data:"):
                     continue
@@ -189,6 +191,13 @@ def _stream_chat(client: httpx.Client, url: str, headers: dict[str, str], body: 
                         deliver([("thinking", str(reasoning))])
                     if delta.get("content"):
                         deliver(splitter.feed(str(delta["content"])))
+                    for part in delta.get("tool_calls") or []:
+                        slot = calls.setdefault(int(part.get("index", len(calls))), {"id": "", "name": "", "arguments": ""})
+                        fn = part.get("function") or {}
+                        slot["id"] = part.get("id") or slot["id"]
+                        slot["name"] += fn.get("name") or ""
+                        args = fn.get("arguments")
+                        slot["arguments"] += args if isinstance(args, str) else json.dumps(args) if args else ""
             deliver(splitter.flush())
     except httpx.TimeoutException as exc:
         raise ProviderError("timeout", type(exc).__name__) from exc
@@ -197,7 +206,9 @@ def _stream_chat(client: httpx.Client, url: str, headers: dict[str, str], body: 
     return CompletionResult(
         text="".join(text),
         usage=Usage(int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0))),
-        model=model, latency_ms=int((time.perf_counter() - started) * 1000), thinking="".join(thinking))
+        model=model, latency_ms=int((time.perf_counter() - started) * 1000), thinking="".join(thinking),
+        tool_calls=tuple({"id": c["id"] or f"call_{i}", "name": c["name"], "arguments": c["arguments"] or "{}"}
+                         for i, c in sorted(calls.items())))
 
 
 def _parse_chat(data: dict[str, Any], request: CompletionRequest, latency: int) -> CompletionResult:
@@ -208,12 +219,17 @@ def _parse_chat(data: dict[str, Any], request: CompletionRequest, latency: int) 
         raise ProviderError("content_filtered", "filtered")
     message = choices[0].get("message") or {}
     usage = data.get("usage") or {}
+    calls = tuple({"id": str(c.get("id") or f"call_{i}"), "name": str((c.get("function") or {}).get("name", "")),
+                   "arguments": (c.get("function") or {}).get("arguments") or "{}"}
+                  for i, c in enumerate(message.get("tool_calls") or []) if isinstance(c, dict))
     return CompletionResult(
         text=str(message.get("content") or ""),
         usage=Usage(int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0))),
         model=str(data.get("model", request.model)),
         latency_ms=latency,
         thinking=str(message.get("reasoning") or message.get("reasoning_content") or ""),
+        tool_calls=tuple({**c, "arguments": c["arguments"] if isinstance(c["arguments"], str)
+                          else json.dumps(c["arguments"])} for c in calls),
     )
 
 
@@ -228,12 +244,14 @@ def _chat_completions(
         "model": request.model,
         "max_tokens": request.max_tokens,
         "temperature": request.temperature,
-        "messages": [
+        "messages": list(request.messages) or [
             {"role": "system", "content": request.system},
             {"role": "user", "content": request.user},
         ],
     }
-    if json_mode:
+    if request.tools:
+        body["tools"] = list(request.tools)
+    if json_mode and not request.tools:
         body["response_format"] = {"type": "json_object"}
     if request.on_delta is not None:
         return _stream_chat(client, url, headers, body, request)

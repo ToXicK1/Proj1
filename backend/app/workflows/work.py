@@ -22,6 +22,8 @@ class WorkContext:
     upstream: tuple[str, ...] = field(default_factory=tuple)  # approved deliverables this stage builds on
     # For each item in upstream: its name, why it was chosen, and how much of it fitted
     upstream_info: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    # Advisory notes from support specialists, gathered just before the lead works
+    contributions: tuple[str, ...] = field(default_factory=tuple)
 
 
 def intake_summary(ctx: WorkContext) -> dict[str, Any]:

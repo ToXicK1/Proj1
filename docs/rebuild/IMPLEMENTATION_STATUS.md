@@ -142,3 +142,38 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - AWAITING_HUMAN_REVIEW was not renamed to AWAITING_APPROVAL; same meaning, and renaming would churn every screen.
   - UNDER_REVIEW was not added: the AI review runs inside the validation step, so there is no separate waiting state to show.
   - The default lifecycle is still sequential.
+
+## 2026-11-20 — Phase 6: Orchestration
+
+- **Tool calling with permissions** (`app/agents/tool_runtime.py`).
+  - Four READ tools now run:
+    - `read_project`: the brief and project details;
+    - `list_approved_work`;
+    - `read_artifact`: a whole earlier deliverable or one field;
+    - `search_approved_work`: matching passages.
+  - They see only human-approved work from stages upstream of the current one, in the same execution: never drafts, later stages or other projects.
+  - Each call is checked against the grants on the agent's version, its arguments validated, its result bounded (3,000 characters) and returned to the model as data.
+  - Each run may use tools for at most 4 rounds and 8 calls, and must then answer.
+  - Every call is recorded (`tool_executions`: tool, permission class, arguments, status, result size and SHA-256) and shown live in the AI activity panel.
+  - WRITE, EXECUTE, ADMINISTRATIVE and EXTERNAL_SIDE_EFFECT tools stay ungrantable.
+  - The OpenAI-compatible adapter (including Ollama) sends tool definitions and reads tool calls, streaming or not.
+- **The lifecycle leads hold the read tools.** New teams get them; existing teams get a new agent version with them at the next provisioning. Running projects keep the versions they started with.
+- **Execution records** on every agent run:
+  - department and task (lead, reviewer, specialist, answer or triage);
+  - SHA-256 of the exact prompt;
+  - the artifact versions it was given;
+  - its tool grants;
+  - the artifact version it produced;
+  - the correlation ID.
+- **Routing policies** (`routing_policies`, `GET/PUT /api/v1/orgs/{org}/routing-policies`, administrators only, audited).
+  - Choose the model route per task, and optionally per department. The most specific rule wins; without a rule an agent uses its own route.
+  - A reviewer rule can require a different provider from the one that wrote the work. If none is available, the review stops with `no_independent_provider` instead of reviewing its own provider's work.
+  - Routing also applies to owner answers and ticket triage.
+- **Specialist registry.**
+  - A third agent kind, `specialist`. A stage can list up to 3; the compiler checks them.
+  - Before the lead works, each specialist gives an advisory contribution in its own recorded run, and the lead receives the notes as advice.
+  - The orchestrator routes; agents never call each other (RD-9).
+  - `GET /api/v1/orgs/{org}/agent-registry` lists every department's leads, reviewers and specialists with version, route, tools and outputs.
+- **Studio:** a new "Agents and routing" tab with the registry by department and an editor for routing rules.
+- **Live (local `qwen3-vl:4b-instruct`).** On its own, the Intent Capture lead called `read_project`, then `search_approved_work`, then answered. Its runs record department, task, digest, grants, the produced version and the request ID, and the reviewer's input is exactly that version.
+- Migration `0020_orchestration`.

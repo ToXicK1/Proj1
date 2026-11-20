@@ -2,7 +2,7 @@
 
 Only tools in this catalogue can be granted, and only at the classes the current milestone allows.
 Granting never widens what a human may do: an agent holds exactly the grants on its version.
-No tool in the catalogue executes anything yet; the catalogue fixes names and classes first.
+The READ tools run (app/agents/tool_runtime.py); the other classes stay ungrantable until their policies exist.
 """
 
 from enum import StrEnum
@@ -19,6 +19,8 @@ class PermissionClass(StrEnum):
 TOOL_CATALOG: dict[str, PermissionClass] = {
     "read_project": PermissionClass.READ,
     "read_artifact": PermissionClass.READ,
+    "list_approved_work": PermissionClass.READ,
+    "search_approved_work": PermissionClass.READ,
     "write_note": PermissionClass.WRITE,
     "run_tests": PermissionClass.EXECUTE,
     "edit_rules": PermissionClass.ADMINISTRATIVE,

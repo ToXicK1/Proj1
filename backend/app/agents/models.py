@@ -39,7 +39,7 @@ class AgentConfiguration(Base):
     __tablename__ = "agent_configurations"
     __table_args__ = (
         UniqueConstraint("organization_id", "key", name="uq_agent_configurations_org_key"),
-        CheckConstraint("kind in ('lead','reviewer')", name="kind_valid"),
+        CheckConstraint("kind in ('lead','reviewer','specialist')", name="kind_valid"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)

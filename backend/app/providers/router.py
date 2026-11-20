@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
 from app.core.config import Settings
-from app.providers import service
+from app.providers import routing, service
 from app.providers.models import AiProvider, ModelRoute, SecretReference
 
 router = APIRouter(prefix="/api/v1/orgs/{organization_id}", tags=["providers"])
@@ -134,3 +134,27 @@ def list_routes(organization_id: uuid.UUID, caller: CurrentCaller, db: DbSession
                       .order_by(ModelRoute.key)).scalars()
     return {"items": [_route_out(r) for r in rows]}
 
+
+
+class RoutingRuleIn(_Strict):
+    task: Literal["lead", "reviewer", "specialist", "answer", "triage"]
+    profile: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
+    route: str = Field(pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
+    require_different_provider: bool = False
+
+
+class RoutingPolicyIn(_Strict):
+    rules: list[RoutingRuleIn] = Field(default_factory=list, max_length=60)
+
+
+@router.get("/routing-policies")
+def routing_policies(organization_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    return {"rules": routing.list_policies(db, caller.user, organization_id)}
+
+
+@router.put("/routing-policies")
+def replace_routing_policies(organization_id: uuid.UUID, body: RoutingPolicyIn, caller: CsrfCaller,
+                             db: DbSession) -> dict:
+    """Which model route each kind of AI task uses, per department if needed. Administrators only."""
+    return {"rules": routing.replace_policies(db, caller.user, organization_id,
+                                              [r.model_dump() for r in body.rules])}

@@ -22,7 +22,7 @@ class ProfileIn(_Strict):
 class AgentIn(_Strict):
     profile: str = Field(min_length=2, max_length=64)
     key: str = Field(min_length=2, max_length=64)
-    kind: Literal["lead", "reviewer"]
+    kind: Literal["lead", "reviewer", "specialist"]
     instructions: str = Field(min_length=1, max_length=4000)
     required_keys: list[str] = Field(min_length=1, max_length=8)
     model_route: str = Field(min_length=2, max_length=64)
@@ -68,6 +68,13 @@ def add_version(organization_id: uuid.UUID, key: str, body: VersionIn, caller: C
         tools=body.tools, skills=body.skills, allow_fallback=body.allow_fallback,
     )
     return {"key": key, "version": version.version}
+
+
+@router.get("/agent-registry")
+def agent_registry(organization_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    """Every department's agents: leads by step, independent reviewers and support specialists, with their current
+    version, route, tools and whether they are independent of each other."""
+    return {"departments": service.registry(db, caller.user, organization_id)}
 
 
 @router.get("/agents")

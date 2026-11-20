@@ -27,7 +27,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testIgnore: shared ? /^(?!.*(lifecycle|collab)\.spec).*$/ : /(layout|lifecycle|collab)\.spec\.ts/ },
+    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testIgnore: shared ? /^(?!.*(lifecycle|lifecycle-live|collab)\.spec).*$/ : /(layout|lifecycle|lifecycle-live|collab)\.spec\.ts/ },
     { name: "mobile-chromium", use: { ...devices["Pixel 5"], channel }, testMatch: shared ? /^$/ : /layout\.spec\.ts/ },
   ],
 });

@@ -177,6 +177,10 @@ READS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Read-only tools every lead gets: look up the brief and approved earlier work on demand (Phase 6)
+LEAD_TOOLS = ("list_approved_work", "read_artifact", "read_project", "search_approved_work")
+
+
 def template_key(scope: str) -> str:
     return f"aidlc-{scope}"
 
@@ -236,20 +240,23 @@ def provision(db: Session, user: User, organization_id: uuid.UUID, model_route: 
                 required_keys=["verdict", "findings"], model_route=model_route,
                 context_sources=["stage_artifact"], tools=[])
     for stage in STAGES:
-        if stage.gated and lead_key(stage) not in existing:
+        if not stage.gated:
+            continue
+        instructions = (f"You support a {BY_PROFILE[stage.profile].title} on the {stage.name} step of a software "
+                        f"project. {stage.brief} Build on the approved earlier work when it is provided.")
+        if lead_key(stage) not in existing:
             agents.create_agent(
                 db, user, organization_id=organization_id, profile_key=stage.profile, key=lead_key(stage), kind="lead",
-                instructions=f"You support a {BY_PROFILE[stage.profile].title} on the {stage.name} step of a software "
-                             f"project. {stage.brief} Build on the approved earlier work when it is provided.",
-                required_keys=list(stage.keys), model_route=model_route,
-                context_sources=["project_input", "feedback", "upstream_deliverables"], tools=[])
-        elif stage.sandbox == "self":  # teams set up before the sandbox existed get the new instructions
-            current = agents.latest(db, organization_id, lead_key(stage)).version
-            if "source_files" not in current.instructions:
-                agents.add_version(
-                    db, user, organization_id=organization_id, key=lead_key(stage),
-                    instructions=f"You support a {BY_PROFILE[stage.profile].title} on the {stage.name} step of a "
-                                 f"software project. {stage.brief} Build on the approved earlier work provided.",
-                    required_keys=list(stage.keys), model_route=current.model_route,
-                    context_sources=list(current.context_sources), tools=list(current.tools))
+                instructions=instructions, required_keys=list(stage.keys), model_route=model_route,
+                context_sources=["project_input", "feedback", "upstream_deliverables"], tools=list(LEAD_TOOLS))
+            continue
+        current = agents.latest(db, organization_id, lead_key(stage)).version
+        stale_code = stage.sandbox == "self" and "source_files" not in current.instructions
+        if stale_code or not current.tools:  # bring older teams up to date; edited instructions are kept otherwise
+            agents.add_version(
+                db, user, organization_id=organization_id, key=lead_key(stage),
+                instructions=instructions if stale_code else current.instructions,
+                required_keys=list(current.required_keys), model_route=current.model_route,
+                context_sources=list(current.context_sources),
+                tools=sorted(set(current.tools) | set(LEAD_TOOLS)))
     return {"profiles": len(TEAM), "stages": len(STAGES)}

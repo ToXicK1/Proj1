@@ -52,6 +52,8 @@ class StageSpec(_Strict):
     reviewer: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
     sensors: list[SensorSpec] = Field(default_factory=list, max_length=30)
     reads: list[str] = Field(default_factory=list, max_length=20)  # earlier stages whose approved work it needs
+    # Support specialists that contribute advisory notes before the lead works (each recorded on its own)
+    specialists: list[str] = Field(default_factory=list, max_length=3)
 
 
 class WorkflowSpec(_Strict):
@@ -133,6 +135,16 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
                 problems.append(f"{path}.reviewer: a reviewer needs a lead agent")
             elif stage.reviewer == stage.agent:
                 problems.append(f"{path}.reviewer: the reviewer must not be the lead agent")
+        if stage.specialists:
+            if stage.agent is None:
+                problems.append(f"{path}.specialists: specialists support a lead agent; this stage has none")
+            for key in stage.specialists:
+                if not re.match(r"^[a-z][a-z0-9_\-]{1,63}$", key):
+                    problems.append(f"{path}.specialists: '{key}' is not a valid agent key")
+                elif key in (stage.agent, stage.reviewer):
+                    problems.append(f"{path}.specialists: '{key}' is already this stage's lead or reviewer")
+            if len(set(stage.specialists)) != len(stage.specialists):
+                problems.append(f"{path}.specialists: each specialist once")
         if stage.sandbox and not is_ai:
             problems.append(f"{path}.sandbox: only AI-generated work is sent to the sandbox")
         if stage.sandbox_source and not stage.sandbox:

@@ -5,6 +5,7 @@ import { EmptyState, Skeleton, When } from "../components/ui";
 const KIND_LABELS: Record<string, string> = {
   job: "Job", stage: "Step", context: "Given to the AI", model_call: "Model call", output: "AI result",
   retry: "Not usable", model_error: "Model problem", review: "Review", checks: "Build and tests", result: "Outcome",
+  tool: "Tool use",
 };
 
 const human = (key: string) => key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
@@ -159,6 +160,15 @@ function Detail({ item }: { item: ActivityItemDto }) {
             </div>
           ))}
           {d.files && d.files.length > 0 && <Field field={{ key: "files_tested", files: d.files, count: d.files.length }} />}
+        </dl>
+      );
+    case "tool":
+      return (
+        <dl className="act-detail">
+          <div className="act-field"><dt>Asked with</dt>
+            <dd>{d.arguments && Object.keys(d.arguments).length ? Object.entries(d.arguments).map(([k, v]) => `${k}: ${v}`).join(", ") : "no arguments"}</dd></div>
+          <p className="muted small">{d.status === "ok" ? `Returned ${d.chars?.toLocaleString()} characters to the model, as data.`
+            : "Not run: the platform refused or rejected this call."}</p>
         </dl>
       );
     case "stage":

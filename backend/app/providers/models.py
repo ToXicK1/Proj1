@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -97,6 +98,14 @@ class AgentRun(Base):
     # Which sources the run was given (ids and counts, never the content itself).
     context_manifest: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # Execution record (AI_ORCHESTRATION.md): what this run was, what it read, what it was allowed, what it made.
+    profile_key: Mapped[str | None] = mapped_column(String(64), nullable=True)  # department
+    task: Mapped[str | None] = mapped_column(String(32), nullable=True)  # lead, reviewer, specialist, answer, triage
+    context_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)  # SHA-256 of the exact prompt
+    input_versions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)  # artifact versions given
+    tool_grants: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    output_artifact_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
 
 class TokenUsage(Base):
@@ -108,3 +117,42 @@ class TokenUsage(Base):
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     # NULL when no price is configured for the model. Cost is never invented.
     cost_micro_usd: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+
+class ToolExecution(Base):
+    """One tool call an agent made: which tool, with what, whether it was allowed, and what came back (by size and
+    digest; the content stays where it came from)."""
+
+    __tablename__ = "tool_executions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    agent_run_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("agent_runs.id"), nullable=False, index=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id"), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("projects.id"), nullable=False, index=True)
+    tool: Mapped[str] = mapped_column(String(64), nullable=False)
+    permission_class: Mapped[str] = mapped_column(String(32), nullable=False)
+    arguments: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)  # ok, refused, error
+    summary: Mapped[str] = mapped_column(String(300), nullable=False)
+    result_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class RoutingPolicy(Base):
+    """Which model route a kind of AI task uses, optionally per department. The most specific rule wins."""
+
+    __tablename__ = "routing_policies"
+    __table_args__ = (UniqueConstraint("organization_id", "task", "profile_key", name="uq_routing_policy"),
+                      CheckConstraint("task in ('lead','reviewer','specialist','answer','triage')", name="task_valid"))
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id"), nullable=False,
+                                                       index=True)
+    task: Mapped[str] = mapped_column(String(32), nullable=False)
+    profile_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    route_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Reviewer rules only: the review must come from a different provider than the work it reviews.
+    require_different_provider: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

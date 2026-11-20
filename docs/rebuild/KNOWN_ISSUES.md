@@ -12,7 +12,7 @@ Earlier issues remain in `docs/KNOWN_ISSUES.md`. This list tracks what the rebui
 | RB-6 | One generic project page instead of department workspaces | Poor professional experience; design is text-only | 10 |
 | RB-7 | Sandbox runs unit tests only; no running application, integration tests, lint or type check | QA evidence is limited | 6 and 13 |
 | RB-8 | No real deployment target | Release stages produce plans only | 13, needs a target from you |
-| RB-9 | ~~No streaming~~ **Streaming done 2026-11-20** for OpenAI and OpenAI-compatible providers (Anthropic and Gemini still answer in one piece). No tool calling yet | Agents cannot use tools | 6 |
+| RB-9 | ~~No streaming or tool calling~~ **Done 2026-11-20** for OpenAI and OpenAI-compatible providers (including Ollama). Anthropic and Gemini still answer in one piece and without tools | Agents on those providers cannot use tools | Later |
 | RB-10 | ~~Parallel and conditional stages refused~~ **Resolved 2026-11-20 (Phase 5)**; the default lifecycle itself is still sequential | — | 5 |
 | RB-11 | Email is outbox-only | People must read links from the database | 14 |
 | RB-12 | 33-stage lifecycle never run live | Unknown behaviour on a real model | 7 |
@@ -26,3 +26,5 @@ Earlier issues remain in `docs/KNOWN_ISSUES.md`. This list tracks what the rebui
 | RB-20 | The local Ollama model runs with a 4,096-token context window (prompt and reply together), while the platform allows replies of up to 4,096 tokens. Large prompts make Ollama silently drop the start of the prompt, where the instructions are | Long stages (Code Generation in larger scopes) can lose their instructions or get cut off. The activity panel now warns per call. Fix on the machine running Ollama: raise its context length (for example `OLLAMA_CONTEXT_LENGTH=16384`), then set `AIDLC_MODEL_CONTEXT_TOKENS` and `AIDLC_CONTEXT_BUDGET_CHARS` to match | Your setting |
 | RB-21 | The activity panel refreshes by polling (every second while work runs and the panel is open), not by server push | Up to about a second of delay; no updates while the browser tab is hidden | Later |
 | RB-22 | The default 33-stage lifecycle still runs sequentially; departments that could work at the same time (for example Market Research beside Feasibility) wait for each other | Slower delivery than the engine now allows | Your decision |
+| RB-23 | Agents can only read through tools; WRITE, EXECUTE (sandbox on demand) and EXTERNAL_SIDE_EFFECT tools need their approval policies first | Agents cannot run tests or take actions themselves | 8 and later |
+| RB-24 | No specialist agents are provisioned by default: the mechanism and registry exist, and administrators can add them, but the lifecycle still uses one lead per step | Each extra specialist adds a model call, which is slow on a local 4B model | Your decision |

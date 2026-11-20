@@ -314,12 +314,40 @@ export interface ActivityItemDto {
     max_reply_tokens?: number;
     warning?: string | null;
     hidden?: string;
+    tool?: string;
+    arguments?: Record<string, string>;
+    chars?: number;
   };
 }
 
 export interface ActivityDto {
   items: ActivityItemDto[];
   jobs: { kind: string; status: string; attempts: number; since: string }[];
+}
+
+export interface RegistryAgentDto {
+  key: string;
+  kind: "lead" | "reviewer" | "specialist";
+  version: number;
+  route: string;
+  tools: string[];
+  must_return: string[];
+  reads: string[];
+}
+
+export interface RegistryDepartmentDto {
+  profile: string;
+  name: string;
+  leads: RegistryAgentDto[];
+  reviewers: RegistryAgentDto[];
+  specialists: RegistryAgentDto[];
+}
+
+export interface RoutingRuleDto {
+  task: "lead" | "reviewer" | "specialist" | "answer" | "triage";
+  profile: string | null;
+  route: string;
+  require_different_provider: boolean;
 }
 
 export interface ScopeDto {
@@ -550,6 +578,11 @@ export const api = {
   removeProjectMember: (projectId: string, userId: string) =>
     request("DELETE", `/api/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`),
   studioCatalog: (orgId: string) => request<StudioCatalogDto>("GET", `${studioPath(orgId)}/catalog`),
+  agentRegistry: (orgId: string) =>
+    request<{ departments: RegistryDepartmentDto[] }>("GET", `${orgPath(orgId)}/agent-registry`),
+  routingPolicies: (orgId: string) => request<{ rules: RoutingRuleDto[] }>("GET", `${orgPath(orgId)}/routing-policies`),
+  saveRoutingPolicies: (orgId: string, rules: RoutingRuleDto[]) =>
+    request<{ rules: RoutingRuleDto[] }>("PUT", `${orgPath(orgId)}/routing-policies`, { rules }),
   studioWorkflows: (orgId: string) =>
     request<{ items: StudioWorkflowSummaryDto[] }>("GET", `${studioPath(orgId)}/workflows`),
   studioWorkflow: (orgId: string, key: string) =>

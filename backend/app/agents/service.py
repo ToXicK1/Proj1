@@ -12,6 +12,7 @@ import json
 import re
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -54,7 +55,7 @@ def _check_version_fields(kind: str, instructions: str, required_keys: list[str]
     if not instructions.strip() or len(instructions) > 4000:
         raise AppError(422, "invalid_instructions", "Instructions must be 1 to 4000 characters")
     _check_keys(required_keys)
-    allowed = LEAD_SOURCES if kind == "lead" else REVIEWER_SOURCES
+    allowed = REVIEWER_SOURCES if kind == "reviewer" else LEAD_SOURCES
     if not context_sources or not set(context_sources) <= allowed:
         raise AppError(422, "invalid_context", f"A {kind} may read only: {', '.join(sorted(allowed))}")
     problems = grant_problems(tools)
@@ -104,8 +105,8 @@ def create_agent(
     allow_fallback: bool = True,
 ) -> tuple[AgentConfiguration, AgentConfigVersion]:
     require_org_admin(db, user.id, organization_id)
-    if kind not in ("lead", "reviewer"):
-        raise AppError(422, "invalid_kind", "Kind must be lead or reviewer")
+    if kind not in ("lead", "reviewer", "specialist"):
+        raise AppError(422, "invalid_kind", "Kind must be lead, reviewer or specialist")
     if not KEY_PATTERN.match(key):
         raise AppError(422, "invalid_key", "Agent key must be lowercase, letters, digits, '-' or '_'")
     _check_version_fields(kind, instructions, required_keys, context_sources, tools)
@@ -236,4 +237,28 @@ def list_agents(db: Session, organization_id: uuid.UUID) -> list[dict]:
             "context_sources": version.context_sources if version else [],
             "tools": version.tools if version else [],
         })
+    return out
+
+
+def registry(db: Session, user: User, organization_id: uuid.UUID) -> list[dict[str, Any]]:
+    from app.organizations.service import require_org_admin
+
+    require_org_admin(db, user.id, organization_id)
+    profiles = db.execute(select(Profile).where(Profile.organization_id == organization_id)
+                          .order_by(Profile.name)).scalars().all()
+    agents = db.execute(select(AgentConfiguration).where(AgentConfiguration.organization_id == organization_id)
+                        .order_by(AgentConfiguration.key)).scalars().all()
+    out = []
+    for profile in profiles:
+        mine = [a for a in agents if a.profile_id == profile.id]
+        entries = []
+        for agent in mine:
+            current = latest(db, organization_id, agent.key).version
+            entries.append({"key": agent.key, "kind": agent.kind, "version": current.version,
+                            "route": current.model_route, "tools": list(current.tools),
+                            "must_return": list(current.required_keys), "reads": list(current.context_sources)})
+        out.append({"profile": profile.key, "name": profile.name,
+                    "leads": [e for e in entries if e["kind"] == "lead"],
+                    "reviewers": [e for e in entries if e["kind"] == "reviewer"],
+                    "specialists": [e for e in entries if e["kind"] == "specialist"]})
     return out

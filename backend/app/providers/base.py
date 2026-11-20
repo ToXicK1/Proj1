@@ -25,6 +25,9 @@ class CompletionRequest:
     timeout_seconds: float = 30.0
     # Called with ("text" | "thinking", chunk) as a streamed reply arrives. Adapters that cannot stream ignore it.
     on_delta: Callable[[str, str], None] | None = None
+    # A conversation, for tool use: when given, it replaces system and user. Each entry is a chat message dict.
+    messages: tuple[dict, ...] = ()
+    tools: tuple[dict, ...] = ()  # OpenAI-style function definitions the model may call
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,7 @@ class CompletionResult:
     model: str
     latency_ms: int
     thinking: str = ""  # reasoning the model reported separately from its answer, when it does
+    tool_calls: tuple[dict, ...] = ()  # {"id", "name", "arguments"} the model asked for instead of answering
 
 
 class ProviderError(Exception):

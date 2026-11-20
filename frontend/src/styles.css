@@ -1852,6 +1852,7 @@ summary.act-row::-webkit-details-marker {
 }
 
 .act-review { background: var(--status-info); }
+.act-tool { background: var(--purple-400); }
 .act-checks { background: var(--status-progress); }
 .act-result { background: var(--green-700); }
 .act-model_error,
