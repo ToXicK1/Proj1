@@ -7,6 +7,7 @@ never shown to the project owner.
 
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -357,10 +358,16 @@ def _department_stage(db: Session, execution: WorkflowExecution | None, profile:
     return (with_work or mine or [None])[-1]
 
 
-def triage(factory: sessionmaker[Session], settings: Settings, transport: Any, ticket_id: uuid.UUID) -> None:
+def triage(factory: sessionmaker[Session], settings: Settings, transport: Any, ticket_id: uuid.UUID,
+           finish: Callable[[Session], None] | None = None) -> None:
     """The AI answers what it safely can. Anything that changes work, or that it is unsure of, waits for a human."""
     with factory() as db:
         ticket = db.get(Ticket, ticket_id)
+        if ticket.status != "open":  # already triaged: a repeated job must not answer twice
+            if finish:
+                finish(db)
+            db.commit()
+            return
         project = db.get(Project, ticket.project_id)
         member = BY_PROFILE[ticket.profile_key]
         execution = db.execute(select(WorkflowExecution).where(WorkflowExecution.project_id == project.id)
@@ -413,6 +420,8 @@ def triage(factory: sessionmaker[Session], settings: Settings, transport: Any, t
                 post_system(db, project, ticket.profile_key, f"Ticket #{ticket.number} is waiting, but nobody is "
                             f"assigned as {member.title}.")
         _audit(db, project, "ticket.triaged", None, {"ticket": ticket.number, "status": ticket.status})
+        if finish:
+            finish(db)
         db.commit()
 
 

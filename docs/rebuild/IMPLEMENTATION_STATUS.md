@@ -51,3 +51,29 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
 - **Direct messages**: in team chat, starting a message with `@Name` switches to a private chat with that person, which stays until `@everyone` or another `@Name` (like an in-game chat). Direct messages appear in the feed marked "Direct" with "A → B", and the recipient gets a notification. An unrecognised `@name` is refused rather than posted to everyone.
 - Who may message whom directly: owner↔project manager, owner↔administrator, administrator↔project manager, project manager↔anyone on the team, professional↔professional. Owners and administrators get a "Messages" page (direct messages only).
 - Department discussions in a workspace use inline `@Name` to notify people (the checkboxes are gone).
+
+## 2026-11-20 — Phase 4: Foundation (job queue, worker, object storage, correlation IDs)
+
+- **Job queue** (`app/jobs`, table `jobs`, migration `0017_jobs_storage`).
+  - Workers claim jobs with `FOR UPDATE SKIP LOCKED` under a lease (default 300 s), renewed by a heartbeat every third of the lease.
+  - A worker that dies loses its job when the lease ends; another worker takes it and records the attempt.
+  - Failures are retried with backoff (10 s, doubling, at most 10 minutes) up to 3 attempts, then marked `failed` with the error.
+  - Only one job per subject waits at a time (a partial unique index on `dedupe_key`).
+- **Worker** (`python -m app.worker`, Compose service `worker`).
+  - Runs lifecycle stages (`portal.drive`), owner retries (`portal.resume`), owner answers (`portal.answer`) and ticket triage (`collab.triage`). The API no longer runs any of these in-process.
+  - `SIGTERM` lets the current job finish (`stop_grace_period: 60s`).
+  - Every 60 s a sweep queues lifecycle work or tickets that are waiting with no job: the safety net for a lost enqueue.
+- **Safe to repeat.**
+  - A stage commits its result in one transaction, so a crash mid-stage leaves it untouched.
+  - Answers and triage mark their job done in the same transaction as their result.
+  - Triage skips tickets that are no longer open.
+  - Stage `updated_at` now changes on every transition, so the sweep can tell how long work has waited.
+- **Object storage** (RD-5, amended).
+  - `app/storage` has a small S3 client (SigV4, no new dependency), a `stored_objects` record per object, keys scoped to `orgs/<org>/projects/<project>/<purpose>/<name>`, and a SHA-256 check on every read.
+  - Compose runs SeaweedFS with a single identity built from `.env` (`AIDLC_STORAGE_ACCESS_KEY` / `AIDLC_STORAGE_SECRET_KEY`); anonymous and wrong-key requests get 403. Bootstrap creates the bucket.
+  - First use: code archives are built once per version, kept, and served from storage after the hash check.
+- **Correlation IDs.**
+  - Every request gets an `X-Request-ID`: a caller's ID if it is a plain 8–64 character token, otherwise a new one.
+  - It appears on the response, every log line, every job, and every audit event (`payload.correlation_id`), and the worker carries it into the work it runs.
+- **Readiness**: `GET /readyz` checks the database and (when configured) storage, and returns 503 if either is down.
+- **Tests only**: `AIDLC_JOBS_INLINE=true` makes the API run queued jobs after responding. Refused outside development and test.

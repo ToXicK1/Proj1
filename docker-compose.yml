@@ -1,5 +1,5 @@
-# Local development stack: PostgreSQL, API and frontend.
-# Usage: copy .env.example to .env, set AIDLC_SECRET_KEY, then run `docker compose up --build`.
+# Local development stack: PostgreSQL, object storage, API, worker and frontend.
+# Usage: copy .env.example to .env, set AIDLC_SECRET_KEY and the storage keys, then run `docker compose up --build`.
 name: aidlc
 
 services:
@@ -33,11 +33,14 @@ services:
       AIDLC_DEFAULT_LLM_ADAPTER: ${AIDLC_DEFAULT_LLM_ADAPTER:-openai_compatible}
       AIDLC_PROVIDER_TIMEOUT_SECONDS: ${AIDLC_PROVIDER_TIMEOUT_SECONDS:-600}
       AIDLC_SANDBOX_DIR: /sandbox-jobs
+      AIDLC_STORAGE_ENDPOINT: http://objectstore:8333
     extra_hosts:
       - "host.docker.internal:host-gateway"  # lets a local model server on this machine be reached
     depends_on:
       db:
         condition: service_healthy
+      objectstore:
+        condition: service_started
     command: >
       sh -c "alembic upgrade head &&
              python -m app.bootstrap &&
@@ -46,6 +49,51 @@ services:
       - sandbox_jobs:/sandbox-jobs
     ports:
       - "${AIDLC_API_PORT:-8000}:8000"
+
+  # Runs AI and system work from the job queue (RD-4). Same image as the API; it never serves requests.
+  worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    env_file: .env
+    environment:
+      AIDLC_DATABASE_URL: postgresql+pg8000://aidlc:aidlc@db:5432/aidlc
+      AIDLC_PUBLIC_BASE_URL: http://localhost:${AIDLC_WEB_PORT:-5173}
+      AIDLC_SIGNUP_MODE: ${AIDLC_SIGNUP_MODE:-shared}
+      AIDLC_DEFAULT_LLM_BASE_URL: ${AIDLC_DEFAULT_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      AIDLC_DEFAULT_LLM_MODEL: ${AIDLC_DEFAULT_LLM_MODEL:-qwen3-vl:4b-instruct}
+      AIDLC_DEFAULT_LLM_ADAPTER: ${AIDLC_DEFAULT_LLM_ADAPTER:-openai_compatible}
+      AIDLC_PROVIDER_TIMEOUT_SECONDS: ${AIDLC_PROVIDER_TIMEOUT_SECONDS:-600}
+      AIDLC_SANDBOX_DIR: /sandbox-jobs
+      AIDLC_STORAGE_ENDPOINT: http://objectstore:8333
+      AIDLC_JOB_LEASE_SECONDS: ${AIDLC_JOB_LEASE_SECONDS:-300}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      api:
+        condition: service_started  # the API applies migrations before the worker claims anything
+    command: ["python", "-m", "app.worker"]
+    stop_grace_period: 60s  # lets the current job finish on `docker compose stop`
+    volumes:
+      - sandbox_jobs:/sandbox-jobs
+    restart: unless-stopped
+
+  # S3-compatible object storage (RD-5). SeaweedFS, because MinIO no longer publishes public images.
+  # The only identity is built at start-up from the keys in .env; anonymous requests are refused.
+  objectstore:
+    image: chrislusf/seaweedfs:3.80
+    environment:
+      S3_ACCESS: ${AIDLC_STORAGE_ACCESS_KEY:?set AIDLC_STORAGE_ACCESS_KEY in .env}
+      S3_SECRET: ${AIDLC_STORAGE_SECRET_KEY:?set AIDLC_STORAGE_SECRET_KEY in .env}
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        printf '{"identities":[{"name":"aidlc","credentials":[{"accessKey":"%s","secretKey":"%s"}],
+        "actions":["Admin","Read","Write","List","Tagging"]}]}' "$$S3_ACCESS" "$$S3_SECRET" > /tmp/s3.json &&
+        exec weed server -s3 -s3.config=/tmp/s3.json -dir=/data
+    volumes:
+      - objects:/data
+    restart: unless-stopped
 
   # Runs generated code. No network, read-only root, no secrets, hard limits. The job folder is its only link.
   sandbox:
@@ -86,4 +134,5 @@ services:
 
 volumes:
   pgdata:
+  objects:
   sandbox_jobs:

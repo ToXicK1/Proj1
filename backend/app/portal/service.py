@@ -8,6 +8,7 @@ import io
 import json
 import uuid
 import zipfile
+from collections.abc import Callable
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
@@ -533,7 +534,12 @@ def _sandbox_checks(db: Session, version_id: uuid.UUID) -> list[dict[str, Any]]:
             for k, r in latest.items() if k in CHECK_NAMES]
 
 
-def code_archive(db: Session, user: User, project_id: uuid.UUID, version_id: uuid.UUID) -> tuple[str, bytes]:
+def code_archive(db: Session, user: User, project_id: uuid.UUID, version_id: uuid.UUID,
+                 settings: Settings | None = None, storage_transport: Any = None) -> tuple[str, bytes]:
+    """The generated code of one version as a zip. With object storage on, the archive is built once, kept, and
+    later downloads are served from storage after their hash is checked."""
+    from app.storage import service as storage
+
     project, _ = _access(db, user, project_id)
     if not _may_see_code(db, user, project):
         raise AppError(403, "not_permitted", "Only the development team can download source code")
@@ -541,13 +547,25 @@ def code_archive(db: Session, user: User, project_id: uuid.UUID, version_id: uui
     files = [f for f in project_files(version.content_json) if SAFE_PATH.match(f["path"])]
     if not files:
         raise not_found()
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for item in files:
-            archive.writestr(item["path"], item["content"])
+    stored = None
+    if settings is not None and settings.storage_enabled:
+        name = f"code-{version.id}.zip"
+        stored = storage.find(db, storage.object_key(project.organization_id, project.id, "code-archive", name))
+        if stored is not None:
+            content = storage.load(settings, stored, storage_transport)
+    if stored is None:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for item in files:
+                archive.writestr(item["path"], item["content"])
+        content = buffer.getvalue()
+        if settings is not None and settings.storage_enabled:
+            storage.save(db, settings, organization_id=project.organization_id, project_id=project.id,
+                         purpose="code-archive", name=f"code-{version.id}.zip", data=content,
+                         content_type="application/zip", transport=storage_transport)
     _audit(db, project, "portal.code_downloaded", "human", user.id, {"artifact_version": str(version.id)})
     db.commit()
-    return f"project-v{version.version_number}.zip", buffer.getvalue()
+    return f"project-v{version.version_number}.zip", content
 
 
 def deliverables(db: Session, user: User, project_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -721,7 +739,8 @@ def post_message(db: Session, user: User, project_id: uuid.UUID, *, body: str, p
 FALLBACK_ANSWER = "I could not prepare an answer just now. Please ask again in a moment."
 
 
-def answer_question(factory: sessionmaker[Session], settings: Settings, transport: Any, message_id: uuid.UUID) -> None:
+def answer_question(factory: sessionmaker[Session], settings: Settings, transport: Any, message_id: uuid.UUID,
+                    finish: Callable[[Session], None] | None = None) -> None:
     """A plain-language answer from the representative's lead. It has no tools and cannot change anything."""
     with factory() as db:
         message = db.get(PortalMessage, message_id)
@@ -758,6 +777,8 @@ def answer_question(factory: sessionmaker[Session], settings: Settings, transpor
             message = db.get(PortalMessage, message_id)
             project = db.get(Project, message.project_id)
         _store(db, project, member.profile, "representative", None, text)
+        if finish:
+            finish(db)  # the job is done exactly when its answer is stored
         db.commit()
 
 

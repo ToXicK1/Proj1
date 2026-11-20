@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.audit.models import AuditChain, AuditEvent
+from app.core import correlation
 from app.core.security import sha256_hex
 
 GENESIS_HASH = "0" * 64
@@ -79,7 +80,10 @@ def append_event(
     seq = chain.seq + 1
     prev_hash = chain.head_hash
     occurred_at = datetime.now(UTC)
-    body = payload or {}
+    body = dict(payload or {})
+    cid = correlation.current()
+    if cid and "correlation_id" not in body:  # ties the event to the request or job that caused it
+        body["correlation_id"] = cid
     digest = compute_hash(
         prev_hash,
         chain_key=chain_key,

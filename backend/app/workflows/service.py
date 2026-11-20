@@ -269,6 +269,7 @@ def transition_stage(
 
     stage.status = to_status.value
     stage.version += 1
+    stage.updated_at = datetime.now(UTC)  # the recovery sweep measures how long a stage has waited from this
     if output is not None:
         stage.output_json = output
     if to_status is StageStatus.AI_COMPLETED and output is not None:
@@ -341,6 +342,7 @@ def refresh_readiness(db: Session, execution: WorkflowExecution) -> None:
         if all(StageStatus(stages[d].status) in SATISFIES_DEPENDENCY for d in spec["depends_on"]):
             stage.status = StageStatus.READY.value
             stage.version += 1
+            stage.updated_at = datetime.now(UTC)
             db.add(
                 StageTransition(
                     stage_execution_id=stage.id,

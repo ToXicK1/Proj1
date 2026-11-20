@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
 from app.collab import service
+from app.jobs.api import queue
 from app.portal import service as portal
 
 router = APIRouter(prefix="/api/v1/portal/projects/{project_id}", tags=["collaboration"])
@@ -107,8 +108,8 @@ def raise_ticket(project_id: uuid.UUID, body: TicketIn, request: Request, tasks:
                  db: DbSession) -> dict:
     out, ticket_id = service.create_ticket(db, caller.user, project_id, title=body.title, body=body.body,
                                            kind=body.kind, profile=body.profile, assignee=body.assignee)
-    state = request.app.state
-    tasks.add_task(service.triage, state.session_factory, state.settings, state.provider_transport, ticket_id)
+    queue(request, tasks, db, "collab.triage", {"ticket_id": str(ticket_id)}, dedupe_key=f"triage:{ticket_id}",
+          project_id=project_id)
     return out
 
 
@@ -128,6 +129,6 @@ def act(project_id: uuid.UUID, ticket_id: uuid.UUID, body: ActionIn, request: Re
     out = service.act_on_ticket(db, caller.user, project_id, ticket_id, action=body.action, note=body.note)
     execution = portal._execution(db, project_id)
     if body.action == "approve_proposal" and execution is not None:  # an accepted change starts the AI's rework
-        state = request.app.state
-        tasks.add_task(portal.drive, state.session_factory, state.settings, state.provider_transport, execution.id)
+        queue(request, tasks, db, "portal.drive", {"execution_id": str(execution.id)},
+              dedupe_key=f"drive:{execution.id}", project_id=project_id)
     return out

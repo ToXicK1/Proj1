@@ -8,6 +8,7 @@ from app.auth.models import EmailToken, User, UserSession  # noqa: F401
 from app.collab.models import TeamMessage, Ticket, TicketComment  # noqa: F401
 from app.core.db import Base
 from app.hooks.models import HookDefinition, HookExecution, HookVersion  # noqa: F401
+from app.jobs.models import Job  # noqa: F401
 from app.notifications.models import EmailOutbox, Notification  # noqa: F401
 from app.organizations.models import (  # noqa: F401
     MemberProfile,
@@ -21,6 +22,7 @@ from app.providers.models import AgentRun, AiProvider, ModelRoute, SecretReferen
 from app.rules.models import ChangeProposal, ProjectTeam, Rule, RuleVersion, Team  # noqa: F401
 from app.sensors.models import RiskAcceptance, SensorEvidence, SensorExecution  # noqa: F401
 from app.skills.models import Skill, SkillVersion  # noqa: F401
+from app.storage.models import StoredObject  # noqa: F401
 from app.studio.models import WorkflowDraft  # noqa: F401
 from app.workflows.models import (  # noqa: F401
     StageExecution,

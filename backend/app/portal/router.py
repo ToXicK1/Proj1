@@ -3,8 +3,10 @@ from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
 
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
+from app.jobs.api import queue
 from app.portal import service
 
 router = APIRouter(prefix="/api/v1/portal", tags=["portal"])
@@ -54,9 +56,10 @@ class TriageIn(_Strict):
     reason: str = Field(min_length=3, max_length=300)
 
 
-def _drive(tasks: BackgroundTasks, request: Request, execution_id: uuid.UUID) -> None:
-    state = request.app.state
-    tasks.add_task(service.drive, state.session_factory, state.settings, state.provider_transport, execution_id)
+def _drive(tasks: BackgroundTasks, request: Request, db: Session, project_id: uuid.UUID,
+           execution_id: uuid.UUID) -> None:
+    queue(request, tasks, db, "portal.drive", {"execution_id": str(execution_id)},
+          dedupe_key=f"drive:{execution_id}", project_id=project_id)
 
 
 @router.get("/my-reviews")
@@ -84,7 +87,7 @@ def confirm(project_id: uuid.UUID, body: ConfirmIn, request: Request, tasks: Bac
             db: DbSession) -> dict:
     execution = service.confirm_intake(db, caller.user, project_id, body.revision, body.accept_assumptions,
                                        body.scope)
-    _drive(tasks, request, execution.id)
+    _drive(tasks, request, db, project_id, execution.id)
     return {"started": True}
 
 
@@ -98,13 +101,16 @@ def decide(project_id: uuid.UUID, stage: str, body: DecisionIn, request: Request
            caller: CsrfCaller, db: DbSession) -> dict:
     execution_id = service.decide(db, caller.user, project_id, stage, version_id=body.version_id,
                                   decision=body.decision, comment=body.comment, idempotency_key=body.idempotency_key)
-    _drive(tasks, request, execution_id)
+    _drive(tasks, request, db, project_id, execution_id)
     return {"recorded": True}
 
 
 @router.get("/projects/{project_id}/versions/{version_id}/code.zip")
-def download_code(project_id: uuid.UUID, version_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> Response:
-    filename, content = service.code_archive(db, caller.user, project_id, version_id)
+def download_code(project_id: uuid.UUID, version_id: uuid.UUID, request: Request, caller: CurrentCaller,
+                  db: DbSession) -> Response:
+    state = request.app.state
+    filename, content = service.code_archive(db, caller.user, project_id, version_id, state.settings,
+                                             state.storage_transport)
     return Response(content, media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"',
                              "X-Content-Type-Options": "nosniff"})
@@ -114,9 +120,8 @@ def download_code(project_id: uuid.UUID, version_id: uuid.UUID, caller: CurrentC
 def retry(project_id: uuid.UUID, stage: str, request: Request, tasks: BackgroundTasks, caller: CsrfCaller,
           db: DbSession) -> dict:
     execution_id, stage_key = service.retry(db, caller.user, project_id, stage)
-    state = request.app.state
-    tasks.add_task(service.resume, state.session_factory, state.settings, state.provider_transport, execution_id,
-                   stage_key)
+    queue(request, tasks, db, "portal.resume", {"execution_id": str(execution_id), "stage_key": stage_key},
+          dedupe_key=f"resume:{execution_id}:{stage_key}", project_id=project_id)
     return {"started": True}
 
 
@@ -131,9 +136,8 @@ def post_message(project_id: uuid.UUID, body: MessageIn, request: Request, tasks
     items, answer_for = service.post_message(db, caller.user, project_id, body=body.body, profile=body.profile,
                                              artifact_version_id=body.artifact_version_id)
     if answer_for:
-        state = request.app.state
-        tasks.add_task(service.answer_question, state.session_factory, state.settings, state.provider_transport,
-                       answer_for)
+        queue(request, tasks, db, "portal.answer", {"message_id": str(answer_for)},
+              dedupe_key=f"answer:{answer_for}", project_id=project_id)
     return {"items": items}
 
 

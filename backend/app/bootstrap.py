@@ -3,6 +3,9 @@
 Run at start-up (`python -m app.bootstrap`). Every step is safe to repeat.
 """
 
+import time
+
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +17,8 @@ from app.organizations.models import Membership, Organization
 from app.portal import lifecycle
 from app.providers import service as providers
 from app.providers.models import AiProvider, ModelRoute
+from app.storage import service as storage
+from app.storage.s3 import StorageError
 from app.workflows.compiler import compile_workflow
 from app.workflows.models import WorkflowDefinition, WorkflowVersion
 from app.workflows.seed import seed_templates
@@ -83,12 +88,27 @@ def prepare_shared_org(db: Session, settings: Settings) -> None:
         connect_default_ai(db, settings, org, admin)
 
 
+def prepare_storage(settings: Settings, attempts: int = 30) -> None:
+    """Creates the bucket. The storage server may still be starting, so this waits up to about a minute."""
+    if not settings.storage_enabled:
+        return
+    for attempt in range(attempts):
+        try:
+            storage.ensure_bucket(settings)
+            return
+        except (httpx.HTTPError, StorageError):
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2)
+
+
 def main() -> None:
     settings = get_settings()
     factory = make_session_factory(make_engine(settings.database_url))
     with factory() as db:
         seed_lifecycle(db)
         prepare_shared_org(db, settings)
+    prepare_storage(settings)
 
 
 if __name__ == "__main__":

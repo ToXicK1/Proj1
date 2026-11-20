@@ -43,3 +43,26 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
 - Frontend: typecheck, lint, build clean; 13 unit tests (new `chatTargets.test.ts` for @name, @everyone, mentions and suggestions).
 - Browser: personal 19 passed; shared `collab.spec.ts` (now covers @name/@everyone, owner→project manager, oversight) and `lifecycle.spec.ts` each passed on a fresh stack.
 - The browser run found two real bugs, fixed: a message could be sent before the people list loaded, so `@Name` went to everyone; and text typed while a message was sending was wiped.
+
+## 2026-11-20 — Phase 4: Foundation
+
+- **Backend full suite:** 408 tests ran, with 400 passed, 5 skipped (live model tests) and 3 failed.
+  - All three failures were wrong expectations in the new tests, not code faults. The first AI stage starts after deterministic setup stages, and personal sign-up mode gives every account its own oversight page.
+  - After correcting them, the three new files were rerun: 33 of 33 passed.
+- **New tests:**
+  - `test_jobs.py` (14): de-duplication, `SKIP LOCKED`, lease expiry and re-claim, ignoring a late finisher, failing a job whose last attempt died, backoff then `failed`, unknown kinds, correlation ID carried into the job, heartbeat ownership, a long job keeping its lease, delivery only queueing work, a worker killed mid-stage (simulated) leaving nothing half done and finishing on attempt 2 with exactly one version, the sweep recovering a lost job once and leaving recent work alone, and inline jobs refused in production.
+  - `test_permissions.py` (13): who may read a project, approve, steer delivery, see oversight, change roles and join team chat, for the owner, administrator, project manager, assigned professional, another professional, a plain member and an outsider. No job or storage API exists to reach.
+  - `test_storage.py` (6):
+    - signing matches the published AWS example;
+    - an in-memory S3 checks the signature and payload hash;
+    - keys are scoped and unsafe names refused;
+    - changed bytes are refused on read;
+    - `/readyz` reports storage;
+    - code archives are written once and then served from storage.
+- **Live (Compose, real local model `qwen3-vl:4b-instruct`, worker lease 30 s for the second check):**
+  - `docker compose restart api` during a running stage: the job stayed on attempt 1 and finished in 2 min 52 s; the stage reached the human gate.
+  - `docker kill` (SIGKILL) on the worker 2 s into the first AI stage: the job stayed `running`, the stage stayed `READY` with 0 versions. A new worker re-claimed the job after the lease (attempt 2), the stage reached the human gate with exactly 1 version and 1 committed RUNNING transition.
+  - The request ID sent with the confirm (`restart-proof-*`) appeared on the job and in every worker log line for it.
+  - The SeaweedFS store refused anonymous and wrong-key requests (403) and served the platform client's put, get, head and delete.
+- **Browser (Playwright, stack now with worker and object store):** personal 19 passed; shared `lifecycle.spec.ts` and `collab.spec.ts` each passed on a fresh stack.
+- **Correction to earlier entries:** "frontend lint clean" meant the TypeScript check only. The frontend has no linter configured.

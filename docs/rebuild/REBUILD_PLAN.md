@@ -30,7 +30,7 @@ Each phase ends with tests, verified behaviour, updated docs and known issues.
 | 1 Audit | `REPOSITORY_AUDIT.md`, this plan | Done |
 | 2 Research | `docs/reference-research/` (11 documents) | Done |
 | 3 Architecture | `docs/architecture/` (7 documents) | Done, pending D1 to D8 |
-| 4 Foundation | Roles and permissions model, object storage, job queue and worker, correlation IDs, baseline commit | Worker survives an API restart mid-stage; permission tests |
+| 4 Foundation | Roles and permissions model, object storage, job queue and worker, correlation IDs, baseline commit | Done 2026-11-20: worker survived an API restart and a SIGKILL mid-stage (live); permission matrix tests |
 | 5 Workflow engine | New states, parallel and conditional stages, stage dependencies table, recovery, escalation hooks | Every valid and invalid transition tested |
 | 6 Orchestration | Specialist agent registry per department, execution records, context retrieval, streaming, tool calling with permissions, routing policies | One real provider end to end |
 | 7 Profiles | Six departments with their stages, agents and deliverables (BA first, end to end) | BA complete before the rest |

@@ -30,7 +30,7 @@ Thumbs.db
 
 # Local runtime data
 data/
-storage/
+/storage/
 *.sqlite3
 .pgtest/
 .pgdev/

@@ -8,7 +8,7 @@ Earlier decisions remain in `docs/DECISIONS.md` (ADR-001 to ADR-055). Rebuild de
 | RD-2 (D2) | Only the assigned human professional gives final approval. The owner sees the work and gives input to that professional, who reviews it and decides what to send to the AI. The prompt's user approval stages become owner input steps | Accepted (user's own model, not the recommendation) | Keeps one accountable approver per department while keeping the owner involved |
 | RD-3 (D3) | Evolve the modular monolith | Accepted (default) | Core modules are tested and sound |
 | RD-4 (D4) | PostgreSQL job queue and a worker process | Accepted | Durable, transactional with state, no new service |
-| RD-5 (D5) | MinIO for files and large artifacts | Accepted | S3-compatible locally and in production |
+| RD-5 (D5) | MinIO for files and large artifacts. **Amended 2026-11-20:** any S3-compatible store; locally SeaweedFS 3.80 | Accepted, amended | S3-compatible locally and in production. MinIO no longer publishes public container images (`minio/minio` and `quay.io/minio/minio` both refuse pulls), so the local stack runs SeaweedFS (Apache-2.0) behind the same S3 API. The platform's client speaks plain S3 (SigV4), so MinIO, S3 or another store can replace it by configuration |
 | RD-6 (D6) | Tailwind during the workspace rebuild | Accepted (default) | Prompt default; pages are being rebuilt anyway |
 | RD-7 (D7) | Local Ollama for the first end-to-end proof; cloud key later | Accepted (default) | No credentials needed now |
 | RD-8 (D8) | Commit the current tree to main and push as the baseline | Accepted (user chose main and push) | Protects existing work |
