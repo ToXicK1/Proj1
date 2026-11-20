@@ -9,6 +9,7 @@ const TONES: Record<string, Tone> = {
   "you told us": "success",
   "in progress": "progress",
   "awaiting review": "pending",
+  "waiting for owner": "pending",
   "awaiting user input": "pending",
   "needs your answer": "pending",
   "changes requested": "warning",

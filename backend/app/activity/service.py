@@ -233,7 +233,7 @@ def _visible(row: AiActivity, may_see_code: bool) -> dict[str, Any]:
 
 # Reading -----------------------------------------------------------------------------------------------------------
 
-JOB_LABELS = {"portal.drive": "Running the next steps", "portal.resume": "Trying a blocked step again",
+JOB_LABELS = {"portal.drive": "Planning the next steps", "portal.stage": "Running a step", "portal.resume": "Trying a blocked step again",
               "portal.answer": "Answering the project owner", "collab.triage": "Checking a new ticket"}
 
 

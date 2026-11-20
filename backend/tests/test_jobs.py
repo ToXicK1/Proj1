@@ -194,26 +194,40 @@ def test_starting_delivery_only_queues_the_work(manual, factory):
     assert statuses == {"READY", "NOT_STARTED"} and versions == 0
 
 
-def test_a_worker_killed_mid_stage_leaves_nothing_half_done_and_another_finishes_it(manual, factory):
+def _run_until_idle(manual, transport=None, worker="worker"):
+    factory = manual.client.app.state.session_factory
+    while jobs.run_one(factory, manual.worker_settings, transport or manual.model.transport(), worker):
+        pass
+
+
+def test_a_worker_killed_mid_stage_is_recovered_and_the_stage_runs_once(manual, factory):
     manual.start()
-    (job_id,) = [j.id for j in _all_jobs(factory)]
 
     def killed(request: httpx.Request) -> httpx.Response:
         raise Died()
 
-    with pytest.raises(Died):
-        jobs.run_one(factory, manual.worker_settings, httpx.MockTransport(killed), "worker-a")
-    # The setup steps before it had already committed; the AI stage that was running rolled back with the process.
-    assert _first_stage(factory).status == "READY"
+    with pytest.raises(Died):  # the planner and the setup steps run; the first AI step dies with its worker
+        _run_until_idle(manual, httpx.MockTransport(killed), "worker-a")
+    stage = _first_stage(factory)
+    dead_job = stage.run_job_id
+    assert stage.status == "RUNNING" and dead_job is not None  # visible as running, owned by the dead job
     assert _versions_of(factory, FIRST) == 0
-    assert _job(factory, job_id).status == "running"  # still held by the dead worker until its lease ends
+    assert _job(factory, dead_job).status == "running"  # its lease has not run out yet
 
-    _expire(factory, job_id)
-    assert jobs.run_one(factory, manual.worker_settings, manual.model.transport(), "worker-b")
-    job = _job(factory, job_id)
-    assert job.status == "done" and job.attempts == 2
+    _expire(factory, dead_job)
+    _run_until_idle(manual, worker="worker-b")
+    assert _job(factory, dead_job).status == "done" and _job(factory, dead_job).attempts == 2
     assert manual.step_status(FIRST) == "Awaiting Review"
     assert _versions_of(factory, FIRST) == 1  # done once, not twice
+    with factory() as db:
+        moves = db.execute(text("select from_status, to_status, reason from stage_transitions t join stage_executions s "
+                                "on s.id = t.stage_execution_id where s.stage_key = :k order by t.id"),
+                           {"k": FIRST}).all()
+    assert [(a, b) for a, b, _ in moves] == [("NOT_STARTED", "READY"), ("READY", "RUNNING"), ("RUNNING", "READY"),
+                                             ("READY", "RUNNING"),
+                                             ("RUNNING", "AI_COMPLETED"), ("AI_COMPLETED", "VALIDATING"),
+                                             ("VALIDATING", "AWAITING_HUMAN_REVIEW")]
+    assert moves[2][2].startswith("recovered:")
 
 
 def _versions_of(factory, stage_key):
@@ -237,7 +251,7 @@ def test_the_sweep_queues_stalled_work_once(manual, factory, settings):
         assert jobs.sweep(db, settings) == [f"drive:{_first_stage(factory).workflow_execution_id}"]
     with factory() as db:
         assert jobs.sweep(db, settings) == []  # already waiting
-    assert jobs.run_pending(factory, manual.worker_settings, manual.model.transport()) == 1
+    assert jobs.run_pending(factory, manual.worker_settings, manual.model.transport()) >= 1
     assert manual.step_status(FIRST) == "Awaiting Review"
     with factory() as db:
         assert jobs.sweep(db, settings) == []  # now at a human gate: nothing to recover

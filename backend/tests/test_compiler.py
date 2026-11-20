@@ -52,8 +52,8 @@ def _problems(raw: dict) -> list[str]:
         (lambda d: d["stages"][0].update(work="does_not_exist"), "unknown work function"),
         (lambda d: d["stages"][1].update(approval_policy={"type": "conditional"}), "conditional policies are not supported"),
         (lambda d: d["stages"][1].update(approval_policy={"type": "any_of", "roles": ["wizard"]}), "unknown project role"),
-        (lambda d: d["stages"][0].update(condition="x > 1"), "conditional execution is not supported"),
-        (lambda d: d.update(execution="parallel"), "'parallel' is not supported"),
+        (lambda d: d["stages"][0].update(condition="x > 1"), "valid dictionary"),  # never an expression string
+        (lambda d: d.update(execution="fastest"), "'fastest' is not supported"),
         (lambda d: d["stages"][0].update(id="Bad-ID"), "must be lowercase snake_case"),
         (lambda d: d.update(stages=[]), "stages"),
         (lambda d: d.update(surprise=True), "surprise"),
@@ -69,7 +69,7 @@ def test_each_invalid_definition_is_refused_with_a_clear_reason(mutate, fragment
 
 def test_all_problems_are_reported_together():
     raw = _base()
-    raw["stages"][0].update(work="nope", condition="x")
+    raw["stages"][0].update(work="nope", condition={"fact": "weather", "equals": "sunny"})
     raw["stages"][1].update(depends_on=["ghost"])
     problems = _problems(raw)
     assert len(problems) >= 3, problems

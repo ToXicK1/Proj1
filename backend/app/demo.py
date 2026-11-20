@@ -119,9 +119,9 @@ def main() -> None:
         revision = portal.get_intake(db, owner, project.id)["revision"]
         execution = portal.confirm_intake(db, owner, project.id, revision, [], "poc")
         execution_id = execution.id
-    print("Starting the lifecycle on the configured AI model. This runs until the first approval is needed.")
+    print("Queuing the lifecycle. The worker runs it on the configured AI model until the first approval is needed;")
+    print("watch it in the project's AI activity menu.")
     portal.drive(factory, settings, None, uuid.UUID(str(execution_id)))
-    print("Done: the first step is waiting for the Business Analyst's approval.")
 
 
 if __name__ == "__main__":

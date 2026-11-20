@@ -14,9 +14,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.approvals.policy import PolicyError, parse_policy
 from app.sensors.registry import SENSORS, config_problems, stage_references
+from app.workflows import conditions
 
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
-SUPPORTED_EXECUTION = {"sequential"}
+SUPPORTED_EXECUTION = {"sequential", "parallel"}  # parallel: independent branches may run at the same time
 
 
 class _Strict(BaseModel):
@@ -43,7 +44,8 @@ class StageSpec(_Strict):
     approval_policy: dict[str, Any] | None = None
     work: str = Field(min_length=1, max_length=64)
     output_required_keys: list[str] = Field(default_factory=list)
-    condition: str | None = None  # conditional execution is not supported in this milestone
+    condition: dict[str, Any] | None = None  # see app/workflows/conditions.py; false means the stage is skipped
+    mandatory: bool = False  # governance steps that may never be skipped, so they cannot carry a condition
     model_route: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
     profile: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
     agent: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
@@ -90,7 +92,7 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
 
     problems: list[str] = []
     if spec.execution not in SUPPORTED_EXECUTION:
-        problems.append(f"execution: '{spec.execution}' is not supported (supported: sequential)")
+        problems.append(f"execution: '{spec.execution}' is not supported (supported: sequential, parallel)")
 
     ids = [s.id for s in spec.stages]
     seen: set[str] = set()
@@ -137,14 +139,18 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
             problems.append(f"{path}.sandbox_source: this needs sandbox to be on")
         if not stage.human_gate and is_ai:
             problems.append(f"{path}.human_gate: AI output always needs a human decision")
-        if stage.condition is not None:
-            problems.append(f"{path}.condition: conditional execution is not supported yet")
 
     graph = {s.id: [d for d in s.depends_on if d in ids] for s in spec.stages}
     for i, stage in enumerate(spec.stages):
         problems += _sensor_problems(f"stages[{i}].sensors", stage, graph)
         if stage.sandbox_source and stage.sandbox_source not in _upstream(stage.id, graph):
             problems.append(f"stages[{i}].sandbox_source: stage '{stage.sandbox_source}' is not upstream")
+        if stage.condition is not None:
+            if stage.mandatory:
+                problems.append(f"stages[{i}].condition: a mandatory stage can never be skipped, so it cannot be conditional")
+            if stage.sandbox:
+                problems.append(f"stages[{i}].condition: a stage whose code is built and tested cannot be skipped")
+            problems += conditions.problems(stage.condition, _upstream(stage.id, graph), f"stages[{i}].condition")
         for ref in stage.reads:
             if ref not in _upstream(stage.id, graph):
                 problems.append(f"stages[{i}].reads: stage '{ref}' is not upstream, so its work cannot exist yet")

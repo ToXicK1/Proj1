@@ -11,6 +11,7 @@ import threading
 import traceback
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -28,6 +29,12 @@ from app.jobs.models import Job
 log = logging.getLogger("aidlc.jobs")
 
 ACTIVE = ("queued", "running")
+_current_job: ContextVar[uuid.UUID | None] = ContextVar("current_job", default=None)
+
+
+def current_job_id() -> uuid.UUID | None:
+    """The job this code is running inside, if any. The engine records it as the owner of a stage's run."""
+    return _current_job.get()
 
 
 def enqueue(db: Session, kind: str, payload: dict[str, Any], *, dedupe_key: str | None = None,
@@ -171,6 +178,7 @@ def run_one(factory: sessionmaker[Session], settings: Settings, transport: Any, 
         job_id, kind, payload, cid = job.id, job.kind, dict(job.payload), job.correlation_id
         attempt, org_id, project_id = job.attempts, job.organization_id, job.project_id
     token = correlation.bind(cid or correlation.new_id())
+    job_token = _current_job.set(job_id)
     beat = _Heartbeat(factory, job_id, worker_id, lease)
     beat.start()
     label = activity.JOB_LABELS.get(kind, kind)
@@ -198,6 +206,7 @@ def run_one(factory: sessionmaker[Session], settings: Settings, transport: Any, 
         finally:
             beat.stopped.set()
             correlation.reset(token)
+            _current_job.reset(job_token)
     return True
 
 
@@ -239,12 +248,14 @@ def sweep(db: Session, settings: Settings) -> list[str]:
         .join(WorkflowVersion, WorkflowVersion.id == WorkflowExecution.workflow_version_id)
         .join(WorkflowDefinition, WorkflowDefinition.id == WorkflowVersion.definition_id)
         .where(WorkflowDefinition.organization_id.is_(None), WorkflowDefinition.key.like("aidlc-%"),
-               StageExecution.status.in_([S.READY.value, S.CHANGES_REQUESTED.value]),
+               StageExecution.status.in_([S.READY.value, S.CHANGES_REQUESTED.value, S.RUNNING.value,
+                                          S.VALIDATING.value]),
                StageExecution.updated_at < grace)
     ).all()
     for execution_id, org_id, project_id in waiting:
         key = f"drive:{execution_id}"
-        if db.execute(select(_no_job_for(key, recent_failure))).scalar():
+        in_flight = db.execute(select(Job.id).where(Job.project_id == project_id, Job.status.in_(ACTIVE))).first()
+        if not in_flight and db.execute(select(_no_job_for(key, recent_failure))).scalar():
             enqueue(db, "portal.drive", {"execution_id": str(execution_id)}, dedupe_key=key,
                     organization_id=org_id, project_id=project_id)
             queued.append(key)

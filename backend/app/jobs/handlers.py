@@ -19,6 +19,13 @@ def _resume(ctx: JobContext) -> None:
                   ctx.payload["stage_key"])
 
 
+def _stage(ctx: JobContext) -> None:
+    from app.portal import service as portal
+
+    portal.run_stage(ctx.factory, ctx.settings, ctx.transport, uuid.UUID(ctx.payload["execution_id"]),
+                     ctx.payload["stage_key"])
+
+
 def _answer(ctx: JobContext) -> None:
     from app.portal import service as portal
     from app.portal.models import PortalMessage
@@ -45,6 +52,7 @@ def _triage(ctx: JobContext) -> None:
 
 HANDLERS: dict[str, Handler] = {
     "portal.drive": _drive,
+    "portal.stage": _stage,
     "portal.resume": _resume,
     "portal.answer": _answer,
     "collab.triage": _triage,

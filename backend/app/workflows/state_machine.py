@@ -13,7 +13,8 @@ class StageStatus(StrEnum):
     RUNNING = "RUNNING"
     AI_COMPLETED = "AI_COMPLETED"
     VALIDATING = "VALIDATING"
-    AWAITING_HUMAN_REVIEW = "AWAITING_HUMAN_REVIEW"
+    AWAITING_HUMAN_REVIEW = "AWAITING_HUMAN_REVIEW"  # waiting for the professional's approval
+    AWAITING_USER_INPUT = "AWAITING_USER_INPUT"  # the professional asked the owner a question about the work
     CHANGES_REQUESTED = "CHANGES_REQUESTED"
     REJECTED = "REJECTED"
     APPROVED = "APPROVED"
@@ -48,6 +49,9 @@ EDGES: dict[tuple[StageStatus, StageStatus], frozenset[ActorType]] = {
     (S.RUNNING, S.AI_COMPLETED): SYS,
     (S.RUNNING, S.FAILED): SYS,
     (S.RUNNING, S.CANCELLED): HUMAN,
+    # Recovery: a run interrupted by a crash goes back to where it started, to be run again.
+    (S.RUNNING, S.READY): SYS,
+    (S.RUNNING, S.CHANGES_REQUESTED): SYS,
     (S.AI_COMPLETED, S.VALIDATING): SYS,
     (S.VALIDATING, S.AWAITING_HUMAN_REVIEW): SYS,
     (S.VALIDATING, S.COMPLETED): SYS,
@@ -60,6 +64,10 @@ EDGES: dict[tuple[StageStatus, StageStatus], frozenset[ActorType]] = {
     (S.AWAITING_HUMAN_REVIEW, S.CHANGES_REQUESTED): HUMAN,
     (S.AWAITING_HUMAN_REVIEW, S.REJECTED): HUMAN,
     (S.AWAITING_HUMAN_REVIEW, S.CANCELLED): HUMAN,
+    (S.AWAITING_HUMAN_REVIEW, S.AWAITING_USER_INPUT): HUMAN,  # the professional asks the owner
+    (S.AWAITING_USER_INPUT, S.CHANGES_REQUESTED): HUMAN,  # the owner answered; the AI reworks with the answer
+    (S.AWAITING_USER_INPUT, S.AWAITING_HUMAN_REVIEW): HUMAN,  # the question was withdrawn
+    (S.AWAITING_USER_INPUT, S.CANCELLED): HUMAN,
     (S.CHANGES_REQUESTED, S.RUNNING): SYS,
     (S.CHANGES_REQUESTED, S.CANCELLED): HUMAN,
     (S.REJECTED, S.READY): HUMAN,

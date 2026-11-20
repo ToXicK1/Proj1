@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.activity import service as activity
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
 from app.jobs.api import queue
-from app.portal import service
+from app.portal import service, supervision
 
 router = APIRouter(prefix="/api/v1/portal", tags=["portal"])
 FeedbackKind = Literal["defect", "new_requirement", "enhancement", "usability", "security_concern", "scope_change"]
@@ -130,6 +130,59 @@ def retry(project_id: uuid.UUID, stage: str, request: Request, tasks: Background
     queue(request, tasks, db, "portal.resume", {"execution_id": str(execution_id), "stage_key": stage_key},
           dedupe_key=f"resume:{execution_id}:{stage_key}", project_id=project_id)
     return {"started": True}
+
+
+class EscalateIn(_Strict):
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class ResolveIn(_Strict):
+    resolution: str = Field(min_length=3, max_length=2000)
+
+
+class QuestionIn(_Strict):
+    question: str = Field(min_length=3, max_length=2000)
+
+
+class AnswerOwnerIn(_Strict):
+    answer: str = Field(min_length=1, max_length=4000)
+
+
+@router.get("/projects/{project_id}/escalations")
+def list_escalations(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    return {"items": supervision.escalations(db, caller.user, project_id)}
+
+
+@router.post("/projects/{project_id}/stages/{stage}/escalations", status_code=201)
+def escalate(project_id: uuid.UUID, stage: str, body: EscalateIn, caller: CsrfCaller, db: DbSession) -> dict:
+    """Pauses the step: it is neither run nor approved until a professional resolves the escalation."""
+    return supervision.escalate(db, caller.user, project_id, stage, body.reason)
+
+
+@router.post("/projects/{project_id}/escalations/{escalation_id}/resolve")
+def resolve_escalation(project_id: uuid.UUID, escalation_id: uuid.UUID, body: ResolveIn, request: Request,
+                       tasks: BackgroundTasks, caller: CsrfCaller, db: DbSession) -> dict:
+    out, execution_id = supervision.resolve(db, caller.user, project_id, escalation_id, body.resolution)
+    _drive(tasks, request, db, project_id, execution_id)  # work that was held back may continue
+    return out
+
+
+@router.post("/projects/{project_id}/deliverables/{stage}/questions", status_code=201)
+def ask_owner(project_id: uuid.UUID, stage: str, body: QuestionIn, caller: CsrfCaller, db: DbSession) -> dict:
+    return supervision.ask_owner(db, caller.user, project_id, stage, body.question)
+
+
+@router.post("/projects/{project_id}/questions/{question_id}/answer")
+def answer_owner_question(project_id: uuid.UUID, question_id: uuid.UUID, body: AnswerOwnerIn, request: Request,
+                          tasks: BackgroundTasks, caller: CsrfCaller, db: DbSession) -> dict:
+    execution_id = supervision.answer(db, caller.user, project_id, question_id, body.answer)
+    _drive(tasks, request, db, project_id, execution_id)  # the AI updates the work with the answer
+    return {"recorded": True}
+
+
+@router.post("/projects/{project_id}/questions/{question_id}/withdraw")
+def withdraw_question(project_id: uuid.UUID, question_id: uuid.UUID, caller: CsrfCaller, db: DbSession) -> dict:
+    return supervision.withdraw(db, caller.user, project_id, question_id)
 
 
 @router.get("/projects/{project_id}/messages")

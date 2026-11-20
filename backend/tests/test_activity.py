@@ -29,10 +29,11 @@ def _run(env):  # noqa: F811
 def test_the_log_tells_the_story_of_a_stage_in_order(manual):  # noqa: F811
     manager = _overseer(manual, "project_manager")[0]
     manual.start()
-    assert _run(manual) == 1
+    assert _run(manual) >= 1
     feed = _feed(manager, manual)
     titles = [i["title"] for i in reversed(feed["items"])]
-    assert titles[0] == "Running the next steps: started" and titles[-1] == "Running the next steps: finished"
+    assert titles[0] == "Planning the next steps: started" and titles[-1].endswith(": finished")
+    assert "Running a step: started" in titles  # each stage runs as its own job
     first = [i for i in reversed(feed["items"]) if i["stage"] == FIRST]
     kinds = [i["kind"] for i in first]
     assert kinds[:4] == ["stage", "context", "model_call", "output"]
@@ -64,8 +65,8 @@ def test_entries_can_be_read_while_the_stage_is_still_running(manual):  # noqa: 
         return real.handle_request(request)
 
     jobs.run_pending(factory, manual.worker_settings, httpx.MockTransport(watching))
-    assert seen["stage"] == "READY"  # the stage's own work is not committed yet...
-    assert seen["notes"] == ["stage", "context", "model_call"]  # ...but the log already shows what it is doing
+    assert seen["stage"] == "RUNNING"  # the claim is committed before the AI works, so the stage shows as running
+    assert seen["notes"] == ["stage", "context", "model_call"]  # and the log already shows what it is doing
 
 
 def test_owners_never_see_the_log_and_professionals_see_only_their_departments(manual):  # noqa: F811
@@ -119,7 +120,7 @@ def test_writing_the_log_never_breaks_the_work(manual, monkeypatch):  # noqa: F8
 
     monkeypatch.setattr("app.activity.service.AiActivity", broken)
     manual.start()
-    assert _run(manual) == 1
+    assert _run(manual) >= 1
     assert manual.step_status(FIRST) == "Awaiting Review"
     with manual.engine.connect() as conn:
         assert conn.execute(text("select count(*) from ai_activity")).scalar() == 0

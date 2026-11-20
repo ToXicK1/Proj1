@@ -214,7 +214,7 @@ export interface WorkspaceDto {
   current_step: { name: string; phase: string; number: string; status: string; profile: string } | null;
   team: { profile: string; representative: string; status: string; stages_done: number; stages_total: number; assigned: string[] }[];
   phases: { name: string; stages: { id: string; number: string; name: string; profile: string; status: string }[] }[];
-  pending_actions: { kind: string; what: string; why: string; action: string; stage: string }[];
+  pending_actions: { kind: string; what: string; why: string; action: string; stage: string; question_id?: string; from?: string }[];
   activity: { at: string; text: string }[];
 }
 
@@ -258,6 +258,9 @@ export interface DeliverableDto {
     checks: { name: string; passed: boolean; summary: string }[];
   }[];
   change_requests: { comment: string; status: string }[];
+  question: { id: string; text: string } | null;
+  escalation: { id: string; reason: string } | null;
+  can_supervise: boolean;
 }
 
 export interface ActivityFieldDto {
@@ -603,6 +606,16 @@ export const api = {
     }),
   portalRetry: (id: string, stage: string) =>
     request("POST", `${portalPath(id)}/stages/${encodeURIComponent(stage)}/retry`),
+  escalate: (id: string, stage: string, reason: string) =>
+    request("POST", `${portalPath(id)}/stages/${encodeURIComponent(stage)}/escalations`, { reason }),
+  resolveEscalation: (id: string, escalationId: string, resolution: string) =>
+    request("POST", `${portalPath(id)}/escalations/${encodeURIComponent(escalationId)}/resolve`, { resolution }),
+  askOwner: (id: string, stage: string, question: string) =>
+    request("POST", `${portalPath(id)}/deliverables/${encodeURIComponent(stage)}/questions`, { question }),
+  answerQuestion: (id: string, questionId: string, answer: string) =>
+    request("POST", `${portalPath(id)}/questions/${encodeURIComponent(questionId)}/answer`, { answer }),
+  withdrawQuestion: (id: string, questionId: string) =>
+    request("POST", `${portalPath(id)}/questions/${encodeURIComponent(questionId)}/withdraw`),
   portalMessages: (id: string) => request<{ items: PortalMessageDto[] }>("GET", `${portalPath(id)}/messages`),
   globalChannels: () => request<{ items: { key: string; name: string }[]; kind: string }>("GET", "/api/v1/team-chat/channels"),
   oversight: () => request<OversightDto>("GET", "/api/v1/oversight"),

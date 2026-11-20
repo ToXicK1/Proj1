@@ -15,6 +15,7 @@ export const STEP_LABELS: Record<string, [string, Tone]> = {
   AI_COMPLETED: ["Checking", "progress"],
   VALIDATING: ["Checking", "progress"],
   AWAITING_HUMAN_REVIEW: ["Awaiting approval", "pending"],
+  AWAITING_USER_INPUT: ["Waiting for the owner", "pending"],
   CHANGES_REQUESTED: ["Changes requested", "warning"],
   APPROVED: ["Approved", "success"],
   COMPLETED: ["Completed", "success"],

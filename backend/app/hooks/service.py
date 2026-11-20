@@ -37,6 +37,7 @@ EVENTS: frozenset[str] = frozenset({
     "stage.approval_requested", "stage.approved", "stage.changes_requested", "stage.rejected", "stage.failed",
     "artifact.created", "artifact.versioned", "artifact.approved",
     "agent.started", "agent.completed", "agent.failed",
+    "stage.escalated", "stage.escalation_resolved", "stage.recovered", "stage.skipped", "stage.awaiting_user_input",
 })
 PRE_EVENTS = frozenset({"stage.started", "stage.validation_started", "stage.approval_requested", "stage.approved"})
 BLOCKABLE: frozenset[tuple[str, str]] = frozenset({

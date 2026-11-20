@@ -91,6 +91,8 @@ class StageExecution(Base):
     output_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # The job running this stage right now, so a crashed run can be told apart from one still in progress.
+    run_job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
 
 class StageTransition(Base):
@@ -108,3 +110,57 @@ class StageTransition(Base):
     actor_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reason: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class StageDependency(Base):
+    """The dependency graph of one execution as rows: stage_key waits for depends_on."""
+
+    __tablename__ = "stage_dependencies"
+    __table_args__ = (UniqueConstraint("workflow_execution_id", "stage_key", "depends_on", name="uq_stage_dependency"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    workflow_execution_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("workflow_executions.id"), nullable=False, index=True
+    )
+    stage_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    depends_on: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class StageEscalation(Base):
+    """A human pause on a stage. While open, the stage is neither run nor approved."""
+
+    __tablename__ = "stage_escalations"
+    __table_args__ = (CheckConstraint("status in ('open','resolved')", name="status_valid"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    stage_execution_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("stage_executions.id"), nullable=False, index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("projects.id"), nullable=False, index=True)
+    raised_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    reason: Mapped[str] = mapped_column(String(2000), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
+    resolution: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OwnerQuestion(Base):
+    """A professional's question to the owner about a stage's work. The answer goes back to the AI as feedback."""
+
+    __tablename__ = "owner_questions"
+    __table_args__ = (CheckConstraint("status in ('open','answered','withdrawn')", name="status_valid"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    stage_execution_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("stage_executions.id"), nullable=False, index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("projects.id"), nullable=False, index=True)
+    asked_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    question: Mapped[str] = mapped_column(String(2000), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
+    answer: Mapped[str | None] = mapped_column(String(4000), nullable=True)
+    answered_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

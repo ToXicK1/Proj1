@@ -747,6 +747,25 @@ a.row-main:hover {
   padding-top: 0.75rem;
 }
 
+.owner-answer {
+  gap: 0.35rem;
+}
+
+.supervise {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+}
+
+.supervise > details {
+  flex: 1 1 260px;
+}
+
+.supervise summary {
+  font-size: 0.88rem;
+  color: var(--green-700);
+}
+
 .callout-retry {
   background: var(--status-blocked-bg);
 }

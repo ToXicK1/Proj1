@@ -10,7 +10,7 @@ import uuid
 import zipfile
 from collections.abc import Callable
 from contextvars import ContextVar
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -27,9 +27,12 @@ from app.auth.models import User
 from app.core.config import Settings
 from app.core.db import uuid7
 from app.core.errors import AppError, not_found
+from app.jobs import service as jobs
+from app.jobs.models import Job
 from app.notifications.models import Notification
 from app.organizations.models import MemberProfile
 from app.organizations.service import membership_for
+from app.portal import supervision
 from app.portal.classifier import (
     CLASSIFIER_VERSION,
     FEEDBACK_ROUTES,
@@ -56,6 +59,7 @@ from app.sandbox_client import SAFE_PATH, project_files
 from app.sensors.models import SensorEvidence
 from app.workflows import service as engine
 from app.workflows.models import (
+    StageEscalation,
     StageExecution,
     StageTransition,
     WorkflowDefinition,
@@ -84,6 +88,7 @@ FIELDS = {key for key, _, _ in QUESTIONS}
 DISPLAY: dict[str, str] = {
     S.NOT_STARTED: "Not Started", S.READY: "In Progress", S.RUNNING: "In Progress", S.AI_COMPLETED: "In Progress",
     S.VALIDATING: "In Progress", S.AWAITING_HUMAN_REVIEW: "Awaiting Review", S.CHANGES_REQUESTED: "Changes Requested",
+    S.AWAITING_USER_INPUT: "Waiting for Owner",
     S.APPROVED: "Approved", S.COMPLETED: "Completed", S.SKIPPED: "Completed", S.REJECTED: "Blocked", S.BLOCKED: "Blocked", S.FAILED: "Blocked",
     S.CANCELLED: "Blocked",
 }
@@ -238,7 +243,10 @@ def confirm_intake(db: Session, user: User, project_id: uuid.UUID, revision: int
         db.rollback()
         raise
     intake = [*confirmed_requirements(items), *_assumptions(items)]
-    return engine.start_execution(db, user, project_id=project_id, workflow_version_id=version.id, intake=intake)
+    facts = {"scope": scope, "intake": {k: v["value"] for k, v in items.items()
+                                        if v.get("tag") == "explicit" or v.get("confirmed")}}
+    return engine.start_execution(db, user, project_id=project_id, workflow_version_id=version.id, intake=intake,
+                                  facts=facts)
 
 
 # Running the lifecycle --------------------------------------------------------------------------------------------
@@ -306,37 +314,78 @@ def _fix_failed_code(db: Session, stage: StageExecution, spec: dict[str, Any]) -
         SensorEvidence.outcome == "fail")).first())
 
 
+def _run_owner_active(db: Session, stage: StageExecution, settings: Settings) -> bool:
+    """Whether the job that claimed this stage's run is still alive (holding its lease)."""
+    now = datetime.now(UTC)
+    if stage.run_job_id is None:  # run outside the queue (an administrator action): trust it for one lease
+        return stage.updated_at > now - timedelta(seconds=settings.job_lease_seconds)
+    if stage.run_job_id == jobs.current_job_id():
+        return False  # this very job is taking its own interrupted run back
+    job = db.get(Job, stage.run_job_id)
+    return bool(job and job.status == "running" and job.locked_until and job.locked_until > now)
+
+
+def _runnable(db: Session, execution: WorkflowExecution, specs: dict[str, dict[str, Any]], settings: Settings,
+              ) -> tuple[list[str], bool]:
+    """Stages that need system work now, in workflow order, and whether a run is already in progress."""
+    stages = engine.stage_rows(db, execution.id)
+    out: list[str] = []
+    busy = False
+    for key, spec in specs.items():
+        stage = stages[key]
+        if stage.status in (S.RUNNING.value, S.VALIDATING.value):
+            if _run_owner_active(db, stage, settings):
+                busy = True
+                continue
+            out.append(key)  # interrupted: recover it
+        elif engine.open_escalation(db, stage) is not None:
+            continue  # paused by a person
+        elif stage.status in (S.READY.value, S.CHANGES_REQUESTED.value) or _fix_failed_code(db, stage, spec):
+            out.append(key)
+    return out, busy
+
+
 def drive(factory: sessionmaker[Session], settings: Settings, transport: Any, execution_id: uuid.UUID) -> None:
-    """System work after an owner action: run what is ready, then stop at the next human decision."""
-    for _ in range(len(STAGES) + 2 + AUTO_FIXES):
-        with factory() as db:
-            execution = db.get(WorkflowExecution, execution_id)
-            stages = engine.stage_rows(db, execution_id)
-            version = db.get(WorkflowVersion, execution.workflow_version_id)
-            order = [s["id"] for s in version.spec_json["stages"]]
-            ready = next((k for k in order if stages[k].status == S.READY.value), None)
-            specs = {s["id"]: s for s in version.spec_json["stages"]}
-            redo = next((k for k in order if stages[k].status == S.CHANGES_REQUESTED.value
-                         or _fix_failed_code(db, stages[k], specs[k])), None)
-            try:
-                if redo:
-                    engine.run_rework(db, execution_id=execution_id, stage_key=redo, settings=settings,
-                                      transport=transport)
-                elif ready:
-                    engine.run_deterministic_stage(db, execution_id=execution_id, stage_key=ready, settings=settings,
-                                                   transport=transport)
-                else:
-                    _announce(db, execution)
-                    return
-            except AppError:  # another request got there first, or a limit was reached
-                db.rollback()
-                _announce(db, db.get(WorkflowExecution, execution_id))
-                return
-            _announce(db, db.get(WorkflowExecution, execution_id))
-            current = engine.stage_rows(db, execution_id)[redo or ready]
-            if current.status not in (S.READY.value, S.COMPLETED.value) \
-                    and not _fix_failed_code(db, current, specs[redo or ready]):
-                return
+    """Dispatches the system work that is due: one job per stage. In a parallel workflow independent branches
+    are queued together and run on different workers; in a sequential one, one stage at a time."""
+    with factory() as db:
+        execution = db.get(WorkflowExecution, execution_id)
+        version = db.get(WorkflowVersion, execution.workflow_version_id)
+        specs = {sp["id"]: sp for sp in version.spec_json["stages"]}
+        due, busy = _runnable(db, execution, specs, settings)
+        if version.spec_json.get("execution", "sequential") != "parallel":
+            due = [] if busy else due[:1]
+        for key in due:
+            jobs.enqueue(db, "portal.stage", {"execution_id": str(execution_id), "stage_key": key},
+                         dedupe_key=f"stage:{execution_id}:{key}", organization_id=execution.organization_id,
+                         project_id=execution.project_id)
+        _announce(db, execution)
+        db.commit()
+
+
+def run_stage(factory: sessionmaker[Session], settings: Settings, transport: Any, execution_id: uuid.UUID,
+              stage_key: str) -> None:
+    """Does whatever this one stage needs now: a first run, a rework, or taking back an interrupted run."""
+    with factory() as db:
+        execution = db.get(WorkflowExecution, execution_id)
+        stage = engine.stage_rows(db, execution_id)[stage_key]
+        spec = engine.stage_spec(db.get(WorkflowVersion, execution.workflow_version_id), stage_key)
+        kwargs = {"execution_id": execution_id, "stage_key": stage_key, "settings": settings, "transport": transport}
+        try:
+            if engine.open_escalation(db, stage) is not None:
+                pass
+            elif stage.status == S.RUNNING.value and not _run_owner_active(db, stage, settings):
+                stage = engine.recover_stage(db, execution_id=execution_id, stage_key=stage_key,
+                                             reason="the worker running it stopped before it finished")
+            elif stage.status == S.VALIDATING.value and not _run_owner_active(db, stage, settings):
+                engine.resume_validation(db, **kwargs)
+            if stage.status == S.READY.value:
+                engine.run_deterministic_stage(db, **kwargs)
+            elif stage.status == S.CHANGES_REQUESTED.value or _fix_failed_code(db, stage, spec):
+                engine.run_rework(db, **kwargs)
+        except (AppError, engine.Superseded):  # another run got there first, a limit was reached, or a pause began
+            db.rollback()
+    drive(factory, settings, transport, execution_id)
 
 
 def resume(factory: sessionmaker[Session], settings: Settings, transport: Any, execution_id: uuid.UUID,
@@ -449,6 +498,11 @@ def workspace(db: Session, user: User, project_id: uuid.UUID) -> dict[str, Any]:
                 actions.append({"kind": "unassigned", "what": step.name,
                                 "why": f"Nobody is confirmed as {BY_PROFILE[step.profile].title} yet. "
                                        "Ask your administrator to assign someone.", "action": "", "stage": step.id})
+        elif stage.status == S.AWAITING_USER_INPUT.value and role == "project_owner":
+            for question, _ in [q for q in supervision.open_questions(db, project.id) if q[1] == step.id]:
+                actions.append({"kind": "question", "what": step.name, "why": question.question,
+                                "action": "Answer", "stage": step.id, "question_id": str(question.id),
+                                "from": BY_PROFILE[step.profile].title})
         elif stage.status in RETRYABLE and role == "project_owner":
             actions.append({"kind": "retry", "what": step.name, "why": "This work could not be finished.",
                             "action": "Try again", "stage": step.id})
@@ -580,6 +634,10 @@ def deliverables(db: Session, user: User, project_id: uuid.UUID) -> list[dict[st
     version = db.get(WorkflowVersion, execution.workflow_version_id)
     stages = engine.stage_rows(db, execution.id)
     may_see_code = _may_see_code(db, user, project)
+    questions = supervision.open_questions(db, project.id)
+    escalated = {row.stage_execution_id: {"id": str(row.id), "reason": row.reason}
+                 for row in db.execute(select(StageEscalation).where(StageEscalation.project_id == project.id,
+                                                                    StageEscalation.status == "open")).scalars()}
     out = []
     for spec in version.spec_json["stages"]:
         step = BY_STAGE.get(spec["id"])
@@ -601,6 +659,9 @@ def deliverables(db: Session, user: User, project_id: uuid.UUID) -> list[dict[st
                           "has_code": bool(project_files(v.content_json)),
                           "checks": _sandbox_checks(db, v.id)} for v in _versions(db, current[0].id)],
             "change_requests": [{"comment": c["comment"], "status": c["status"]} for c in review["change_requests"]],
+            "question": next(({"id": str(q.id), "text": q.question} for q, key in questions if key == step.id), None),
+            "escalation": escalated.get(stage.id),
+            "can_supervise": scope.kind in ("admin", "manager") or (scope.kind == "professional"),
         })
     return out
 

@@ -152,6 +152,10 @@ def submit_decision(
 
         if stage.status != StageStatus.AWAITING_HUMAN_REVIEW.value:
             raise AppError(409, "not_awaiting_review", "This stage is not waiting for a decision")
+        from app.workflows.service import open_escalation
+
+        if open_escalation(db, stage) is not None:
+            raise AppError(409, "escalated", "This step is paused by an escalation until a professional resolves it")
         current = _current(db, stage)
         if current is None or current[1].id != artifact_version_id:
             raise AppError(409, "stale_version", "A newer version exists; review the current version")

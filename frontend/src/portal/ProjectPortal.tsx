@@ -66,6 +66,108 @@ function Lifecycle({ data }: { data: WorkspaceDto }) {
   );
 }
 
+/** The owner answers a professional's question. The answer goes to the AI as feedback; the professional decides. */
+function OwnerAnswer({ projectId, questionId, step, from, question, onChange }: {
+  projectId: string; questionId: string; step: string; from: string; question: string; onChange: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function send(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await api.answerQuestion(projectId, questionId, text);
+      setText("");
+      onChange();
+    } catch (err) {
+      setError(problem(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="row-main owner-answer" onSubmit={(e) => void send(e)}>
+      <strong>{from} asks about {step}</strong>
+      <span>{question}</span>
+      <label>Your answer<textarea rows={2} maxLength={4000} value={text} onChange={(e) => setText(e.target.value)} /></label>
+      {error && <p role="alert" className="error">{error}</p>}
+      <button type="submit" disabled={busy || !text.trim()}>Send answer</button>
+    </form>
+  );
+}
+
+/** The professional team's controls on a step: ask the owner, escalate, or resolve an escalation. */
+function Supervise({ projectId, item, onChange }: { projectId: string; item: DeliverableDto; onChange: () => void }) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  async function run(work: () => Promise<unknown>) {
+    setError(null);
+    try {
+      await work();
+      setText("");
+      onChange();
+    } catch (err) {
+      setError(problem(err));
+    }
+  }
+  const field = (label: string) => (
+    <label>{label}<textarea rows={2} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} /></label>
+  );
+  if (item.escalation) {
+    return (
+      <div className="callout callout-retry stack-sm" role="note">
+        <strong>Paused by an escalation</strong>
+        <span>{item.escalation.reason}</span>
+        <span className="muted small">Nothing runs and nothing can be approved on this step until it is resolved.</span>
+        {item.can_supervise && <>{field("How it was resolved")}
+          <button type="button" disabled={text.trim().length < 3}
+            onClick={() => void run(() => api.resolveEscalation(projectId, item.escalation!.id, text))}>Resolve escalation</button></>}
+        {error && <p role="alert" className="error">{error}</p>}
+      </div>
+    );
+  }
+  if (item.question) {
+    return (
+      <div className="callout stack-sm" role="note">
+        <strong>Waiting for the owner's answer</strong>
+        <span>{item.question.text}</span>
+        <span className="muted small">Their answer goes to the AI as feedback, then the step comes back to you to decide.</span>
+        {item.can_supervise && <button type="button" className="secondary"
+          onClick={() => void run(() => api.withdrawQuestion(projectId, item.question!.id))}>Withdraw the question</button>}
+        {error && <p role="alert" className="error">{error}</p>}
+      </div>
+    );
+  }
+  if (!item.can_supervise) return null;
+  return (
+    <div className="supervise">
+      {item.can_decide && item.status === "Awaiting Review" && (
+        <details>
+          <summary>Ask the owner a question</summary>
+          <div className="stack-sm">
+            {field("Your question")}
+            <button type="button" disabled={text.trim().length < 3}
+              onClick={() => void run(() => api.askOwner(projectId, item.stage, text))}>Send to the owner</button>
+          </div>
+        </details>
+      )}
+      {!["Approved", "Completed"].includes(item.status) && (
+        <details>
+          <summary>Escalate this step</summary>
+          <div className="stack-sm">
+            {field("Why it needs to pause")}
+            <button type="button" className="secondary" disabled={text.trim().length < 3}
+              onClick={() => void run(() => api.escalate(projectId, item.stage, text))}>Escalate and pause</button>
+          </div>
+        </details>
+      )}
+      {error && <p role="alert" className="error">{error}</p>}
+    </div>
+  );
+}
+
 function Overview({ data, projectId, onReview, onBrief, onChange }: {
   data: WorkspaceDto; projectId: string; onReview: (stage: string) => void; onBrief: () => void; onChange: () => void;
 }) {
@@ -108,9 +210,12 @@ function Overview({ data, projectId, onReview, onBrief, onChange }: {
           {data.pending_actions.length === 0 && <EmptyState title="Nothing right now.">We will let you know when the team needs you.</EmptyState>}
           <ul className="rows">
             {data.pending_actions.map((a) => (
-              <li key={`${a.kind}-${a.stage}`} className={`row-item callout callout-${a.kind}`}>
-                <span className="row-main"><strong>{a.what}</strong><span className="muted">{a.why}</span></span>
-                {a.action && (
+              <li key={`${a.kind}-${a.stage}-${a.question_id ?? ""}`} className={`row-item callout callout-${a.kind}`}>
+                {a.kind === "question" && a.question_id ? (
+                  <OwnerAnswer projectId={projectId} questionId={a.question_id} step={a.what} from={a.from ?? "Your team"}
+                    question={a.why} onChange={onChange} />
+                ) : <span className="row-main"><strong>{a.what}</strong><span className="muted">{a.why}</span></span>}
+                {a.action && a.kind !== "question" && (
                   <button type="button" aria-label={`${a.action}: ${a.what}`} onClick={() => {
                     if (a.kind === "retry") void retry(a.stage);
                     else if (a.kind === "review") onReview(a.stage);
@@ -383,6 +488,7 @@ function Deliverables({ projectId, tick, role, wanted, profile, onChange }: {
             onClick={() => void decide("REQUEST_CHANGES", "Your changes were sent to the team.")}>Request changes</button>
         </div>
       )}
+      {isCurrent && <Supervise projectId={projectId} item={item} onChange={onChange} />}
       {item.change_requests.length > 0 && (
         <section>
           <h3>Requested changes</h3>

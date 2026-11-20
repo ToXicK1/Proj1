@@ -26,6 +26,9 @@ from app.skills.models import Skill, SkillVersion  # noqa: F401
 from app.storage.models import StoredObject  # noqa: F401
 from app.studio.models import WorkflowDraft  # noqa: F401
 from app.workflows.models import (  # noqa: F401
+    OwnerQuestion,
+    StageDependency,
+    StageEscalation,
     StageExecution,
     StageTransition,
     WorkflowDefinition,
