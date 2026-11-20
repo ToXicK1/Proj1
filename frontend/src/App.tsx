@@ -30,10 +30,19 @@ function Shell({ children }: { children: ReactNode }) {
   if (state.status !== "authenticated") {
     return (
       <div className="shell public">
-        <header className="public-header">
-          <Link to="/" className="brand"><span className="brand-mark" aria-hidden="true">AI</span>AI-DLC Platform</Link>
-        </header>
-        <main className="content">{children}</main>
+        <aside className="public-brand" aria-hidden="true">
+          <div className="brand"><span className="brand-mark">AI</span>AI-DLC Platform</div>
+          <p className="public-tagline">AI does the groundwork. Your professionals decide.</p>
+          <ul className="public-points">
+            <li>Six specialist departments, each led by a real professional</li>
+            <li>Nothing moves forward without a human approval</li>
+            <li>Every build and test result is real, never simulated</li>
+          </ul>
+        </aside>
+        <main className="content public-content">
+          <Link to="/" className="brand public-mobile-brand"><span className="brand-mark" aria-hidden="true">AI</span>AI-DLC Platform</Link>
+          {children}
+        </main>
       </div>
     );
   }
@@ -53,7 +62,8 @@ function readCollapsed(): boolean {
 function Frame({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const location = useLocation();
-  const toggle = (next: boolean) => {
+  const toggle = () => {
+    const next = !collapsed;
     setCollapsed(next);
     try {
       window.localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0");
@@ -63,11 +73,8 @@ function Frame({ children }: { children: ReactNode }) {
   };
   return (
     <div className={collapsed ? "shell nav-collapsed" : "shell"}>
-      <Sidebar onCollapse={() => toggle(true)} />
-      <main className="content" key={location.pathname}>
-        {collapsed && <button type="button" className="nav-expand" onClick={() => toggle(false)}>Show menu</button>}
-        {children}
-      </main>
+      <Sidebar collapsed={collapsed} onToggle={toggle} />
+      <main className="content" key={location.pathname}>{children}</main>
     </div>
   );
 }
@@ -136,7 +143,7 @@ export function App() {
             </RequireAuth>
           }
         />
-        <Route path="*" element={<p>Page not found.</p>} />
+        <Route path="*" element={<section className="narrow-page"><h1>Page not found</h1><p className="muted">That address does not lead anywhere. <Link to="/">Go to your projects</Link>.</p></section>} />
       </Routes>
     </Shell>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../api";
-import { Skeleton } from "../components/ui";
+import { PageHeader, Skeleton } from "../components/ui";
 import { TeamChat, globalChat } from "../portal/Collaboration";
 
 const INTRO: Record<string, [string, string]> = {
@@ -25,12 +25,8 @@ export function TeamChatPage() {
   const source = useMemo(() => (channels ? globalChat(channels) : null), [channels]);
   const [title, intro] = INTRO[kind] ?? INTRO.professional;
   return (
-    <section className="card stack">
-      <div>
-        <p className="eyebrow">Team</p>
-        <h1>{channels ? title : "Messages"}</h1>
-        {channels && <p className="muted">{intro}</p>}
-      </div>
+    <section className="page chat-page">
+      <PageHeader title={channels ? title : "Messages"} meta={channels ? intro : undefined} />
       {error && <p role="alert" className="error">{error}</p>}
       {!error && !source && <Skeleton title={false} />}
       {source && <TeamChat source={source} tick={tick} label={channels?.length ? "Message the team" : "Message someone directly"} />}

@@ -15,8 +15,9 @@ test.describe("projects", () => {
     await expect(page.getByRole("heading", { name: "Recruitment platform" })).toBeVisible();
     await expect(page.getByText("SaaS Platform · active")).toBeVisible();
 
-    await page.getByRole("link", { name: "← My projects" }).click();
-    await expect(page.getByRole("link", { name: "Recruitment platform" })).toBeVisible();
+    await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "My projects" }).click();
+    await expect(page.getByRole("main").getByRole("link", { name: "Recruitment platform" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Projects" }).getByRole("link", { name: "Recruitment platform" })).toBeVisible();
   });
 
   test("the create button stays disabled until a name is entered", async ({ page }) => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { PROFILES, TABS_FOR, type PortalTab } from "./roles";
-import { IdentityTag, LiveIndicator, Skeleton, StatusPill } from "../components/ui";
+import { Avatar, EmptyState, IdentityTag, LiveIndicator, PageHeader, Panel, Skeleton, StatusPill, When } from "../components/ui";
 import { DepartmentStatus, TeamChat, Tickets, projectChat } from "./Collaboration";
 import { ApiError, api, type ScopeDto, type DeliverableDto, type FeedbackDto, type IntakeDto, type PortalMessageDto, type WorkspaceDto } from "../api";
 
@@ -25,26 +25,42 @@ export function ContentView({ value }: { value: unknown }): ReactNode {
   return <>{String(value ?? "")}</>;
 }
 
+const DONE = ["Approved", "Completed"];
+
+type PhaseState = "done" | "active" | "todo";
+function phaseState(stages: { status: string }[]): PhaseState {
+  if (stages.every((s) => DONE.includes(s.status))) return "done";
+  return stages.some((s) => !DONE.includes(s.status) && s.status !== "Not Started") ? "active" : "todo";
+}
+
 function Lifecycle({ data }: { data: WorkspaceDto }) {
-  if (data.phases.length === 0) return <p className="muted">The lifecycle starts when the project brief is confirmed.</p>;
+  if (data.phases.length === 0) {
+    return <EmptyState title="The lifecycle has not started.">It starts when the project brief is confirmed.</EmptyState>;
+  }
   return (
     <div className="stack">
-      <section>
-        <h2>Lifecycle</h2>
-        {data.phases.map((phase) => (
-          <details key={phase.name} open={phase.stages.some((s) => !["Approved", "Completed", "Not Started"].includes(s.status))}>
-            <summary>{phase.name}</summary>
-            <ul className="list">
+      <h2 className="sr-only">Lifecycle</h2>
+      {data.phases.map((phase, index) => {
+        const done = phase.stages.filter((s) => DONE.includes(s.status)).length;
+        const state = phaseState(phase.stages);
+        return (
+          <section key={phase.name} className={`phase phase-${state}`} aria-label={phase.name}>
+            <div className="phase-head">
+              <span className="phase-index" aria-hidden="true">{state === "done" ? "✓" : index + 1}</span>
+              <h3>{phase.name}</h3>
+              <span className="muted">{done} of {phase.stages.length} done</span>
+            </div>
+            <ul className="steps">
               {phase.stages.map((s) => (
-                <li key={s.id} className="row">
-                  <span>{s.number} {s.name} <span className="muted">· {s.profile}</span></span>
+                <li key={s.id} className={`step step-${DONE.includes(s.status) ? "done" : s.status === "Not Started" ? "todo" : "active"}`}>
+                  <span className="step-name">{s.number} {s.name} <span className="muted">· {s.profile}</span></span>
                   <StatusPill label={s.status} />
                 </li>
               ))}
             </ul>
-          </details>
-        ))}
-      </section>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -53,6 +69,7 @@ function Overview({ data, projectId, onReview, onBrief, onChange }: {
   data: WorkspaceDto; projectId: string; onReview: (stage: string) => void; onBrief: () => void; onChange: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [allActivity, setAllActivity] = useState(false);
   async function retry(stage: string) {
     setError(null);
     try {
@@ -62,63 +79,87 @@ function Overview({ data, projectId, onReview, onBrief, onChange }: {
       setError(problem(err));
     }
   }
+  const activity = allActivity ? data.activity : data.activity.slice(0, 6);
   return (
-    <div className="stack">
-      <div>
-        <div className="row"><strong>Overall progress</strong><span>{data.progress}%</span></div>
-        <div className="progress" role="progressbar" aria-label="Overall progress" aria-valuemin={0} aria-valuemax={100}
-          aria-valuenow={data.progress}><span style={{ width: `${data.progress}%` }} /></div>
-        {data.current_step && (
-          <p className="muted">Now: {data.current_step.phase} · {data.current_step.number} {data.current_step.name} · {data.current_step.profile} · {data.current_step.status}</p>
-        )}
+    <div className="overview-grid">
+      <div className="stack">
+        <Panel title="Progress" aside={<strong className="big-number">{data.progress}%</strong>}>
+          <div className="progress" role="progressbar" aria-label="Overall progress" aria-valuemin={0} aria-valuemax={100}
+            aria-valuenow={data.progress}><span style={{ width: `${data.progress}%` }} /></div>
+          {data.phases.length > 0 && (
+            <ol className="phase-strip" aria-label="Phases">
+              {data.phases.map((phase) => (
+                <li key={phase.name} className={`phase-chip phase-${phaseState(phase.stages)}`}>{phase.name}</li>
+              ))}
+            </ol>
+          )}
+          {data.current_step ? (
+            <p className="now">
+              <span className="muted">Now</span> <strong>{data.current_step.number} {data.current_step.name}</strong>
+              <span className="muted"> · {data.current_step.profile}</span> <StatusPill label={data.current_step.status} />
+            </p>
+          ) : <p className="muted">Work starts once the project brief is confirmed.</p>}
+        </Panel>
+
+        {error && <p role="alert" className="error">{error}</p>}
+        <Panel title="Waiting for you"
+          aside={data.pending_actions.length > 0 ? <StatusPill label={String(data.pending_actions.length)} tone="pending" /> : undefined}>
+          {data.pending_actions.length === 0 && <EmptyState title="Nothing right now.">We will let you know when the team needs you.</EmptyState>}
+          <ul className="rows">
+            {data.pending_actions.map((a) => (
+              <li key={`${a.kind}-${a.stage}`} className={`row-item callout callout-${a.kind}`}>
+                <span className="row-main"><strong>{a.what}</strong><span className="muted">{a.why}</span></span>
+                {a.action && (
+                  <button type="button" aria-label={`${a.action}: ${a.what}`} onClick={() => {
+                    if (a.kind === "retry") void retry(a.stage);
+                    else if (a.kind === "review") onReview(a.stage);
+                    else onBrief();
+                  }}>{a.action}</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Panel>
+
+        <Panel title="Recent activity">
+          {data.activity.length === 0 && <EmptyState title="No activity yet." />}
+          <ol className="timeline">
+            {activity.map((a, i) => (
+              <li key={i}><span className="timeline-dot" aria-hidden="true" /><span>{a.text}</span><When at={a.at} /></li>
+            ))}
+          </ol>
+          {data.activity.length > 6 && (
+            <button type="button" className="link-button" onClick={() => setAllActivity(!allActivity)}>
+              {allActivity ? "Show less" : `Show all ${data.activity.length}`}
+            </button>
+          )}
+        </Panel>
       </div>
-      {error && <p role="alert" className="error">{error}</p>}
-      <section>
-        <h2>Waiting for you</h2>
-        {data.pending_actions.length === 0 && <p className="muted">Nothing right now.</p>}
-        <ul className="list">
-          {data.pending_actions.map((a) => (
-            <li key={`${a.kind}-${a.stage}`} className="row">
-              <span><strong>{a.what}</strong><br /><span className="muted">{a.why}</span></span>
-              {a.action && (
-                <button type="button" aria-label={`${a.action}: ${a.what}`} onClick={() => {
-                  if (a.kind === "retry") void retry(a.stage);
-                  else if (a.kind === "review") onReview(a.stage);
-                  else onBrief();
-                }}>{a.action}</button>
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section>
-        <h2>Your project team</h2>
-        <div className="team-grid">
+
+      <Panel title="Your project team" aside={<IdentityTag kind="ai">AI-assisted</IdentityTag>}>
+        <p className="hint">Each department has specialist AI agents. The named professional approves its work.</p>
+        <div className="team-list">
           {data.team.map((m) => (
-            <article key={m.profile} className="team-card" aria-label={m.representative}>
-              <strong>{m.representative}</strong>
-              <IdentityTag kind="ai">Specialist agents</IdentityTag>
-              {m.assigned.length
-                ? m.assigned.map((name) => <IdentityTag key={name} kind="human">{name}</IdentityTag>)
-                : <span className="muted">No professional assigned yet</span>}
-              <span className="muted">{m.stages_done} of {m.stages_total} steps</span>
-              <StatusPill label={m.status} />
+            <article key={m.profile} className="team-row" aria-label={m.representative}>
+              <div className="team-row-head">
+                <strong>{m.representative}</strong>
+                {m.stages_total > 0 && <StatusPill label={m.status} />}
+              </div>
+              <div className="team-row-people">
+                {m.assigned.length
+                  ? m.assigned.map((name) => <span key={name} className="person"><Avatar name={name} size="sm" />{name}</span>)
+                  : <span className="muted">No professional assigned yet</span>}
+              </div>
+              {m.stages_total > 0 ? (
+                <div className="mini-progress">
+                  <span className="mini-bar" aria-hidden="true"><span style={{ width: `${(m.stages_done / m.stages_total) * 100}%` }} /></span>
+                  <span className="muted">{m.stages_done} of {m.stages_total} steps</span>
+                </div>
+              ) : <span className="muted small">No steps in this plan</span>}
             </article>
           ))}
         </div>
-      </section>
-      <section>
-        <h2>Recent activity</h2>
-        {data.activity.length === 0 && <p className="muted">No activity yet.</p>}
-        <ul className="list">
-          {data.activity.map((a, i) => (
-            <li key={i} className="row">
-              <span><IdentityTag kind="system" /> {a.text}</span>
-              <span className="muted">{new Date(a.at).toLocaleString()}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      </Panel>
     </div>
   );
 }
@@ -375,7 +416,7 @@ function Conversations({ projectId, data, tick }: { projectId: string; data: Wor
 
   return (
     <div className="stack">
-      {items.length === 0 && <p className="muted">No messages yet.</p>}
+      {items.length === 0 && <EmptyState title="No messages yet.">Questions you send to a department show up here with their replies.</EmptyState>}
       <ul className="messages" aria-label="Messages">
         {items.map((m) => (
           <li key={m.id} className={m.mine ? "message mine" : "message"}>
@@ -459,7 +500,7 @@ function Testing({ projectId, data, tick }: { projectId: string; data: Workspace
       )}
       <section>
         <h2>Feedback and reports</h2>
-        {items.length === 0 && <p className="muted">Nothing has been reported.</p>}
+        {items.length === 0 && <EmptyState title="Nothing has been reported." />}
         <ul className="list">
           {items.map((f) => (
             <li key={f.id} className="stack-sm">
@@ -514,20 +555,22 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  if (!data || !scope) return error ? <p role="alert" className="error">{error}</p> : <section className="card"><Skeleton lines={5} /></section>;
+  if (!data || !scope) return error ? <p role="alert" className="error">{error}</p> : <div className="page"><Skeleton lines={5} /></div>;
   const departmentName = PROFILES.find(([key]) => key === department)?.[1] ?? "";
+  const views: Record<string, string> = { owner: "You own this project", admin: "Administrator view", manager: "Project manager view" };
+  const yourRole = scope.kind === "professional"
+    ? `Your role: ${scope.profiles.map((p) => PROFILES.find(([k]) => k === p)?.[1]).join(", ")}`
+    : views[scope.kind];
   return (
-    <section className="card stack">
-      <div>
-        <div className="page-header">
-          <p className="eyebrow">{scope.kind === "professional" ? `Project · your role: ${scope.profiles.map((p) => PROFILES.find(([k]) => k === p)?.[1]).join(", ")}` : "Project"}</p>
-          <LiveIndicator updated={updated} />
-        </div>
-        <h1>{data.project.name}</h1>
-        <p className="muted">{data.project.type} · {data.project.status}</p>
-        {data.project.description && <p>{data.project.description}</p>}
-      </div>
-      <div className="tabs" role="tablist" aria-label="Project sections">
+    <div className="page project-page">
+      <PageHeader
+        eyebrow={<nav aria-label="Breadcrumb" className="crumbs"><Link to="/">My projects</Link><span aria-hidden="true">/</span><span>{data.project.name}</span></nav>}
+        title={data.project.name}
+        meta={`${data.project.type} · ${data.project.status}`}
+        actions={<><LiveIndicator updated={updated} />{yourRole && <span className="role-tag">{yourRole}</span>}</>}>
+        {data.project.description && <p className="lede">{data.project.description}</p>}
+      </PageHeader>
+      <div className="tabs sticky-tabs" role="tablist" aria-label="Project sections">
         {allowed.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t}
           className={tab === t ? "tab selected" : "tab"} onClick={() => setTab(t)}>{t}</button>)}
       </div>
@@ -535,7 +578,7 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
         {tab === "Lifecycle" && <Lifecycle data={data} />}
         {tab === "Workspace" && department && (
           <div className="stack">
-            <p className="eyebrow">{departmentName} workspace</p>
+            <h2 className="section-title">{departmentName} workspace</h2>
             <div className="split">
               <DepartmentStatus projectId={projectId} profile={department} tick={tick} />
               {scope?.channels.some((c) => c.key === department) && (
@@ -562,6 +605,6 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
         {tab === "Conversations" && <Conversations projectId={projectId} data={data} tick={tick} />}
         {tab === "Testing" && <Testing projectId={projectId} data={data} tick={tick} />}
       </div>
-    </section>
+    </div>
   );
 }

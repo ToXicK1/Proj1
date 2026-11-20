@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { ApiError, api, type DepartmentStatusDto, type PersonDto, type ScopeDto, type TeamMessageDto, type TicketDto } from "../api";
 import { PROFILES } from "./roles";
 import { leadingTarget, mentionsIn, suggestions, type Who } from "./chatTargets";
-import { IdentityTag, Skeleton, StatusPill, type Tone } from "../components/ui";
+import { Avatar, EmptyState, IdentityTag, Skeleton, StatusPill, When, type Tone } from "../components/ui";
 
 function problem(err: unknown): string {
   return err instanceof ApiError ? err.message : "That did not work. Please try again.";
@@ -161,62 +161,78 @@ export function TeamChat({ source, tick, initial, label = "Message the team" }: 
     return m.mine ? `${author} → ${m.to}` : `${author} → you`;
   };
 
+  const channelList = grouped && source.channels.length > 1 && !initial;
   return (
-    <div className="stack">
-      {grouped && source.channels.length > 1 && !initial && (
-        <div className="tabs" role="tablist" aria-label="Chat channels">
+    <div className={channelList ? "chat chat-with-channels" : "chat"}>
+      {channelList && (
+        <div className="channel-list" role="tablist" aria-label="Chat channels" aria-orientation="vertical">
           {source.channels.map((c) => (
             <button key={c.key} type="button" role="tab" aria-selected={channel === c.key}
-              className={channel === c.key ? "tab selected" : "tab"} onClick={() => setChannel(c.key)}>{c.name}</button>
+              className={channel === c.key ? "channel selected" : "channel"} onClick={() => setChannel(c.key)}>
+              <span aria-hidden="true">#</span> {c.name}
+            </button>
           ))}
         </div>
       )}
-      {items === null ? <Skeleton title={false} /> : items.length === 0 && <p className="muted">No messages yet. Start the conversation.</p>}
-      <ul className="messages" aria-label="Team messages">
-        {items?.map((m) => (
-          <li key={m.id} className={`message ${m.mine ? "mine" : ""} message-${m.author_type} ${m.mentions_me ? "mentions-me" : ""} ${m.direct ? "message-direct" : ""}`}>
-            <div className="message-head">
-              <IdentityTag kind={m.author_type}>{head(m)}</IdentityTag>
-              {m.direct && <StatusPill label="Direct" tone="info" />}
-              <span className="muted">{new Date(m.created_at).toLocaleString()}</span>
-              {!m.direct && m.mentions_me && <StatusPill label="Mentioned you" tone="info" />}
-              {m.direct && !m.mine && m.author_id && (
-                <button type="button" className="link-button" onClick={() => setTo({ user_id: m.author_id!, name: m.author })}>
-                  Reply to {m.author}
-                </button>
-              )}
+      <div className="chat-main">
+        {items === null ? <Skeleton title={false} />
+          : items.length === 0 && <EmptyState title="No messages yet.">Start the conversation.</EmptyState>}
+        <ul className="messages" aria-label="Team messages">
+          {items?.map((m) => (
+            <li key={m.id} className={`message ${m.mine ? "mine" : ""} message-${m.author_type} ${m.mentions_me ? "mentions-me" : ""} ${m.direct ? "message-direct" : ""}`}>
+              <Avatar name={m.author} kind={m.author_type} />
+              <div className="message-content">
+                <div className="message-head">
+                  <strong className="message-author">{head(m)}</strong>
+                  {m.author_type === "ai" && <IdentityTag kind="ai" />}
+                  {m.direct && <StatusPill label="Direct" tone="info" />}
+                  {!m.direct && m.mentions_me && <StatusPill label="Mentioned you" tone="info" />}
+                  <When at={m.created_at} />
+                  {m.direct && !m.mine && m.author_id && (
+                    <button type="button" className="link-button" onClick={() => setTo({ user_id: m.author_id!, name: m.author })}>
+                      Reply to {m.author}
+                    </button>
+                  )}
+                </div>
+                <div className="message-text">{m.body}</div>
+                {m.mentions.length > 0 && <div className="muted small">{m.author} mentioned {m.mentions.map((n) => `@${n}`).join(", ")}</div>}
+              </div>
+            </li>
+          ))}
+        </ul>
+        {error && <p role="alert" className="error">{error}</p>}
+        <form className="composer" onSubmit={(e) => void send(e)}>
+          {mode === "direct" && (
+            <p className={to ? "chat-target private" : "chat-target"} aria-live="polite">
+              {to ? <>To <strong>{to.name}</strong> (only the two of you see this)</>
+                : grouped ? <>To <strong>everyone in {channelName}</strong></> : <>Choose who to message with @name</>}
+              {to && grouped && <button type="button" className="link-button" onClick={() => setTo(null)}>Back to everyone</button>}
+            </p>
+          )}
+          <label className="composer-field">
+            <span className="composer-label">{label}</span>
+            <textarea required rows={2} maxLength={4000} value={body} onChange={(e) => setBody(e.target.value)}
+              placeholder={mode === "direct"
+                ? (to ? `Message ${to.name}` : grouped ? `Message everyone in ${channelName}, or start with @name` : "Start with @name")
+                : "Write a message"}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (body.trim() && people !== null) void send(); } }} />
+          </label>
+          {hints.length > 0 && (
+            <div className="actions" role="group" aria-label="People you can name">
+              {hints.map((h) => <button key={h.label} type="button" className="chip" onClick={() => setBody(h.insert)}>{h.label}</button>)}
             </div>
-            <div>{m.body}</div>
-            {m.mentions.length > 0 && <div className="muted">{m.author} mentioned {m.mentions.map((n) => `@${n}`).join(", ")}</div>}
-          </li>
-        ))}
-      </ul>
-      {error && <p role="alert" className="error">{error}</p>}
-      <form className="stack-sm" onSubmit={(e) => void send(e)}>
-        {mode === "direct" && (
-          <p className="chat-target" aria-live="polite">
-            {to ? <>To <strong>{to.name}</strong> (only the two of you see this)</>
-              : grouped ? <>To <strong>everyone in {channelName}</strong></> : <>Choose who to message with @name</>}
-            {to && grouped && <button type="button" className="link-button" onClick={() => setTo(null)}>Back to everyone</button>}
-          </p>
-        )}
-        <label>{label}
-          <textarea required rows={3} maxLength={4000} value={body} onChange={(e) => setBody(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (body.trim() && people !== null) void send(); } }} />
-        </label>
-        {hints.length > 0 && (
-          <div className="actions" role="group" aria-label="People you can name">
-            {hints.map((h) => <button key={h.label} type="button" className="secondary" onClick={() => setBody(h.insert)}>{h.label}</button>)}
+          )}
+          <div className="composer-foot">
+            <p className="hint">
+              {mode === "direct"
+                ? grouped ? "Type @name to talk to one person; it stays that way until you type @everyone or another @name."
+                  : "Type @name to talk to one person; it stays that way until you name someone else."
+                : "Type @name to notify someone. Enter sends; Shift+Enter starts a new line."}
+            </p>
+            <button type="submit" disabled={!body.trim() || people === null}>Send</button>
           </div>
-        )}
-        <p className="muted">
-          {mode === "direct"
-            ? grouped ? "Type @name to talk to one person; it stays that way until you type @everyone or another @name."
-              : "Type @name to talk to one person; it stays that way until you name someone else."
-            : "Type @name to notify someone. Enter sends; Shift+Enter starts a new line."}
-        </p>
-        <button type="submit" disabled={!body.trim() || people === null}>Send</button>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
@@ -324,7 +340,7 @@ export function Tickets({ projectId, scope, tick, department }: {
   const field = (name: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [name]: e.target.value });
   let list: ReactNode = <Skeleton title={false} />;
   if (items) {
-    list = items.length === 0 ? <p className="muted">No tickets yet.</p> : (
+    list = items.length === 0 ? <EmptyState title="No tickets yet.">Raise one when you have a question or something is wrong.</EmptyState> : (
       <ul className="list" aria-label="Tickets">
         {items.map((t) => (
           <li key={t.id} className="row">
@@ -347,7 +363,7 @@ export function Tickets({ projectId, scope, tick, department }: {
         {list}
         {selected && <TicketDetail projectId={projectId} ticket={selected} onChange={() => { void load(); void openTicket(selected.id); }} />}
       </div>
-      <form className="stack-sm card" onSubmit={(e) => void create(e)}>
+      <form className="stack-sm panel" onSubmit={(e) => void create(e)}>
         <h3>Raise a ticket</h3>
         <label>Title<input required minLength={3} maxLength={200} value={form.title} onChange={field("title")} /></label>
         <label>

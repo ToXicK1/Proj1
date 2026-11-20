@@ -302,3 +302,24 @@ Status: **The live six-profile run passes on a local model. The milestone is not
 - Migration 0011 reverses and re-applies on a clean database.
 - Provider calls now default to a 120 second timeout and 4096 output tokens, both configurable, because full deliverables did not fit the old limits.
 - Open limits: M9-1 to M9-10 in `KNOWN_ISSUES.md`. Email is still written to the outbox only.
+
+## UI/UX redesign: calm workspace (2026-11-19)
+
+Frontend only; no API or permission changes. The colours and design tokens are unchanged.
+
+- **Shell:** a slim forest-green sidebar.
+  - It lists your projects directly, with the open project's departments nested under it.
+  - It collapses to an icon rail, and shows an unread count on Notifications.
+  - Your name and role are at the bottom.
+  - The project sections no longer appear twice; they live only in the page tabs.
+- **Phones:** a top bar and a slide-in menu that closes on Escape or a tap outside.
+- **Home:** a greeting, then approvals waiting for you and your projects. Creating a project sits in a side panel with compact type chips.
+- **Project:** a breadcrumb header and sticky tabs.
+  - **Overview:** progress with phase chips and the current step, then what is waiting for you, a compact team list (people, step progress, status) and a short activity timeline.
+  - **Lifecycle:** a vertical stepper by phase.
+- **Chat:** messages in one stream with avatars and relative times. Channels are a side list. The composer shows whether the message goes to everyone or privately to one person.
+- **Oversight, notifications and sign-in:** stat tiles, list rows, empty states, and a brand panel beside the sign-in form.
+- **Checks:**
+  - Frontend typecheck, build and 13 unit tests pass. The frontend has no linter configured.
+  - Browser tests: 19 personal-mode tests pass, and the shared lifecycle and collab specs pass, each on a fresh stack.
+  - One spec changed because project names now also appear in the sidebar.
