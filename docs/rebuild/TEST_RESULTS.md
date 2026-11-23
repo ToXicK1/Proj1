@@ -157,3 +157,22 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
 - **Bug found and fixed:** Deliverables hid every step not visible to the owner from the professional team as well, so internal review steps could not be opened.
 - **A governance test caught a design mistake, now fixed.** My first owner step had the system move the step to the owner, which breaks the rule that only a person does that. The professional now asks the owner, and the system-asked questions (with their migration) were removed.
 - **The lifecycle registry test** now counts the original 33 steps and the 8 department steps separately.
+
+## 2026-11-23 — Step 7.1c
+
+- **`tests/test_assistant.py` (3), all passed:**
+  - The assistant answers and unusable proposals are dropped.
+  - Nothing is added without a person; an added proposal is an AI suggestion sourced to the exchange; adding it twice is refused; the call is a recorded agent run.
+  - Only the department uses its assistant.
+  - Before the lifecycle starts, the assistant says so.
+- **`tests/test_ba_lifecycle.py`:** a new test of the steps view (kinds, statuses and suggestions; another department and the owner are refused).
+- **Migration 0024:** no drift; downgrade and re-upgrade succeed. Frontend typecheck and build clean; 17 unit tests passed.
+- **Backend full suite:** 510 tests: 505 passed, 5 skipped (live model tests). One run failed one test whose expectation was wrong (it expected the project owner to see the department steps; owners are correctly refused); corrected and passed.
+- **Other browser specs, each on a fresh stack:** shared `collab.spec.ts` and `lifecycle.spec.ts` passed; personal 19 passed.
+- **Browser (isolated stack, mock model, shared mode), new `ba-department.spec.ts`, passed:**
+  - The owner starts a project on the BA preview.
+  - The analyst sees the first step's suggestions, confirms them, submits the step package and approves it in Reviews & Approvals.
+  - The next step starts on its own and waits.
+  - The assistant answers.
+  - The confirmed records appear in their module, and the owner is refused the workspace.
+- **Bug found by the spec and fixed:** the steps list never refreshed, so a step the AI was working on looked stuck on "Starting".

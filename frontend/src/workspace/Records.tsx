@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ApiError } from "../api";
 import { EmptyState, IdentityTag, Skeleton, StatusPill } from "../components/ui";
 import { PROVENANCE_LABEL, STATUS_LABEL } from "./modules";
+import { SelectedRecord } from "./Assistant";
+import { SectionsEditor, asSections, toMarkdown } from "./SectionsEditor";
+
+const FlowEditor = lazy(() => import("./FlowEditor").then((m) => ({ default: m.FlowEditor })));
 import { type ItemDto, type KindDto, type KindFieldDto, type Provenance, workApi } from "./workApi";
 
 const problem = (e: unknown) =>
@@ -32,6 +36,12 @@ export function Records({ projectId, department, kinds, all }: {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const kindDefs = all.filter((k) => kinds.includes(k.key));
+  const shared = useContext(SelectedRecord);
+  useEffect(() => {
+    const open = items?.find((i) => i.id === selected);
+    shared.set(open ? open.id : null, open ? open.key : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, items]);
 
   const load = useCallback(() => {
     workApi.items(projectId, department, { ...filters, kind: kinds.length > 1 ? filters.kind : kinds[0] })
@@ -164,6 +174,18 @@ function FieldInput({ field, value, onChange }: { field: KindFieldDto; value: un
     return <label>{label}<input type="number" min="0" value={(value as number) ?? ""}
       onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))} /></label>;
   }
+  if (field.type === "json" && field.name === "sections") {
+    return <fieldset><legend>{label}</legend><SectionsEditor value={value} onChange={onChange} /></fieldset>;
+  }
+  if (field.type === "json" && field.name === "diagram") {
+    return (
+      <fieldset><legend>{label}</legend>
+        <Suspense fallback={<p className="muted small">Loading the diagram editor…</p>}>
+          <FlowEditor value={value} onChange={onChange} />
+        </Suspense>
+      </fieldset>
+    );
+  }
   if (field.type === "json") {
     return <JsonField label={label} value={value} onChange={onChange} />;
   }
@@ -233,8 +255,15 @@ function RecordForm({ kinds, initial, onSave, onCancel }: {
   );
 }
 
-function Value({ value }: { value: unknown }) {
+function Value({ value, field }: { value: unknown; field?: string }) {
   if (value === undefined || value === null || value === "") return <span className="muted">not set</span>;
+  if (field === "sections") {
+    return <div className="stack-sm">{asSections(value).map((sec, i) => (
+      <section key={i}><h4>{sec.heading}</h4><p className="prewrap">{sec.content}</p></section>))}</div>;
+  }
+  if (field === "diagram") {
+    return <Suspense fallback={<p className="muted small">Loading the diagram…</p>}><FlowEditor value={value} readOnly /></Suspense>;
+  }
   if (Array.isArray(value) && value.every((v) => typeof v === "string")) {
     return <ul>{(value as string[]).map((v, i) => <li key={i}>{v}</li>)}</ul>;
   }
@@ -291,7 +320,7 @@ export function RecordDetail({ projectId, itemId, kinds, onChange }: {
           }} />
       ) : (
         <dl className="fields">
-          {def?.fields.map((f) => <div key={f.name}><dt>{human(f.name)}</dt><dd><Value value={item.body[f.name]} /></dd></div>)}
+          {def?.fields.map((f) => <div key={f.name}><dt>{human(f.name)}</dt><dd><Value value={item.body[f.name]} field={f.name} /></dd></div>)}
         </dl>
       )}
       {item.can_edit && !editing && (
@@ -301,6 +330,17 @@ export function RecordDetail({ projectId, itemId, kinds, onChange }: {
             <button type="button" onClick={() => act(() => workApi.edit(projectId, item.id, {
               expected_version: item.latest_version, provenance: "confirmed", reason: "confirmed by a professional" }))}>
               Confirm suggestion</button>
+          )}
+          {item.kind === "document" && (
+            <button type="button" className="secondary" onClick={() => {
+              const blob = new Blob([toMarkdown(`${item.key} ${item.title} (v${item.version})`, asSections(item.body.sections))],
+                { type: "text/markdown" });
+              const link = document.createElement("a");
+              link.href = URL.createObjectURL(blob);
+              link.download = `${item.key}-v${item.version}.md`;
+              link.click();
+              URL.revokeObjectURL(link.href);
+            }}>Export as Markdown</button>
           )}
           <button type="button" className="secondary" onClick={() => act(() => workApi.archive(projectId, item.id,
             item.status !== "archived"))}>{item.status === "archived" ? "Restore" : "Archive"}</button>

@@ -38,7 +38,7 @@ export function Packages({ projectId, department, canEdit }: { projectId: string
     <div className="stack">
       <p className="muted">A package freezes the exact versions of the records in it. Only this department's assigned
         professionals decide on it; the AI never does. Editing a record afterwards does not change what was decided.
-        The lifecycle's own approval steps stay in the project's Deliverables until step 7.1 joins them here.</p>
+        A step's package is its approval: deciding it decides the step.</p>
       {error && <p role="alert" className="error">{error}</p>}
       {items.length === 0 && <EmptyState title="No packages yet.">Select records in a module and submit them for review.</EmptyState>}
       {items.map((p) => (

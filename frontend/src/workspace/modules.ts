@@ -4,7 +4,7 @@ import type { Tone } from "../components/ui";
  * shared screens, or not built yet: then it says which step brings it, and nothing pretends to work. */
 
 export type Module =
-  | { key: string; label: string; screen: "overview" | "packages" | "handoffs" | "traceability" | "conversations" }
+  | { key: string; label: string; screen: "overview" | "steps" | "packages" | "handoffs" | "traceability" | "conversations" | "scope" | "changes" }
   | { key: string; label: string; screen: "records"; kinds: string[] }
   | { key: string; label: string; screen: "later"; step: string; what: string };
 
@@ -13,22 +13,24 @@ const later = (key: string, label: string, step: string, what: string): Module =
 export const MODULES: Record<string, Module[]> = {
   business_analyst: [
     { key: "overview", label: "BA Overview", screen: "overview" },
+    { key: "steps", label: "Lifecycle steps", screen: "steps" },
     { key: "discovery", label: "Discovery", screen: "records", kinds: ["discovery_question"] },
     { key: "requirements", label: "Requirements", screen: "records", kinds: ["requirement"] },
     { key: "documents", label: "BRD / SRS Documents", screen: "records", kinds: ["document"] },
     { key: "stories", label: "User Stories", screen: "records", kinds: ["user_story"] },
     { key: "flows", label: "Process Flows", screen: "records", kinds: ["process_flow"] },
     { key: "stakeholders", label: "Stakeholders", screen: "records", kinds: ["stakeholder"] },
-    later("scope", "Scope & Priorities", "7.1", "a scope board over requirements and stories"),
+    { key: "scope", label: "Scope & Priorities", screen: "scope" },
     { key: "traceability", label: "Traceability Matrix", screen: "traceability" },
     { key: "risks", label: "Risks & Assumptions", screen: "records", kinds: ["risk", "assumption"] },
-    later("changes", "Change Requests", "7.1", "change requests against approved packages"),
+    { key: "changes", label: "Change Requests", screen: "changes" },
     { key: "reviews", label: "Reviews & Approvals", screen: "packages" },
     { key: "handoffs", label: "Handoffs", screen: "handoffs" },
     { key: "conversations", label: "BA Conversations", screen: "conversations" },
   ],
   solution_architect: [
     { key: "overview", label: "Architecture Overview", screen: "overview" },
+    { key: "steps", label: "Lifecycle steps", screen: "steps" },
     later("requirements", "Requirements Analysis", "7.2", "the approved BA package with analysis notes"),
     later("system", "System Design", "7.2", "editable system, context and component diagrams"),
     later("components", "Component Architecture", "7.2", "component records and diagrams"),
@@ -45,6 +47,7 @@ export const MODULES: Record<string, Module[]> = {
   ],
   ui_ux_designer: [
     { key: "overview", label: "Design Overview", screen: "overview" },
+    { key: "steps", label: "Lifecycle steps", screen: "steps" },
     later("research", "Research & Discovery", "7.2", "research notes and personas"),
     later("journeys", "User Journeys", "7.2", "journey maps"),
     later("ia", "Information Architecture", "7.2", "site maps and navigation"),
@@ -62,6 +65,7 @@ export const MODULES: Record<string, Module[]> = {
   ],
   software_developer: [
     { key: "overview", label: "Development Overview", screen: "overview" },
+    { key: "steps", label: "Lifecycle steps", screen: "steps" },
     later("tasks", "Requirements & Tasks", "7.3", "development tasks from approved stories"),
     later("plan", "Implementation Plan", "7.3", "modules, dependencies and sequencing"),
     later("repo", "Repository Explorer", "7.3", "the platform repository, and GitHub once connected"),
@@ -79,6 +83,7 @@ export const MODULES: Record<string, Module[]> = {
   ],
   qa_security: [
     { key: "overview", label: "QA Overview", screen: "overview" },
+    { key: "steps", label: "Lifecycle steps", screen: "steps" },
     later("strategy", "Test Strategy", "7.4", "the test strategy document"),
     later("cases", "Test Cases", "7.4", "test cases linked to requirements"),
     later("suites", "Test Suites", "7.4", "suites and campaigns"),
@@ -98,6 +103,7 @@ export const MODULES: Record<string, Module[]> = {
   ],
   devops_release: [
     { key: "overview", label: "DevOps Overview", screen: "overview" },
+    { key: "steps", label: "Lifecycle steps", screen: "steps" },
     later("infra", "Infrastructure", "7.5", "the infrastructure overview"),
     later("envs", "Environments", "7.5", "development, test and the local staging environment"),
     later("pipelines", "CI/CD Pipelines", "7.5", "recorded pipeline runs with logs"),

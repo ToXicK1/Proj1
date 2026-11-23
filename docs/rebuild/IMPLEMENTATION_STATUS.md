@@ -283,3 +283,21 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - internal review steps appear in Deliverables for the professional team but not for the owner.
   - No migration was needed.
 - **Not yet (7.1c):** submitting a step's package and sending a step back are API-only; asking the owner already has its button in the step review. Their buttons in the workspace come next, together with the document and process-flow editors, Scope & Priorities, Change Requests and the AI assistant.
+
+## 2026-11-23 — Step 7.1c: the workspace works the department lifecycle
+
+- **Lifecycle steps** (new module in every department workspace, from `GET /work/{department}/steps`): each step of the department with its status, records, change requests, what it waits for, and the actions the professional may take:
+  - *record steps:* see the AI's suggestions, confirm them as written (recorded as the professional's decision) or work on them in their module, then submit the step package. Its decision is the step's approval (Reviews & Approvals).
+  - *Human Professional Review:* read the gathered package, approve it, or send one earlier AI step back with a note.
+  - *User Review and Approval:* ask the owner for input, read their answer, then give the final approval. The button stays disabled until the owner has answered, and the server refuses it too.
+  - The list refreshes every 3 seconds while the AI is working on a step.
+- **The department's AI assistant** (context panel; `POST/GET /work/{department}/assistant`, job `work.assistant`, table `assistant_exchanges`, migration `0024_assistant`):
+  - The professional asks, optionally about the open record. The department's lead agent answers through its route, so budgets, failover and the activity log apply. It has READ tools and the department's record list, and may propose new records.
+  - Proposals are only shown. A person adds one, and it enters as an AI suggestion sourced to the exchange, to be confirmed before it can be submitted. The assistant never edits, submits or approves.
+  - Unusable proposals (wrong department, missing fields) are dropped and counted.
+- **Editors:**
+  - *Documents:* a section outline with headings and text, add, remove and reorder sections, and export to Markdown.
+  - *Process flows:* a diagram editor (React Flow) with start, step, decision and end shapes, labelled arrows, drag, remove, and a text reading of the diagram for screen readers. The editable definition (nodes with positions, edges) is saved as the record's new version, never a picture.
+- **Scope & Priorities:** requirements and user stories on a MoSCoW board. Changing a priority saves a new version with the reason.
+- **Change Requests:** every change request on the department's steps (the professional's, the owner's answers, send-backs), with its status.
+- **Offline mock model:** for record steps it now returns one example item per list, built from the field description the step gives. Demos and browser tests can then exercise the records. Every value says "offline mock".

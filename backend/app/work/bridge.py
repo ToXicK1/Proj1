@@ -193,6 +193,48 @@ def send_back(db: Session, user: Any, *, project: Project, review_key: str, targ
     return execution.id
 
 
+def department_steps(db: Session, user: Any, project: Project, department: str) -> list[dict[str, Any]]:
+    """The department's lifecycle steps in the project's current workflow, with what each needs from a person."""
+    from app.approvals.models import ChangeRequest
+    from app.portal.supervision import owner_has_answered
+    from app.workflows import service as engine
+    from app.workflows.models import OwnerQuestion, WorkflowExecution, WorkflowVersion
+
+    execution = db.execute(select(WorkflowExecution).where(WorkflowExecution.project_id == project.id)
+                           .order_by(WorkflowExecution.created_at.desc())).scalars().first()
+    if execution is None:
+        return []
+    specs = [s for s in db.get(WorkflowVersion, execution.workflow_version_id).spec_json["stages"]
+             if s.get("profile") == department and s.get("human_gate")]
+    rows = engine.stage_rows(db, execution.id)
+    out = []
+    for spec in specs:
+        stage = rows[spec["id"]]
+        kind = ("records" if spec.get("records") else "owner_input" if spec.get("owner_input")
+                else "review" if spec.get("work") == "department_review" else "ai")
+        records = step_records(db, stage.id) if spec.get("records") else []
+        question = db.execute(select(OwnerQuestion).where(OwnerQuestion.stage_execution_id == stage.id)
+                              .order_by(OwnerQuestion.created_at.desc())).scalars().first()
+        requests = db.execute(select(ChangeRequest).where(ChangeRequest.stage_execution_id == stage.id)
+                              .order_by(ChangeRequest.created_at)).scalars().all()
+        out.append({
+            "key": spec["id"], "name": spec["name"], "status": stage.status, "kind": kind,
+            "failure_reason": stage.failure_reason,
+            "records": [{"id": str(i.id), "key": i.key, "kind": i.kind, "title": i.title, "provenance": i.provenance,
+                         "status": i.status, "version": i.current_version} for i in sorted(records, key=lambda i: i.key)],
+            "send_back_to": [r for r in (spec.get("reads") or [])
+                             if next((s for s in specs if s["id"] == r and s.get("work") == "ai:stage_work"), None)
+                             and rows[r].status == "APPROVED"] if kind in ("review", "owner_input") else [],
+            "owner": {"asked": question is not None, "status": question.status if question else None,
+                      "question": question.question if question else None,
+                      "answer": question.answer if question else None,
+                      "answered": owner_has_answered(db, stage)} if kind == "owner_input" else None,
+            "change_requests": [{"comment": c.comment, "status": c.status, "at": c.created_at.isoformat()}
+                                for c in requests],
+        })
+    return out
+
+
 def is_package_version(db: Session, version: ArtifactVersion) -> bool:
     return db.execute(select(WorkPackage.id).where(WorkPackage.artifact_version_id == version.id)).first() is not None
 

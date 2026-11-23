@@ -165,3 +165,18 @@ def test_send_back_is_only_for_the_department_and_its_earlier_ai_steps(env):
                             json={"step": "ba_intake_review", "note": "x"}).status_code == 422  # not a review step
     assert env.analyst.post(_w(env, "/steps/ba_professional_review/send-back"), headers=env.ah,
                             json={"step": "ba_user_review", "note": "x"}).status_code == 422  # not upstream
+
+
+def test_the_steps_view_says_what_each_step_waits_for(env):
+    env.start(scope="ba-department")
+    steps = env.analyst.get(_w(env, f"/{BA}/steps")).json()
+    assert steps["can_edit"] is True
+    kinds = {s["key"]: s["kind"] for s in steps["items"]}
+    assert [s["key"] for s in steps["items"]] == STEPS
+    assert kinds["ba_intake_review"] == "records" and kinds["ba_professional_review"] == "review"
+    assert kinds["ba_user_review"] == "owner_input"
+    first = steps["items"][0]
+    assert first["status"] == "AWAITING_HUMAN_REVIEW" and {r["provenance"] for r in first["records"]} == {"ai_suggestion"}
+    other, _ = env.holder("solution_architect")
+    assert other.get(_w(env, f"/{BA}/steps")).status_code == 403
+    assert env.client.get(_w(env, f"/{BA}/steps")).status_code == 403  # the project owner works in the portal (RD-2)

@@ -50,7 +50,20 @@ def _triage(ctx: JobContext) -> None:
         collab.triage(ctx.factory, ctx.settings, ctx.transport, ticket_id, finish=ctx.finish_in)
 
 
+def _assistant(ctx: JobContext) -> None:
+    from app.work import assistant
+    from app.work.assistant import AssistantExchange
+
+    exchange_id = uuid.UUID(ctx.payload["exchange_id"])
+    with ctx.factory() as db:
+        row = db.get(AssistantExchange, exchange_id)
+        department = row.department if row else None
+    with activity.scope(profile_key=department):
+        assistant.run(ctx.factory, ctx.settings, ctx.transport, exchange_id, finish=ctx.finish_in)
+
+
 HANDLERS: dict[str, Handler] = {
+    "work.assistant": _assistant,
     "portal.drive": _drive,
     "portal.stage": _stage,
     "portal.resume": _resume,

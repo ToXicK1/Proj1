@@ -7,6 +7,9 @@ import { PROFILES } from "../portal/roles";
 import { MODULES, PATH_DEPARTMENT } from "../workspace/modules";
 import { Records } from "../workspace/Records";
 import { Handoffs, Later, Packages, Traceability } from "../workspace/Screens";
+import { Steps } from "../workspace/Steps";
+import { ChangeRequests, ScopeBoard } from "../workspace/Scope";
+import { Assistant, SelectedRecord } from "../workspace/Assistant";
 import { type KindDto, type TeamCardDto, workApi } from "../workspace/workApi";
 
 /** One department's own working environment: its module navigation, the work area, and a context panel. */
@@ -21,6 +24,7 @@ export function DepartmentWorkspacePage() {
   const [scope, setScope] = useState<ScopeDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [panel, setPanel] = useState(true);
+  const [selected, setSelected] = useState<{ id: string | null; key: string | null }>({ id: null, key: null });
 
   useEffect(() => {
     if (!department) return;
@@ -50,6 +54,7 @@ export function DepartmentWorkspacePage() {
           <button type="button" className="secondary" aria-pressed={panel} onClick={() => setPanel(!panel)}>
             {panel ? "Hide context" : "Show context"}</button>
         </span>} />
+      <SelectedRecord.Provider value={{ ...selected, set: (id, key) => setSelected({ id, key }) }}>
       <div className={panel ? "workspace-grid with-panel" : "workspace-grid"}>
         <nav className="workspace-nav" aria-label={`${title} modules`}>
           {modules.map((m) => (
@@ -66,6 +71,9 @@ export function DepartmentWorkspacePage() {
           {current.screen === "records" && (
             <Records key={current.key} projectId={projectId} department={department} kinds={current.kinds} all={kinds} />
           )}
+          {current.screen === "steps" && <Steps projectId={projectId} department={department} />}
+          {current.screen === "scope" && <ScopeBoard projectId={projectId} department={department} />}
+          {current.screen === "changes" && <ChangeRequests projectId={projectId} department={department} />}
           {current.screen === "packages" && <Packages projectId={projectId} department={department} canEdit={canEdit} />}
           {current.screen === "handoffs" && <Handoffs projectId={projectId} department={department} canEdit={canEdit} />}
           {current.screen === "traceability" && <Traceability projectId={projectId} />}
@@ -76,16 +84,14 @@ export function DepartmentWorkspacePage() {
         </main>
         {panel && (
           <aside className="workspace-context stack" aria-label="Context">
-            <section className="panel stack-sm" aria-label="AI assistant">
-              <h3>AI assistant</h3>
-              <p className="muted small">The department's assistant, which reads the selected record and this project's
-                approved work and proposes changes for you to accept, arrives in step 7.1. Until then the AI works through
-                the lifecycle steps, and its proposals appear here as AI suggestions for you to confirm.</p>
-            </section>
+            {card.visible
+              ? <Assistant projectId={projectId} department={department} canEdit={canEdit} />
+              : <p className="muted small">This department's assistant is for its own team.</p>}
             {card.visible && <DepartmentStatus projectId={projectId} profile={department} tick={0} />}
           </aside>
         )}
       </div>
+      </SelectedRecord.Provider>
     </div>
   );
 }
@@ -105,9 +111,9 @@ function Overview({ card, projectId, department }: { card: TeamCardDto; projectI
       {card.current && (
         <p>Current lifecycle step: <strong>{card.current.name}</strong>{card.current.note ? `. ${card.current.note}` : ""}</p>
       )}
-      <p className="muted">Lifecycle steps are approved in the project's{" "}
-        <Link to={`/projects/${encodeURIComponent(projectId)}?tab=Workspace&profile=${department}`}>step reviews</Link>{" "}
-        until step 7.1 brings them into this workspace.</p>
+      <p className="muted">Steps of the department lifecycle are worked on in Lifecycle steps. Steps of the standard
+        lifecycle are still reviewed in the project's{" "}
+        <Link to={`/projects/${encodeURIComponent(projectId)}?tab=Workspace&profile=${department}`}>step reviews</Link>.</p>
     </div>
   );
 }

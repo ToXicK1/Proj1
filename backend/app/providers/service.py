@@ -311,7 +311,8 @@ def _record(db: Session, *, organization_id, project_id, stage_execution_id, rou
 
 
 _ROLE = {"lead": "doing the work", "reviewer": "independent review", "specialist": "specialist"}
-_PURPOSES = {"owner_answer": "answer to the project owner", "ticket_triage": "ticket triage"}
+_PURPOSES = {"owner_answer": "answer to the project owner", "ticket_triage": "ticket triage",
+             "assistant": "department assistant"}
 _ERRORS = {"timeout": "it took too long", "rate_limited": "too many requests", "unavailable": "the service was down",
            "auth": "the connection was refused", "bad_response": "the reply was unusable",
            "quota_exhausted": "out of credit or at its spending cap", "provider_paused": "every provider is paused",

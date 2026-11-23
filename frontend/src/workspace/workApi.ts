@@ -46,6 +46,21 @@ export interface TeamCardDto {
   issues?: { stage: string; kind: string; text: string }[];
 }
 
+export interface AssistantExchangeDto {
+  id: string; department: string; asked_by: string | null; item: { id: string; key: string } | null; question: string;
+  status: "pending" | "answered" | "failed"; answer: string; failure: string; created_at: string; answered_at: string | null;
+  proposals: { kind: string; title: string; body: Record<string, unknown>; added: string | null }[];
+}
+
+export interface StepDto {
+  key: string; name: string; status: string; kind: "records" | "review" | "owner_input" | "ai";
+  failure_reason: string | null;
+  records: { id: string; key: string; kind: string; title: string; provenance: Provenance; status: string; version: number }[];
+  send_back_to: string[];
+  owner: { asked: boolean; status: string | null; question: string | null; answer: string | null; answered: boolean } | null;
+  change_requests: { comment: string; status: string; at: string }[];
+}
+
 const base = (projectId: string) => `/api/v1/projects/${encodeURIComponent(projectId)}/work`;
 const id = encodeURIComponent;
 
@@ -80,8 +95,19 @@ export const workApi = {
     "GET", `${base(p)}/traceability`),
   packages: (p: string, department: string) =>
     request<{ items: PackageDto[] }>("GET", `${base(p)}/${id(department)}/packages`),
-  submit: (p: string, department: string, title: string, itemIds: string[], note: string) =>
-    request<PackageDto>("POST", `${base(p)}/${id(department)}/packages`, { title, item_ids: itemIds, note }),
+  submit: (p: string, department: string, title: string, itemIds: string[], note: string, stageKey?: string) =>
+    request<PackageDto>("POST", `${base(p)}/${id(department)}/packages`,
+      { title, item_ids: itemIds, note, stage_key: stageKey ?? null }),
+  ask: (p: string, department: string, question: string, itemId: string | null) =>
+    request<AssistantExchangeDto>("POST", `${base(p)}/${id(department)}/assistant`, { question, item_id: itemId }),
+  assistantHistory: (p: string, department: string) =>
+    request<{ items: AssistantExchangeDto[] }>("GET", `${base(p)}/${id(department)}/assistant`),
+  addProposal: (p: string, exchangeId: string, index: number) =>
+    request<AssistantExchangeDto>("POST", `${base(p)}/assistant/${id(exchangeId)}/proposals/${index}`),
+  steps: (p: string, department: string) =>
+    request<{ items: StepDto[]; can_edit: boolean }>("GET", `${base(p)}/${id(department)}/steps`),
+  sendBack: (p: string, reviewKey: string, step: string, note: string) =>
+    request("POST", `${base(p)}/steps/${id(reviewKey)}/send-back`, { step, note }),
   decide: (p: string, packageId: string, decision: "approve" | "request_changes", note: string) =>
     request<PackageDto>("POST", `${base(p)}/packages/${id(packageId)}/decision`, { decision, note }),
   handOff: (p: string, packageId: string, to: string, note: string) =>

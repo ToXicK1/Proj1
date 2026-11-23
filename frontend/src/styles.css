@@ -2340,3 +2340,16 @@ button.link { background: none; border: 0; padding: 0; color: var(--action); cur
   .workspace-grid, .workspace-grid.with-panel { grid-template-columns: minmax(0, 1fr); }
   .workspace-nav { position: static; flex-direction: row; flex-wrap: wrap; }
 }
+
+/* Workspace editors (step 7.1c) */
+.flow-canvas { height: 360px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.flow-node { padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-raised); }
+.flow-start, .flow-end { border-radius: 999px; }
+.flow-decision { border-style: dashed; }
+.sections-editor { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 12px; }
+.sections-editor nav .nav-link { text-align: left; background: none; border: 0; padding: 4px 8px; cursor: pointer; font: inherit; color: var(--text); border-radius: var(--radius-sm); }
+.sections-editor nav .nav-link.active { background: var(--action); color: var(--action-text); }
+.prewrap { white-space: pre-wrap; }
+.assistant-answer { white-space: pre-wrap; }
+@media (max-width: 760px) { .sections-editor { grid-template-columns: minmax(0, 1fr); } }
+.scope-board { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-items: start; }

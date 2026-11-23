@@ -11,6 +11,7 @@ The HTTP client is injectable so tests can use httpx.MockTransport.
 """
 
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -522,15 +523,39 @@ class MockAdapter(_Base):
         elif mode == "missing_keys":
             text = json.dumps({"unrelated": True})
         else:
-            text = json.dumps({"verdict": "pass", "findings": []}) if list(keys) == ["verdict", "findings"] else \
-                json.dumps({key: _MOCK_PROJECT if key == "source_files"
-                            else f"{key} drafted from {len(request.user)} characters of input" for key in keys})
+            lists = _mock_lists(request.system)
+            if list(keys) == ["verdict", "findings"] and "findings" not in lists:
+                text = json.dumps({"verdict": "pass", "findings": []})
+            else:
+                text = json.dumps({key: _MOCK_PROJECT if key == "source_files" else lists[key] if key in lists
+                                   else f"{key} drafted from {len(request.user)} characters of input" for key in keys})
         return CompletionResult(
             text=text,
             usage=Usage(input_tokens=max(1, len(request.user) // 4), output_tokens=max(1, len(text) // 4)),
             model=request.model,
             latency_ms=1,
         )
+
+
+_LIST_SPEC = re.compile(r"(\w+) must be a JSON list of objects, each with a short title and: (.*?)\.(?= \w+ must be|$)",
+                        re.MULTILINE)
+
+
+def _mock_lists(system: str) -> dict[str, list[dict[str, Any]]]:
+    """For record steps, one example object per list, built from the field description the step gives (offline)."""
+    out: dict[str, list[dict[str, Any]]] = {}
+    for key, fields in _LIST_SPEC.findall(system):
+        item: dict[str, Any] = {"title": f"Example {key.replace('_', ' ')} (offline mock)"}
+        for part in fields.split(", "):
+            name = part.split(" ", 1)[0]
+            if " one of " in part:
+                item[name] = part.split(" one of ", 1)[1].split("/")[0]
+            elif "as a list of texts" in part:
+                item[name] = [f"{name.replace('_', ' ')} (offline mock)"]
+            elif "(required)" in part:
+                item[name] = f"{name.replace('_', ' ')} written by the offline mock"
+        out[key] = [item]
+    return out
 
 
 def _requested_keys(system: str) -> list[str]:

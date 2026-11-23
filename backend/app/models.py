@@ -35,6 +35,7 @@ from app.sensors.models import RiskAcceptance, SensorEvidence, SensorExecution  
 from app.skills.models import Skill, SkillVersion  # noqa: F401
 from app.storage.models import StoredObject  # noqa: F401
 from app.studio.models import WorkflowDraft  # noqa: F401
+from app.work.assistant import AssistantExchange  # noqa: F401
 from app.work.models import (  # noqa: F401
     Handoff,
     WorkComment,

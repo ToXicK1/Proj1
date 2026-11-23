@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
 from app.collab import service as collab
+from app.core.errors import AppError
 from app.jobs.api import queue
 from app.portal.lifecycle import STAGES, TEAM, lead_key
 from app.work import kinds
@@ -70,6 +71,11 @@ class HandoffIn(_Strict):
 class SendBackIn(_Strict):
     step: str = Field(min_length=1, max_length=64)
     note: str = Field(min_length=1, max_length=2000)
+
+
+class AskIn(_Strict):
+    question: str = Field(min_length=1, max_length=4000)
+    item_id: uuid.UUID | None = None
 
 
 class ReplyIn(_Strict):
@@ -203,6 +209,18 @@ def hand_off(project_id: uuid.UUID, package_id: uuid.UUID, body: HandoffIn, call
     return work.hand_off(db, caller.user, project_id, package_id, to_department=body.to_department, note=body.note)
 
 
+@router.get("/{department}/steps")
+def department_steps(project_id: uuid.UUID, department: str, caller: CurrentCaller, db: DbSession) -> dict:
+    """The department's lifecycle steps and what each waits for. Its own team, managers and administrators only."""
+    from app.work import bridge
+
+    project, scope = work._scope(db, caller.user, project_id)
+    if not work.reads_all(scope, work._department(department)):
+        raise AppError(403, "not_permitted", "Not your department")
+    return {"items": bridge.department_steps(db, caller.user, project, department),
+            "can_edit": work.edits(db, caller.user, project, department)}
+
+
 @router.post("/steps/{review_key}/send-back")
 def send_back(project_id: uuid.UUID, review_key: str, body: SendBackIn, request: Request, tasks: BackgroundTasks,
               caller: CsrfCaller, db: DbSession) -> dict:
@@ -215,6 +233,32 @@ def send_back(project_id: uuid.UUID, review_key: str, body: SendBackIn, request:
     queue(request, tasks, db, "portal.drive", {"execution_id": str(execution_id)},
           dedupe_key=f"drive:{execution_id}", project_id=project_id)
     return {"sent_back": body.step}
+
+
+@router.post("/{department}/assistant", status_code=202)
+def ask_assistant(project_id: uuid.UUID, department: str, body: AskIn, request: Request, tasks: BackgroundTasks,
+                  caller: CsrfCaller, db: DbSession) -> dict:
+    from app.work import assistant
+
+    out = assistant.ask(db, caller.user, project_id, department, question=body.question, item_id=body.item_id)
+    queue(request, tasks, db, "work.assistant", {"exchange_id": out["id"]}, dedupe_key=f"assistant:{out['id']}",
+          project_id=project_id)
+    return out
+
+
+@router.get("/{department}/assistant")
+def assistant_history(project_id: uuid.UUID, department: str, caller: CurrentCaller, db: DbSession) -> dict:
+    from app.work import assistant
+
+    return {"items": assistant.history(db, caller.user, project_id, department)}
+
+
+@router.post("/assistant/{exchange_id}/proposals/{index}")
+def add_proposal(project_id: uuid.UUID, exchange_id: uuid.UUID, index: int, caller: CsrfCaller,
+                 db: DbSession) -> dict:
+    from app.work import assistant
+
+    return assistant.add_proposal(db, caller.user, project_id, exchange_id, index)
 
 
 @router.get("/{department}/handoffs")
