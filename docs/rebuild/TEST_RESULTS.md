@@ -176,3 +176,18 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - The assistant answers.
   - The confirmed records appear in their module, and the owner is refused the workspace.
 - **Bug found by the spec and fixed:** the steps list never refreshed, so a step the AI was working on looked stuck on "Starting".
+
+## 2026-11-23 — Step 7.1d: live BA department (Phase 7 BA exit check)
+
+- **Live, local `qwen3-vl:4b-instruct` (Ollama), shared mode, `ba-department-live.spec.ts`, every decision through the UI:**
+  - **Run 1, passed in 17.9 min, but showed a gap.** All steps were approved, yet Intake Review, Discovery and Requirements Analysis had returned empty lists, so no requirements existed.
+  - **Run 2, failed at sign-up.** The first account's email verification took over 2 minutes while the full backend suite ran at the same time. No project was created; this was a load problem, not a product one.
+  - **Run 3, stopped correctly.** With the new minimum, Requirements Analysis was asked again twice and still returned `[]`, so it stopped rather than be approved empty.
+  - **A direct probe of the model,** after adding an example entry to the instructions, gave 6 usable requirements on each of two tries.
+  - **Run 4, passed in 33.1 min. This is the exit check:**
+    - 21 model calls, all succeeded;
+    - all 8 steps approved, 6 packages approved, the workflow completed, and the owner's input recorded;
+    - records: 2 stakeholders, 5 requirements (booking, reminders, reception management, mobile, data security), 5 user stories and 3 risks;
+    - no open questions, assumptions or review findings.
+  - The spec now fails if Requirements Analysis has no records.
+- **Backend:** full suite 511 tests: 506 passed, 5 skipped, before the example change. After it, the 32 tests in the affected files passed (`test_ba_lifecycle.py`, including new tests for empty lists and copied placeholders, `test_stage_records.py`, `test_assistant.py` and `test_portal.py`).

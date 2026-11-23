@@ -180,3 +180,24 @@ def test_the_steps_view_says_what_each_step_waits_for(env):
     other, _ = env.holder("solution_architect")
     assert other.get(_w(env, f"/{BA}/steps")).status_code == 403
     assert env.client.get(_w(env, f"/{BA}/steps")).status_code == 403  # the project owner works in the portal (RD-2)
+
+
+def test_an_empty_requirements_list_is_never_accepted(env):
+    env.model.extra["requirements"] = []  # a lazy model: valid JSON, nothing in it
+    env.start(scope="ba-department")
+    for step in STEPS[:2]:
+        _approve_step(env, step)
+    assert _status(env, "ba_requirements").startswith("FAILED")  # asked again, still empty: it stops, never approved
+    with env.engine.connect() as conn:
+        notes = conn.execute(text("select title from ai_activity where stage_key = 'ba_requirements' "
+                                  "and kind = 'retry'")).scalars().all()
+    assert any("requirements needs at least 1 usable item" in n for n in notes)
+
+
+def test_copied_placeholders_never_become_records():
+    from app.work.bridge import usable_entries
+
+    assert usable_entries("requirement", [{"title": "<short title>", "description": "<description>",
+                                           "type": "functional"}]) == 0
+    assert usable_entries("requirement", [{"title": "Book a visit", "description": "A patient books online",
+                                           "type": "Functional"}]) == 1

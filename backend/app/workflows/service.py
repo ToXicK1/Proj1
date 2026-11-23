@@ -485,6 +485,7 @@ def _run_ai(
             project_id=execution.project_id, stage_execution_id=stage.id, stage_key=stage_key,
             agent_key=spec["agent"],
             profile_key=spec.get("profile"), context=context, sink=lead_sink, config=config,
+            accept=_record_acceptance(spec),
         )
     rules = rule_service.resolve(db, config, project_id=execution.project_id, profile=spec.get("profile"),
                                  stage=stage_key, agent=None)
@@ -504,6 +505,14 @@ def _run_ai(
         rules_text=rule_service.render(rules),
         rule_refs=rule_service.references(rules),
     )
+
+
+def _record_acceptance(spec: dict[str, Any]) -> Any:
+    if not spec.get("records_min"):
+        return None
+    from app.work.bridge import acceptance
+
+    return acceptance(spec)
 
 
 class Superseded(Exception):

@@ -301,3 +301,12 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
 - **Scope & Priorities:** requirements and user stories on a MoSCoW board. Changing a priority saves a new version with the reason.
 - **Change Requests:** every change request on the department's steps (the professional's, the owner's answers, send-backs), with its status.
 - **Offline mock model:** for record steps it now returns one example item per list, built from the field description the step gives. Demos and browser tests can then exercise the records. Every value says "offline mock".
+
+## 2026-11-23 — Step 7.1d: the BA department on a real model (Phase 7 BA exit check)
+
+- **Exit check passed:** a project went through all 8 BA steps on the local model (`qwen3-vl:4b-instruct` through Ollama), with every decision made in the workspace by the test's analyst. The analyst confirmed suggestions, submitted and approved six step packages and approved the department review. They then asked the owner, who answered, and gave the final approval. The workflow completed.
+- **What the first live run exposed, and the fixes:**
+  - The model returned valid JSON with empty lists (`"requirements": []`). The platform accepted it, so a Requirements Analysis with zero requirements could be approved.
+  - Steps now name the lists that may not be empty: requirements, user stories and stakeholders (`records_min`, checked by the compiler). A reply without enough usable items gets the standard repair request saying exactly what is needed. If the model still does not comply, the step stops; it is never approved empty.
+  - The same model still returned empty lists when told only the field names. Every record list's instructions, and the repair request, now carry one example entry with placeholders. With it, the model wrote real requirements. Entries that copy the placeholders instead of writing content are never turned into records.
+- Lists that may honestly be empty (open questions, assumptions, risks, review findings) stay optional. In the passing run Intake Review and Requirements Review produced none.

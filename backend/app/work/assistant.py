@@ -90,7 +90,9 @@ def _clean_proposals(department: str, raw: Any) -> tuple[list[dict[str, Any]], i
 
     kept, dropped = [], 0
     for entry in raw if isinstance(raw, list) else []:
-        kind = KINDS.get(str(entry.get("kind", ""))) if isinstance(entry, dict) else None
+        from app.work.bridge import _placeholder
+
+        kind = KINDS.get(str(entry.get("kind", ""))) if isinstance(entry, dict) and not _placeholder(entry) else None
         if kind is None or kind.department != department:
             dropped += 1
             continue

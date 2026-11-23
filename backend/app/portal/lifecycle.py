@@ -64,6 +64,7 @@ class Stage:
     sandbox: str | None = None  # "self", or the stage whose generated files are tested here
     # Output key -> work record kind: the step proposes records and is approved through a package (7.1a).
     records: tuple[tuple[str, str], ...] = ()
+    records_min: tuple[tuple[str, int], ...] = ()  # record lists that may not come back empty
     owner_visible: bool | None = None  # default: the owner sees AI steps
     owner_input: bool = False  # the owner gives input before the professional's final approval (RD-2)
 
@@ -168,15 +169,16 @@ BA_STAGES: tuple[Stage, ...] = (
     Stage("ba_discovery", "B.2", _BA, "Discovery", BA,
           "Identify the stakeholders, the current way of working and the constraints. Mark anything not stated in "
           "the brief as unconfirmed.",
-          ("stakeholders", "current_process", "constraints"), NONE, records=(("stakeholders", "stakeholder"),)),
+          ("stakeholders", "current_process", "constraints"), NONE, records=(("stakeholders", "stakeholder"),),
+          records_min=(("stakeholders", 1),)),
     Stage("ba_requirements", "B.3", _BA, "Requirements Analysis", BA,
           "Write the functional and non-functional requirements, each testable and traced to the brief or an "
           "approved earlier record. Keep assumptions separate.",
           ("requirements", "assumptions"), NONE,
-          records=(("requirements", "requirement"), ("assumptions", "assumption"))),
+          records=(("requirements", "requirement"), ("assumptions", "assumption")), records_min=(("requirements", 1),)),
     Stage("ba_user_stories", "B.4", _BA, "User Story Development", BA,
           "Write user stories for the approved requirements, each with testable acceptance criteria.",
-          ("user_stories",), NONE, records=(("user_stories", "user_story"),)),
+          ("user_stories",), NONE, records=(("user_stories", "user_story"),), records_min=(("user_stories", 1),)),
     Stage("ba_scope", "B.5", _BA, "Scope Definition", BA,
           "Define what is in and out of scope, the first release, how success is measured, and the main risks.",
           ("in_scope", "out_of_scope", "first_release", "success_measures", "risks"), NONE,
@@ -254,7 +256,15 @@ def _record_format(stage: Stage) -> str:
         fields = ", ".join(f"{f.name}{' (required)' if f.required else ''}"
                            + (f" one of {'/'.join(f.choices)}" if f.choices else "")
                            + (" as a list of texts" if f.type == "list" else "") for f in kind.fields)
-        parts.append(f"{key} must be a JSON list of objects, each with a short title and: {fields}.")
+        need = dict(stage.records_min).get(key)
+        import json
+
+        from app.work.kinds import example
+
+        parts.append(f"{key} must be a JSON list of objects, each with a short title and: {fields}."
+                     + (f" Give at least {need}, written from the project input." if need
+                        else " An empty list is allowed only if nothing applies.")
+                     + f" One entry looks like {json.dumps(example(kind))}; write real content, not the placeholders.")
     return " ".join(parts)
 
 
@@ -276,6 +286,8 @@ def department_spec(department: str) -> dict[str, Any]:
             item["reads"] = list(reversed(earlier))[:20]
         if stage.records:
             item["records"] = dict(stage.records)
+        if stage.records_min:
+            item["records_min"] = dict(stage.records_min)
         if stage.owner_input:
             item["owner_input"] = True
         if stage.gated:

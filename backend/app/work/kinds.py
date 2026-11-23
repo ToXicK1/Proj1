@@ -117,6 +117,22 @@ def validate(kind: Kind, body: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def example(kind: Kind) -> dict[str, Any]:
+    """The shape of one entry, with placeholders, for the AI: small models follow an example far better than a list
+    of field names. Placeholders are in angle brackets so they are never mistaken for real content."""
+    out: dict[str, Any] = {"title": "<short title>"}
+    for f in kind.fields:
+        if f.type == "enum":
+            out[f.name] = f.choices[0] if f.required else f"<one of {'/'.join(f.choices)}>"
+        elif f.type == "list":
+            out[f.name] = [f"<{f.name.replace('_', ' ')}>"]
+        elif f.type == "int":
+            out[f.name] = 1
+        elif f.type == "text":
+            out[f.name] = f"<{f.name.replace('_', ' ')}>"
+    return out
+
+
 def describe() -> list[dict[str, Any]]:
     return [{"key": k.key, "department": k.department, "prefix": k.prefix, "label": k.label,
              "fields": [{"name": f.name, "type": f.type, "required": f.required, "choices": list(f.choices)}

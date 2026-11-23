@@ -55,6 +55,8 @@ class StageSpec(_Strict):
     # Output key -> work record kind: the AI's list under that key becomes records the professional confirms, and the
     # step is approved through a package of them (step 7.1a).
     records: dict[str, str] = Field(default_factory=dict, max_length=10)
+    # Record lists that may not be empty: the AI is asked again until it gives at least this many usable items.
+    records_min: dict[str, int] = Field(default_factory=dict, max_length=10)
     # The owner gives input on the stage's work before the professional decides (RD-2). The owner never approves.
     owner_input: bool = False
     # Support specialists that contribute advisory notes before the lead works (each recorded on its own)
@@ -182,6 +184,11 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
                     problems.append(f"stages[{i}].records.{key}: must be one of the stage's required output keys")
             if stage.sandbox:
                 problems.append(f"stages[{i}].records: a stage that builds code is approved on its build evidence")
+        for key, n in stage.records_min.items():
+            if key not in stage.records:
+                problems.append(f"stages[{i}].records_min.{key}: not one of the stage's record lists")
+            elif not 1 <= n <= 20:
+                problems.append(f"stages[{i}].records_min.{key}: must be between 1 and 20")
             if not stage.human_gate:
                 problems.append(f"stages[{i}].records: record steps are approved by a person")
         for ref in stage.reads:

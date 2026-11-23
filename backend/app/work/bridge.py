@@ -34,6 +34,13 @@ def _normal(field: Any, value: Any) -> Any:
     return value
 
 
+def _placeholder(entry: dict[str, Any]) -> bool:
+    """The AI copied the example's placeholders ("<description>") instead of writing content."""
+    values = [v for v in entry.values() if isinstance(v, str)] + [
+        x for v in entry.values() if isinstance(v, list) for x in v if isinstance(x, str)]
+    return any(v.strip().startswith("<") and v.strip().endswith(">") for v in values)
+
+
 def _title(entry: dict[str, Any]) -> str:
     for key in ("title", "name", "summary", "role", "question", "description"):
         value = entry.get(key)
@@ -62,7 +69,7 @@ def propose_from_output(db: Session, *, project: Project, stage_execution_id: uu
         if kind is None or kind.department != department or not isinstance(entries, list):
             continue
         for entry in entries[:MAX_PER_STEP]:
-            if not isinstance(entry, dict):
+            if not isinstance(entry, dict) or _placeholder(entry):
                 skipped += 1
                 continue
             title = _title(entry)
@@ -86,6 +93,45 @@ def propose_from_output(db: Session, *, project: Project, stage_execution_id: uu
                       + (f"; {skipped} entr{'y' if skipped == 1 else 'ies'} could not be used" if skipped else ""),
                       {"stage": stage_key, "proposed": made, "skipped": skipped})
     return made
+
+
+def usable_entries(kind_key: str, entries: Any) -> int:
+    """How many entries of an AI list would become records (the same checks as propose_from_output)."""
+    kind = KINDS.get(kind_key)
+    if kind is None or not isinstance(entries, list):
+        return 0
+    fields = {f.name: f for f in kind.fields}
+    count = 0
+    for entry in entries[:MAX_PER_STEP]:
+        if not isinstance(entry, dict) or not _title(entry) or _placeholder(entry):
+            continue
+        body = {k: _normal(fields[k], v) for k, v in entry.items() if k in fields and v not in (None, "", [])}
+        try:
+            validate(kind, body)
+        except InvalidBody:
+            continue
+        count += 1
+    return count
+
+
+def acceptance(spec: dict[str, Any]) -> Any:
+    """For a step whose core lists may not be empty: the check the lead's reply must pass, or None."""
+    minimum: dict[str, int] = spec.get("records_min") or {}
+    mapping: dict[str, str] = spec.get("records") or {}
+    if not minimum:
+        return None
+
+    def check(data: dict[str, Any]) -> str | None:
+        import json
+
+        from app.work.kinds import example
+
+        short = [f"{key} needs at least {n} usable item(s) written from the project input, each a JSON object "
+                 f"like {json.dumps(example(KINDS[mapping[key]]))}"
+                 for key, n in minimum.items() if usable_entries(mapping[key], data.get(key)) < n]
+        return "; ".join(short) or None
+
+    return check
 
 
 def step_records(db: Session, stage_execution_id: uuid.UUID) -> list[WorkItem]:

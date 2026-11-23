@@ -84,6 +84,7 @@ def run_lead(
     context: WorkContext,
     sink: list[uuid.UUID],
     config: dict[str, Any],
+    accept: Any = None,
 ) -> dict[str, Any]:
     resolved = _resolve(db, organization_id, agent_key, kind="lead", stage_key=stage_key, config=config)
     if profile_key is not None and _profile_key(db, resolved.agent) != profile_key:
@@ -133,7 +134,7 @@ def run_lead(
     })
     route = routing.route_for(db, organization_id, "lead", profile_key, version.model_route)
     return providers.run_structured(
-        db, settings, transport=transport, organization_id=organization_id, project_id=project_id,
+        db, settings, accept=accept, transport=transport, organization_id=organization_id, project_id=project_id,
         stage_execution_id=stage_execution_id, route_key=route.key, system=system, user=user,
         required_keys=tuple(version.required_keys), kind="lead", agent_version_id=version.id,
         manifest={**manifest, "route": route.key}, sink=sink, allow_fallback=version.allow_fallback,
