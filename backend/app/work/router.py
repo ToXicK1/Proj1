@@ -53,7 +53,7 @@ class CommentIn(_Strict):
 class PackageIn(_Strict):
     title: str = Field(default="", max_length=200)
     stage_key: str | None = Field(default=None, max_length=64)
-    item_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    item_ids: list[uuid.UUID] = Field(default_factory=list, max_length=500)
     note: str = Field(default="", max_length=2000)
 
 
@@ -65,6 +65,11 @@ class DecisionIn(_Strict):
 class HandoffIn(_Strict):
     to_department: str = Field(max_length=64)
     note: str = Field(default="", max_length=2000)
+
+
+class SendBackIn(_Strict):
+    step: str = Field(min_length=1, max_length=64)
+    note: str = Field(min_length=1, max_length=2000)
 
 
 class ReplyIn(_Strict):
@@ -196,6 +201,20 @@ def decide(project_id: uuid.UUID, package_id: uuid.UUID, body: DecisionIn, reque
 def hand_off(project_id: uuid.UUID, package_id: uuid.UUID, body: HandoffIn, caller: CsrfCaller,
              db: DbSession) -> dict:
     return work.hand_off(db, caller.user, project_id, package_id, to_department=body.to_department, note=body.note)
+
+
+@router.post("/steps/{review_key}/send-back")
+def send_back(project_id: uuid.UUID, review_key: str, body: SendBackIn, request: Request, tasks: BackgroundTasks,
+              caller: CsrfCaller, db: DbSession) -> dict:
+    """From Human Professional Review or User Review: one earlier step goes back for rework with a note."""
+    from app.work import bridge
+
+    project, _ = work._scope(db, caller.user, project_id)
+    execution_id = bridge.send_back(db, caller.user, project=project, review_key=review_key, target_key=body.step,
+                                    note=body.note)
+    queue(request, tasks, db, "portal.drive", {"execution_id": str(execution_id)},
+          dedupe_key=f"drive:{execution_id}", project_id=project_id)
+    return {"sent_back": body.step}
 
 
 @router.get("/{department}/handoffs")

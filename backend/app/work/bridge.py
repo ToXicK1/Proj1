@@ -25,6 +25,15 @@ from app.work.models import WorkItem, WorkItemVersion, WorkPackage
 MAX_PER_STEP = 60
 
 
+def _normal(field: Any, value: Any) -> Any:
+    if field.type == "enum" and isinstance(value, str):
+        candidate = value.strip().lower().replace("-", "_").replace(" ", "_")
+        return candidate if candidate in field.choices else value
+    if field.type == "list" and isinstance(value, str):
+        return [line.strip("-• ").strip() for line in value.splitlines() if line.strip()]
+    return value
+
+
 def _title(entry: dict[str, Any]) -> str:
     for key in ("title", "name", "summary", "role", "question", "description"):
         value = entry.get(key)
@@ -57,8 +66,8 @@ def propose_from_output(db: Session, *, project: Project, stage_execution_id: uu
                 skipped += 1
                 continue
             title = _title(entry)
-            known = {f.name for f in kind.fields}
-            body = {k: v for k, v in entry.items() if k in known and v not in (None, "", [])}
+            known = {f.name: f for f in kind.fields}
+            body = {k: _normal(known[k], v) for k, v in entry.items() if k in known and v not in (None, "", [])}
             try:
                 validate(kind, body)
             except InvalidBody:
@@ -125,6 +134,63 @@ def bind_package(db: Session, *, project: Project, stage_key: str, department: s
                                        kind=spec.get("artifact_kind", stage_key), content=content)
     sensors.run_stage_sensors(db, execution, stage, spec, version)
     return stage.id, version.id
+
+
+def send_back(db: Session, user: Any, *, project: Project, review_key: str, target_key: str, note: str) -> uuid.UUID:
+    """From the department's review (or after the owner's input), send one approved step back for rework with the
+    professional's note. The review waits until that step and everything after it are approved again, then is
+    gathered afresh. Returns the execution to drive."""
+    from app.approvals.models import ChangeRequest
+    from app.artifacts import service as artifacts
+    from app.core.db import uuid7
+    from app.workflows import service as engine
+    from app.workflows.models import WorkflowExecution, WorkflowVersion
+    from app.workflows.state_machine import ActorType, StageStatus
+
+    if not note.strip():
+        raise AppError(422, "note_required", "Say what needs to change")
+    execution = db.execute(select(WorkflowExecution).where(WorkflowExecution.project_id == project.id)
+                           .order_by(WorkflowExecution.created_at.desc())).scalars().first()
+    if execution is None:
+        raise AppError(409, "not_started", "The project's lifecycle has not started")
+    version = db.get(WorkflowVersion, execution.workflow_version_id)
+    specs = {s["id"]: s for s in version.spec_json["stages"]}
+    review, target = specs.get(review_key), specs.get(target_key)
+    if review is None or review.get("work") not in ("department_review", "owner_review"):
+        raise AppError(422, "not_a_review", "Only the department's review steps can send work back")
+    if not work.edits(db, user, project, review.get("profile") or ""):
+        raise AppError(403, "not_permitted", "Only the department's assigned professionals can do this")
+    if target is None or target.get("profile") != review.get("profile") or target_key not in (review.get("reads") or []):
+        raise AppError(422, "not_upstream", "Choose one of this department's earlier steps")
+    if target.get("work") != "ai:stage_work":
+        raise AppError(422, "not_upstream", "Only AI steps can be reworked")
+    rows = engine.stage_rows(db, execution.id)
+    if rows[review_key].status != StageStatus.AWAITING_HUMAN_REVIEW.value:
+        raise AppError(409, "not_awaiting_review", "The review is not waiting for a decision")
+    if rows[target_key].status != StageStatus.APPROVED.value:
+        raise AppError(409, "not_approved", "That step is not approved, so there is nothing to send back")
+    current = artifacts.current_version(db, rows[target_key].id)
+    engine.transition_stage(db, execution_id=execution.id, stage_key=target_key,
+                            to_status=StageStatus.CHANGES_REQUESTED, actor=ActorType.HUMAN, actor_id=str(user.id),
+                            reason=f"sent back from {review['name']}"[:300], commit=False)
+    db.add(ChangeRequest(id=uuid7(), stage_execution_id=rows[target_key].id, artifact_version_id=current[1].id,
+                         author_user_id=user.id, status="open", comment=note.strip()))
+    order = [s["id"] for s in version.spec_json["stages"]]
+    for key in order[order.index(target_key) + 1:]:  # later steps, up to and including the review, wait
+        stage = rows[key]
+        if stage.status == StageStatus.APPROVED.value:
+            engine.transition_stage(db, execution_id=execution.id, stage_key=key,
+                                    to_status=StageStatus.AWAITING_HUMAN_REVIEW, actor=ActorType.SYSTEM,
+                                    reason=f"'{target['name']}' was sent back", commit=False)
+            stage.approval_epoch += 1
+        if key == review_key:
+            break
+    engine.transition_stage(db, execution_id=execution.id, stage_key=review_key,
+                            to_status=StageStatus.CHANGES_REQUESTED, actor=ActorType.HUMAN, actor_id=str(user.id),
+                            reason=f"sent '{target['name']}' back: {note.strip()}"[:300], commit=False)
+    work._audit(db, project, "work.step_sent_back", user, {"from": review_key, "step": target_key})
+    db.commit()
+    return execution.id
 
 
 def is_package_version(db: Session, version: ArtifactVersion) -> bool:

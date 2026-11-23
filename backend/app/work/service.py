@@ -482,7 +482,7 @@ def submit_package(db: Session, user: User, project_id: uuid.UUID, department: s
     project, _ = _scope(db, user, project_id)
     department = _department(department)
     _require_editor(db, user, project, department)
-    if not item_ids:
+    if not item_ids and not stage_key:  # a step whose AI proposed nothing usable can still be decided
         raise AppError(422, "empty_package", "Choose at least one record")
     items = db.execute(select(WorkItem).where(WorkItem.id.in_(item_ids), WorkItem.project_id == project.id)
                        .with_for_update()).scalars().all()

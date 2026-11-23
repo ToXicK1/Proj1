@@ -72,6 +72,7 @@ EDGES: dict[tuple[StageStatus, StageStatus], frozenset[ActorType]] = {
     (S.CHANGES_REQUESTED, S.CANCELLED): HUMAN,
     (S.REJECTED, S.READY): HUMAN,
     (S.APPROVED, S.AWAITING_HUMAN_REVIEW): SYS,  # invalidation when an upstream artifact changes
+    (S.APPROVED, S.CHANGES_REQUESTED): HUMAN,  # the department's review sends an approved step back
     (S.FAILED, S.READY): HUMAN,
     (S.FAILED, S.CANCELLED): HUMAN,
 }

@@ -21,7 +21,13 @@ from app.hooks import service as hooks
 from app.portal.lifecycle import BY_PROFILE, BY_STAGE
 from app.projects.models import Project
 from app.workflows import service as engine
-from app.workflows.models import OwnerQuestion, StageEscalation, StageExecution, WorkflowExecution
+from app.workflows.models import (
+    OwnerQuestion,
+    StageEscalation,
+    StageExecution,
+    WorkflowExecution,
+    WorkflowVersion,
+)
 from app.workflows.state_machine import ActorType, StageStatus
 
 S = StageStatus
@@ -197,6 +203,8 @@ def answer(db: Session, user: User, project_id: uuid.UUID, question_id: uuid.UUI
         current = artifacts.current_version(db, stage.id)
         if current is None:
             raise AppError(409, "no_artifact", "There is no work to change yet")
+        if _owner_input_step(db, stage):  # the input goes to the professional, who decides (RD-2)
+            return _owner_input(db, user, project, stage, row, text)
         engine.transition_stage(db, execution_id=stage.workflow_execution_id, stage_key=stage.stage_key,
                                 to_status=S.CHANGES_REQUESTED, actor=ActorType.HUMAN, actor_id=str(user.id),
                                 reason="the project owner answered", commit=False)
@@ -214,6 +222,45 @@ def answer(db: Session, user: User, project_id: uuid.UUID, question_id: uuid.UUI
     except Exception:
         db.rollback()
         raise
+
+
+def _owner_input_step(db: Session, stage: StageExecution) -> bool:
+    execution = db.get(WorkflowExecution, stage.workflow_execution_id)
+    return bool(engine.stage_spec(db.get(WorkflowVersion, execution.workflow_version_id), stage.stage_key)
+                .get("owner_input"))
+
+
+def owner_has_answered(db: Session, stage: StageExecution) -> bool:
+    """An owner-input step can be approved only after the owner answered in this round of review."""
+    query = select(OwnerQuestion.id).where(OwnerQuestion.stage_execution_id == stage.id,
+                                           OwnerQuestion.status == "answered")
+    started = _round_started(db, stage)
+    if started is not None:
+        query = query.where(OwnerQuestion.answered_at >= started)
+    return db.execute(query).first() is not None
+
+
+def _round_started(db: Session, stage: StageExecution) -> Any:
+    from app.workflows.models import StageTransition
+
+    return db.execute(select(StageTransition.created_at).where(
+        StageTransition.stage_execution_id == stage.id, StageTransition.from_status == S.VALIDATING.value,
+        StageTransition.to_status == S.AWAITING_HUMAN_REVIEW.value)
+        .order_by(StageTransition.created_at.desc())).scalars().first()
+
+
+def _owner_input(db: Session, user: User, project: Project, stage: StageExecution, row: OwnerQuestion,
+                 text: str) -> uuid.UUID:
+    engine.transition_stage(db, execution_id=stage.workflow_execution_id, stage_key=stage.stage_key,
+                            to_status=S.AWAITING_HUMAN_REVIEW, actor=ActorType.HUMAN, actor_id=str(user.id),
+                            reason="the project owner gave their input", commit=False)
+    row.status, row.answer, row.answered_by, row.answered_at = "answered", text.strip(), user.id, datetime.now(UTC)
+    step = BY_STAGE[stage.stage_key]
+    _audit_and_notify(db, project, user, "stage.owner_input", {"stage": stage.stage_key, "question": str(row.id)},
+                      _team(db, project, step.profile), f"owner_input:{row.id}",
+                      f"The project owner reviewed {step.name}. Read their input, then give the final decision.")
+    db.commit()
+    return stage.workflow_execution_id
 
 
 def withdraw(db: Session, user: User, project_id: uuid.UUID, question_id: uuid.UUID) -> dict[str, Any]:

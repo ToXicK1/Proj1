@@ -255,3 +255,31 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - The workspace shows both the step and this rule on each package.
 - Migration `0023_stage_records`.
 - **Not yet:** the BA lifecycle template that uses this (7.1b), and the step review screens inside the workspace (7.1c). No lifecycle step in the default template has `records` yet, so running projects behave as before.
+
+## 2026-11-23 — Step 7.1b: the Business Analyst department lifecycle
+
+- **Template:** a new scope, *Preview: the Business Analyst department lifecycle only*, chosen at intake like any other kind of work. It never becomes the default until all six departments exist (RD-14). The existing eleven templates are unchanged. Steps, in order, each reading the department's earlier work:
+
+  | # | Step | Kind | Becomes records |
+  |---|---|---|---|
+  | B.1 | Intake Review | AI | open questions, assumptions |
+  | B.2 | Discovery | AI | stakeholders |
+  | B.3 | Requirements Analysis | AI | requirements, assumptions |
+  | B.4 | User Story Development | AI | user stories |
+  | B.5 | Scope Definition | AI | risks |
+  | B.6 | Requirements Review | AI, independent review | review findings with severity |
+  | B.7 | Human Professional Review | the department's approved work gathered for one decision | — |
+  | B.8 | User Review and Approval | the owner's input, then the professional's final approval | — |
+
+- **AI steps** are told the exact shape of each list (the kind's fields and allowed values). The AI's values are normalized before checking: `Functional` becomes `functional`, `MUST` becomes `must`, and lines become lists. B.1 to B.6 are approved through their packages (7.1a). Requirements Review advises and never approves.
+- **Human Professional Review** shows the whole package. It is approved like any step, or the professional sends one named earlier AI step back with a note:
+  - that step is reworked with the note;
+  - the later steps wait for re-approval;
+  - the review waits until they are approved, then gathers the package afresh.
+- **User Review and Approval:** the professional sends the work to the owner with the existing ask-the-owner action, and the owner gives input or says there is none. The input goes back to the professional (not to an AI rework), who gives the final approval. That approval is refused until the owner has answered in the current round. The owner can never approve (RD-2). The invariant that only a person moves a step to the owner is kept.
+- **Engine:**
+  - a new transition: a review can send an approved step back (a person's action);
+  - reworks wait until the steps they build on are approved again;
+  - internal review steps appear in Deliverables for the professional team but not for the owner.
+  - No migration was needed.
+- **Not yet (7.1c):** submitting a step's package and sending a step back are API-only; asking the owner already has its button in the step review. Their buttons in the workspace come next, together with the document and process-flow editors, Scope & Priorities, Change Requests and the AI assistant.

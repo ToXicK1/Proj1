@@ -144,3 +144,16 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
 - **`tests/test_work.py` updated for RD-19:** a second analyst approves, and the author is refused.
 - **Migration 0023:** no drift; downgrade and re-upgrade succeed. Frontend typecheck clean.
 - **Backend full suite:** 503 tests: 498 passed, 5 skipped (live model tests), 0 failed.
+
+## 2026-11-23 — Step 7.1b
+
+- **`tests/test_ba_lifecycle.py` (2), both passed.** A project runs all 8 BA steps on the fake model:
+  - each AI step's records are confirmed and approved through packages, with values normalized;
+  - the professional review sends Requirements Analysis back with a note, and the step is reworked;
+  - later steps are re-approved and the review is gathered afresh, then approved;
+  - the final approval is refused until the owner answers; the professional asks the owner, the owner gives input and cannot approve, and the professional is notified and gives the final approval;
+  - the workflow completes;
+  - sending back is refused for other departments, for non-review steps and for later steps.
+- **Bug found and fixed:** Deliverables hid every step not visible to the owner from the professional team as well, so internal review steps could not be opened.
+- **A governance test caught a design mistake, now fixed.** My first owner step had the system move the step to the owner, which breaks the rule that only a person does that. The professional now asks the owner, and the system-asked questions (with their migration) were removed.
+- **The lifecycle registry test** now counts the original 33 steps and the 8 department steps separately.

@@ -20,16 +20,19 @@ from app.organizations.service import require_org_admin
 from app.providers.models import ModelRoute
 
 SCOPES = ("enterprise", "feature", "mvp", "poc", "bugfix", "refactor", "infra", "security-patch", "classic",
-          "workshop", "express")
+          "workshop", "express", "ba-department")
+# Department lifecycles (RD-1, Phase 7). Previews until all six are built (RD-14): never the default.
+DEPARTMENT_SCOPES = {"ba-department": "business_analyst"}
 SCOPE_LABELS = {
     "enterprise": "Enterprise: everything, with the most detail", "feature": "New product or feature: full lifecycle",
     "mvp": "Minimum viable product: no operations phase", "poc": "Proof of concept: fastest route to code",
     "bugfix": "Bug fix", "refactor": "Refactor existing code", "infra": "Infrastructure change",
     "security-patch": "Security patch", "classic": "Requirements to tested code",
     "workshop": "Workshop: full walkthrough", "express": "Express: small change, then ship",
+    "ba-department": "Preview: the Business Analyst department lifecycle only (the other departments follow)",
 }
 DEFAULT_SCOPE = "feature"
-PHASES = ("Initialization", "Ideation", "Inception", "Construction", "Operation")
+PHASES = ("Initialization", "Ideation", "Inception", "Construction", "Operation", "Business Analysis")
 
 
 @dataclass(frozen=True)
@@ -59,13 +62,24 @@ class Stage:
     scopes: str  # one flag per entry in SCOPES
     work: str = "ai:stage_work"
     sandbox: str | None = None  # "self", or the stage whose generated files are tested here
+    # Output key -> work record kind: the step proposes records and is approved through a package (7.1a).
+    records: tuple[tuple[str, str], ...] = ()
+    owner_visible: bool | None = None  # default: the owner sees AI steps
+    owner_input: bool = False  # the owner gives input before the professional's final approval (RD-2)
 
     @property
     def gated(self) -> bool:
+        """An AI step with a professional's gate."""
         return self.work == "ai:stage_work"
 
+    @property
+    def human_gate(self) -> bool:
+        """Waits for a professional's decision: every AI step, and the department's review steps."""
+        return self.gated or self.work in ("department_review", "owner_review")
+
     def in_scope(self, scope: str) -> bool:
-        return self.scopes[SCOPES.index(scope)] == "1"
+        index = SCOPES.index(scope)
+        return index < len(self.scopes) and self.scopes[index] == "1"
 
 
 ALL = "1" * 11
@@ -75,7 +89,7 @@ CODE_BRIEF = (
     "library with pytest tests named test_*.py, or Node.js built-ins with node:test tests named *.test.js. Nothing can "
     "be installed and there is no network. Include real tests. If earlier feedback reports failures, fix them."
 )
-_I, _Id, _In, _C, _O = PHASES
+_I, _Id, _In, _C, _O = PHASES[:5]
 STAGES: tuple[Stage, ...] = (
     Stage("workspace_scaffold", "0.1", _I, "Workspace Scaffold", OPS, "", ("project_name",), ALL, "workspace_scaffold"),
     Stage("workspace_detection", "0.2", _I, "Workspace Detection", OPS, "", ("project_kind",), ALL, "workspace_detection"),
@@ -142,6 +156,43 @@ STAGES: tuple[Stage, ...] = (
     Stage("feedback_optimization", "4.7", _O, "Feedback & Optimization", OPS, "Plan how operating feedback will drive improvements.",
           ("signals", "review_cadence", "improvements"), "11000000010"),
 )
+
+_BA = "Business Analysis"
+NONE = "0" * 11  # in no AWS-style scope; used only by the department lifecycle
+BA_STAGES: tuple[Stage, ...] = (
+    Stage("ba_intake_review", "B.1", _BA, "Intake Review", BA,
+          "Review the confirmed brief. Summarize it, list what is still unclear as questions for the owner, and list "
+          "the assumptions you would otherwise have to make. Never invent requirements.",
+          ("summary", "open_questions", "assumptions"), NONE,
+          records=(("open_questions", "discovery_question"), ("assumptions", "assumption"))),
+    Stage("ba_discovery", "B.2", _BA, "Discovery", BA,
+          "Identify the stakeholders, the current way of working and the constraints. Mark anything not stated in "
+          "the brief as unconfirmed.",
+          ("stakeholders", "current_process", "constraints"), NONE, records=(("stakeholders", "stakeholder"),)),
+    Stage("ba_requirements", "B.3", _BA, "Requirements Analysis", BA,
+          "Write the functional and non-functional requirements, each testable and traced to the brief or an "
+          "approved earlier record. Keep assumptions separate.",
+          ("requirements", "assumptions"), NONE,
+          records=(("requirements", "requirement"), ("assumptions", "assumption"))),
+    Stage("ba_user_stories", "B.4", _BA, "User Story Development", BA,
+          "Write user stories for the approved requirements, each with testable acceptance criteria.",
+          ("user_stories",), NONE, records=(("user_stories", "user_story"),)),
+    Stage("ba_scope", "B.5", _BA, "Scope Definition", BA,
+          "Define what is in and out of scope, the first release, how success is measured, and the main risks.",
+          ("in_scope", "out_of_scope", "first_release", "success_measures", "risks"), NONE,
+          records=(("risks", "risk"),)),
+    Stage("ba_requirements_review", "B.6", _BA, "Requirements Review", BA,
+          "Independently review the department's approved work as a whole: gaps, contradictions, untestable "
+          "requirements, stories without requirements, and scope that does not match. Report findings with severity. "
+          "You advise; you never approve.",
+          ("verdict", "findings"), NONE, records=(("findings", "review_finding"),), owner_visible=False),
+    Stage("ba_professional_review", "B.7", _BA, "Human Professional Review", BA, "", ("package",), NONE,
+          work="department_review", owner_visible=False),
+    Stage("ba_user_review", "B.8", _BA, "User Review and Approval", BA, "", ("package",), NONE,
+          work="owner_review", owner_visible=True, owner_input=True),
+)
+DEPARTMENT_STAGES: dict[str, tuple[Stage, ...]] = {"business_analyst": BA_STAGES}
+STAGES = STAGES + BA_STAGES
 BY_STAGE = {s.id: s for s in STAGES}
 
 # The approved earlier work each step needs, most important first. Steps not listed get their nearest earlier work.
@@ -193,7 +244,53 @@ def reviewer_key(profile: str) -> str:
     return f"{profile.replace('_', '-')}-reviewer"
 
 
+def _record_format(stage: Stage) -> str:
+    """How the AI must shape the lists that become records."""
+    from app.work.kinds import KINDS
+
+    parts = []
+    for key, kind_key in stage.records:
+        kind = KINDS[kind_key]
+        fields = ", ".join(f"{f.name}{' (required)' if f.required else ''}"
+                           + (f" one of {'/'.join(f.choices)}" if f.choices else "")
+                           + (" as a list of texts" if f.type == "list" else "") for f in kind.fields)
+        parts.append(f"{key} must be a JSON list of objects, each with a short title and: {fields}.")
+    return " ".join(parts)
+
+
+def department_spec(department: str) -> dict[str, Any]:
+    """A department's own lifecycle (Phase 7): its steps in order, each reading the department's earlier work."""
+    chosen = list(DEPARTMENT_STAGES[department])
+    out = []
+    for index, stage in enumerate(chosen):
+        item: dict[str, Any] = {
+            "id": stage.id, "name": stage.name, "depends_on": [chosen[index - 1].id] if index else [],
+            "work": stage.work, "output_required_keys": list(stage.keys), "profile": stage.profile,
+            "human_gate": stage.human_gate, "protected": True, "mandatory": not stage.gated,
+            "owner_visible": stage.gated if stage.owner_visible is None else stage.owner_visible,
+            "approval_policy": {"type": "single", "role": f"profile:{stage.profile}"},
+            "sensors": [{"key": "secret_detection", "mandatory": True, "config": {}}],
+        }
+        earlier = [c.id for c in chosen[:index]]
+        if earlier:
+            item["reads"] = list(reversed(earlier))[:20]
+        if stage.records:
+            item["records"] = dict(stage.records)
+        if stage.owner_input:
+            item["owner_input"] = True
+        if stage.gated:
+            item |= {"agent": lead_key(stage), "reviewer": reviewer_key(stage.profile)}
+            if stage.id == "ba_requirements_review":
+                item.pop("reviewer")  # it is the review; nobody reviews the reviewer's advice but the professional
+        out.append(item)
+    return {"key": template_key(next(k for k, v in DEPARTMENT_SCOPES.items() if v == department)),
+            "name": f"AI-DLC: {BY_PROFILE[department].title} department (preview)", "execution": "sequential",
+            "stages": out}
+
+
 def workflow_spec(scope: str) -> dict[str, Any]:
+    if scope in DEPARTMENT_SCOPES:
+        return department_spec(DEPARTMENT_SCOPES[scope])
     chosen = [s for s in STAGES if s.in_scope(scope)]
     out = []
     for index, stage in enumerate(chosen):
@@ -244,6 +341,8 @@ def provision(db: Session, user: User, organization_id: uuid.UUID, model_route: 
             continue
         instructions = (f"You support a {BY_PROFILE[stage.profile].title} on the {stage.name} step of a software "
                         f"project. {stage.brief} Build on the approved earlier work when it is provided.")
+        if stage.records:
+            instructions += " " + _record_format(stage)
         if lead_key(stage) not in existing:
             agents.create_agent(
                 db, user, organization_id=organization_id, profile_key=stage.profile, key=lead_key(stage), kind="lead",

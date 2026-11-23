@@ -168,15 +168,20 @@ def env(client, engine, settings, box):
 
 
 def test_every_scope_is_a_valid_workflow_matching_the_lifecycle():
-    assert len(STAGES) == 33 and len({s.id for s in STAGES}) == 33
+    from app.portal.lifecycle import BA_STAGES, DEPARTMENT_SCOPES
+
+    aws = [s for s in STAGES if s not in BA_STAGES]
+    assert len(aws) == 33 and len({s.id for s in STAGES}) == 33 + len(BA_STAGES) == 41
     counts = {}
-    for scope in SCOPES:
+    for scope in [s for s in SCOPES if s not in DEPARTMENT_SCOPES]:
         compiled = compile_workflow(workflow_spec(scope), known_work=set(KNOWN_WORK))
         counts[scope] = len(compiled.order) - 3  # the three setup steps always run first
     assert counts["feature"] == counts["enterprise"] == 30
     assert counts["mvp"] == 20 and counts["poc"] == 5 and counts["bugfix"] == 6 and counts["refactor"] == 7
     assert counts["infra"] == 12 and counts["security-patch"] == 7 and counts["classic"] == 15
-    assert {s.profile for s in STAGES} == {m.profile for m in TEAM}
+    assert {s.profile for s in aws} == {m.profile for m in TEAM}
+    assert [s["id"] for s in compile_workflow(workflow_spec("ba-department"), known_work=set(KNOWN_WORK)).spec[
+        "stages"]] == [s.id for s in BA_STAGES]
     for stage in workflow_spec("feature")["stages"]:
         if stage["work"].startswith("ai:"):
             assert stage["human_gate"] and stage["approval_policy"]["role"] == f"profile:{stage['profile']}"

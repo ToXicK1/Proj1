@@ -59,7 +59,21 @@ def state_initialization(ctx: WorkContext) -> dict[str, Any]:
     return {"brief_items": len(ctx.intake), "revision": ctx.revision}
 
 
+def department_review(ctx: WorkContext) -> dict[str, Any]:
+    """Human Professional Review: the department's approved work, gathered for one decision on the whole."""
+    return {"package": [{"name": (ctx.upstream_info[i] or {}).get("name", f"step {i + 1}") if i < len(ctx.upstream_info)
+                         else f"step {i + 1}", "content": text} for i, text in enumerate(ctx.upstream)],
+            "revision": ctx.revision, "feedback_addressed": len(ctx.feedback)}
+
+
+def owner_review(ctx: WorkContext) -> dict[str, Any]:
+    """User Review and Approval: what the owner is shown before giving input (RD-2: the owner never approves)."""
+    return department_review(ctx)
+
+
 WORK_FUNCTIONS: dict[str, Callable[[WorkContext], dict[str, Any]]] = {
+    "department_review": department_review,
+    "owner_review": owner_review,
     "intake_summary": intake_summary,
     "requirements_outline": requirements_outline,
     "workspace_scaffold": workspace_scaffold,

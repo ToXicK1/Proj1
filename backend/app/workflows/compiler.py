@@ -55,6 +55,8 @@ class StageSpec(_Strict):
     # Output key -> work record kind: the AI's list under that key becomes records the professional confirms, and the
     # step is approved through a package of them (step 7.1a).
     records: dict[str, str] = Field(default_factory=dict, max_length=10)
+    # The owner gives input on the stage's work before the professional decides (RD-2). The owner never approves.
+    owner_input: bool = False
     # Support specialists that contribute advisory notes before the lead works (each recorded on its own)
     specialists: list[str] = Field(default_factory=list, max_length=3)
 
@@ -166,6 +168,8 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
             if stage.sandbox:
                 problems.append(f"stages[{i}].condition: a stage whose code is built and tested cannot be skipped")
             problems += conditions.problems(stage.condition, _upstream(stage.id, graph), f"stages[{i}].condition")
+        if stage.owner_input and not (stage.human_gate and stage.owner_visible):
+            problems.append(f"stages[{i}].owner_input: needs a human gate and must be visible to the owner")
         if stage.records:
             from app.work.kinds import KINDS
 

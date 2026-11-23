@@ -68,6 +68,12 @@ KINDS: dict[str, Kind] = {k.key: k for k in (
             "stakeholders", "assumptions_constraints", "risk_register", "other")),
         Field("sections", "json", required=True),  # [{"heading": str, "content": str}]
     )),
+    Kind("review_finding", BA, "RF", "Review finding", (
+        Field("finding", "text", required=True),
+        Field("severity", "enum", required=True, choices=("blocking", "major", "minor")),
+        Field("affects", "text"),  # the record keys or step concerned
+        Field("recommendation", "text"),
+    )),
     Kind("process_flow", BA, "PF", "Process flow", (
         Field("flow_type", "enum", required=True, choices=("as_is", "to_be", "user_workflow", "decision")),
         Field("diagram", "json", required=True),  # {"nodes": [...], "edges": [...]} as the editor saves it

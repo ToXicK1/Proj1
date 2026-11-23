@@ -171,6 +171,12 @@ def submit_decision(
         scope = hook_scope(db, execution, stage_key)
 
         if decision == "APPROVE":
+            if spec.get("owner_input"):
+                from app.portal.supervision import owner_has_answered
+
+                if not owner_has_answered(db, stage):
+                    raise AppError(409, "owner_input_required", "Ask the project owner for their input first; "
+                                   "the final approval comes after they answer")
             if spec.get("records"):
                 from app.work.bridge import is_package_version
 

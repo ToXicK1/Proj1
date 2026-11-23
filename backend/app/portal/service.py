@@ -44,6 +44,8 @@ from app.portal.lifecycle import (
     BY_PROFILE,
     BY_STAGE,
     DEFAULT_SCOPE,
+    DEPARTMENT_SCOPES,
+    DEPARTMENT_STAGES,
     PHASES,
     SCOPE_LABELS,
     SCOPES,
@@ -159,8 +161,9 @@ def _intake_out(row: IntakeRevision | None, started: bool) -> dict[str, Any]:
         "questions": [{"field": k, "question": q, "required": r} for k, q, r in QUESTIONS],
         "still_needed": sorted(blockers),
         "can_confirm": not blockers and not started and bool(row) and row.status == "draft",
-        "scopes": [{"key": k, "label": SCOPE_LABELS[k], "stages": sum(1 for st in STAGES if st.in_scope(k))}
-                   for k in SCOPES],
+        "scopes": [{"key": k, "label": SCOPE_LABELS[k],
+                    "stages": len(DEPARTMENT_STAGES[DEPARTMENT_SCOPES[k]]) if k in DEPARTMENT_SCOPES
+                    else sum(1 for st in STAGES if st.in_scope(k))} for k in SCOPES],
         "default_scope": DEFAULT_SCOPE,
     }
 
@@ -341,6 +344,8 @@ def _runnable(db: Session, execution: WorkflowExecution, specs: dict[str, dict[s
             out.append(key)  # interrupted: recover it
         elif engine.open_escalation(db, stage) is not None:
             continue  # paused by a person
+        elif stage.status == S.CHANGES_REQUESTED.value and not engine.dependencies_satisfied(db, execution, key):
+            continue  # sent back by a review: waits until the steps it builds on are approved again
         elif stage.status in (S.READY.value, S.CHANGES_REQUESTED.value) or _fix_failed_code(db, stage, spec):
             out.append(key)
     return out, busy
@@ -644,7 +649,8 @@ def deliverables(db: Session, user: User, project_id: uuid.UUID) -> list[dict[st
         step = BY_STAGE.get(spec["id"])
         stage = stages[spec["id"]]
         current = current_version(db, stage.id)
-        if step is None or not spec.get("owner_visible") or current is None or step.profile not in scope.profiles:
+        visible = spec.get("owner_visible") or (scope.internal and spec.get("human_gate"))  # internal review steps
+        if step is None or not visible or current is None or step.profile not in scope.profiles:
             continue
         review = approvals.review_view(db, user, execution.id, spec["id"])
         out.append({
