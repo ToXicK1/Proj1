@@ -21,9 +21,10 @@ async function join(browser: Browser, name: string, role: string): Promise<Page>
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
   await page.goto(await verificationPath(email));
-  await expect(page.getByText("Your email is verified")).toBeVisible();
+  // The first account sets up the shared organization (AI connection and every agent), which takes a while.
+  await expect(page.getByText("Your email is verified")).toBeVisible({ timeout: 120_000 });
   await signIn(page, email);
-  await expect(page.getByRole("link", { name: "Notifications" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications" })).toBeVisible({ timeout: 60_000 });
   return page;
 }
 

@@ -13,7 +13,7 @@ from app.core.db import uuid7
 from app.core.errors import AppError
 from app.organizations.models import Membership
 from app.providers import service as providers
-from app.providers.models import AgentRun, TokenUsage
+from app.providers.models import AgentRun, ModelPrice, TokenUsage
 from app.workflows import service as wf
 from app.workflows.models import StageExecution
 from tests.helpers import signup_verify_login
@@ -252,7 +252,7 @@ def test_ai_stage_runs_on_the_mock_provider_and_records_usage(client, engine, se
     assert _runs(engine, execution_id) == [(1, "succeeded", None, "mock")]
     with Session(engine) as s:
         usage = s.execute(select(TokenUsage)).scalars().all()
-        assert len(usage) == 1 and usage[0].cost_micro_usd is None  # no price configured: no cost invented
+        assert len(usage) == 1 and usage[0].cost_micro_usd == 0  # the mock provider is free
         output = s.execute(select(StageExecution.output_json).where(
             StageExecution.workflow_execution_id == execution_id)).scalar_one()
     assert set(output) >= {"summary", "assumptions", "open_questions"}
@@ -312,7 +312,7 @@ def test_invalid_output_gets_one_repair_on_the_same_provider(client, engine, set
     script = Scripted(openai=[_lazy(_openai, "Sure, here it is."), _lazy(_openai, GOOD)])
     assert _run(engine, settings, script.transport(), execution_id)[0] == "AWAITING_HUMAN_REVIEW"
     second = json.loads(script.calls["openai"][1].content)
-    assert "Your last reply was not acceptable" in second["messages"][1]["content"]
+    assert "Your last reply could not be used: the reply was not a JSON object" in second["messages"][1]["content"]
     assert len(script.calls["openai"]) == 2
 
 
@@ -381,10 +381,14 @@ def test_no_prompt_text_or_credential_reaches_the_run_records(client, engine, se
     assert "Respond" not in dump
 
 
-def test_costs_are_reported_only_for_configured_prices(client, engine, settings, monkeypatch):
-    monkeypatch.setitem(providers.PRICES_MICRO_USD_PER_MTOK, ("anthropic", "claude-x"), (3_000_000, 15_000_000))
+def test_costs_are_reported_only_for_configured_prices(client, engine, settings):
     csrf = signup_verify_login(client, engine, "ai-cost@example.com")
     org_id = _org_id(client)
+    with Session(engine) as s:
+        s.add(ModelPrice(id=uuid.uuid4(), organization_id=uuid.UUID(org_id), adapter_type="anthropic",
+                         model="claude-x", input_micro_usd=3_000_000, output_micro_usd=15_000_000,
+                         cache_read_micro_usd=300_000, cache_write_micro_usd=3_750_000))
+        s.commit()
     anth = _provider(client, csrf, org_id, "anth-cost", "anthropic", api_key="sk-cost-value-0011")
     _route(client, csrf, org_id, "cost-route", anth["id"], "claude-x")
     execution_id = _execution(client, engine, "cost-route")

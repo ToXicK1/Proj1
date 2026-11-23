@@ -88,3 +88,23 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - A model call sampled once a second went `waiting` → `streaming` with the reply growing 1 → 27 → 95 → … → 360 characters → `done` at 15.7 s.
   - In the browser the menu showed the live call ("Waiting for the model…", cursor, prompt block) as the project manager.
   - The model reports no separate reasoning.
+
+## 2026-11-23 — AI spending controls and provider failover
+
+- **Backend full suite:** 495 tests: 489 passed, 5 skipped (live model tests), 1 failed. The failure was the migration-drift check, caused by a new migration file appearing while the run was in progress; it passed when rerun on its own.
+- **`tests/test_spend.py` (16):**
+  - Claude requests cache the instructions and use adaptive thinking with summaries on 5.x models; older models keep temperature.
+  - Tool calls are replayed in Claude's own blocks, thinking signatures included.
+  - Streaming carries reasoning, text and tool arguments.
+  - Refusals become content-filtered.
+  - Out of credit and spend caps (402, `billing_error`, `enforced_spend_limit_reached`, `insufficient_quota`) are told apart from rate limits.
+  - Costs are computed from the published price, cache included.
+  - An out-of-credit provider is paused until next month and skipped, then resumed by an administrator.
+  - A rate limit means a short cooldown, and a cooldown does not block a route that has no other provider.
+  - A pause budget stops paid calls and notifies the administrators once a month; a free-only budget continues on the local model.
+  - Cheapest-first ordering.
+  - Price overrides, and one organization budget.
+  - Members and strangers refused.
+- **Regression found and fixed:** a 30-second cooldown made an immediate retry, or the reviewer call, on a route's only provider fail as "paused". Cooldowns now apply only when another provider is available.
+- **Frontend:** typecheck and build clean; 17 unit tests passed.
+- **Live:** no call to a paid provider was made (needs your key; RB-25). The live end-to-end run on the local model went through Intent Capture, Reverse Engineering and Requirements Analysis with approvals. At Code Generation the model's code built but its own unit tests failed; the sensors blocked the step and it went back for rework. The rework outlasted the test's 20-minute wait, so the Phase 6 live exit check has not passed yet.

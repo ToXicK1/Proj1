@@ -197,7 +197,11 @@ def explain(reason: str | None, detailed: bool) -> str:
         detail = {"timeout": "did not answer in time", "unavailable": "could not be reached",
                   "rate_limited": "is limiting requests", "auth": "rejected the stored credentials",
                   "bad_response": "kept returning output in the wrong shape",
-                  "content_filtered": "refused the content"}.get(kind, f"failed ({kind})")
+                  "content_filtered": "refused the content",
+                  "quota_exhausted": "is out of credit or at its spending cap",
+                  "provider_paused": "is paused (out of credit, key refused, or cooling down after errors)",
+                  "budget_exhausted": "was not used: the monthly AI budget has been reached",
+                  "no_independent_provider": "has no independent provider for the review"}.get(kind, f"failed ({kind})")
         return f"The AI service {detail}." if detailed else "The AI could not finish this step."
     if reason.startswith("agent refused:"):
         return f"The AI specialist could not run: {reason.split(':', 1)[1].strip()}" if detailed \
@@ -697,5 +701,11 @@ def oversight(db: Session, user: User) -> dict[str, Any]:
                     "departments": departments, "approvals": approvals, "working": working, "issues": issues,
                     "open_tickets": open_tickets})
     manager = any(m.role == "project_manager" for m in memberships)
+    admin_org = next((m.organization_id for m in memberships if m.role == "org_admin"), None)
+    spend = None
+    if admin_org is not None:  # money is for administrators only
+        from app.providers.spend import overview as spend_overview
+
+        spend = spend_overview(db, admin_org)
     return {"role": KIND_LABEL["manager" if manager else "admin"], "totals": totals,
-            "projects": out}
+            "projects": out, "spend": spend}

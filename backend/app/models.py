@@ -22,9 +22,11 @@ from app.projects.models import Project, ProjectMember  # noqa: F401
 from app.providers.models import (  # noqa: F401
     AgentRun,
     AiProvider,
+    ModelPrice,
     ModelRoute,
     RoutingPolicy,
     SecretReference,
+    SpendBudget,
     TokenUsage,
     ToolExecution,
 )

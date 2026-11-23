@@ -404,6 +404,60 @@ export interface OversightDto {
     working: { step: string; department: string; note: string | null; slow: boolean }[];
     issues: { text: string; kind: string; department: string }[];
   }[];
+  /** Administrators only; null for project managers. */
+  spend: SpendOverviewDto | null;
+}
+
+export interface SpendOverviewDto {
+  spent_usd: number;
+  unpriced_runs: number;
+  limit_usd: number | null;
+  warn_percent: number | null;
+  paused_providers: string[];
+}
+
+export interface PriceDto {
+  id: string | null;
+  adapter_type: string;
+  model: string;
+  source: "organization" | "default";
+  input_usd_per_mtok: number;
+  output_usd_per_mtok: number;
+  cache_read_usd_per_mtok: number;
+  cache_write_usd_per_mtok: number;
+}
+
+export interface BudgetDto {
+  id: string;
+  project_id: string | null;
+  limit_usd: number;
+  warn_percent: number;
+  on_limit: "pause" | "free_only";
+  spent_usd: number;
+  over: boolean;
+  warned: boolean;
+}
+
+export interface SpendDto {
+  month_start: string;
+  spent_usd: number;
+  unpriced_runs: number;
+  by_model: { provider: string; model: string; runs: number; spent_usd: number; input_tokens: number;
+    output_tokens: number; cache_read_tokens: number }[];
+  by_project: { project_id: string; name: string; spent_usd: number }[];
+  budgets: BudgetDto[];
+  providers: { id: string; name: string; adapter_type: string; paused: boolean; paused_reason: string | null;
+    paused_until: string | null }[];
+  prices: PriceDto[];
+}
+
+export interface ModelRouteDto {
+  id: string;
+  key: string;
+  primary_provider_id: string;
+  primary_model: string;
+  fallbacks: { provider_id: string; model: string }[];
+  strategy: "ordered" | "cheapest";
 }
 
 export interface DepartmentStatusDto {
@@ -516,7 +570,7 @@ interface Problem {
   problems?: string[];
 }
 
-export async function request<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+export async function request<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
@@ -690,6 +744,20 @@ export const api = {
     request("POST", `${orgPath(orgId)}/providers`, body),
   createRoute: (orgId: string, key: string, providerId: string, model: string) =>
     request("POST", `${orgPath(orgId)}/model-routes`, { key, primary_provider_id: providerId, primary_model: model }),
+  spend: (orgId: string) => request<SpendDto>("GET", `${orgPath(orgId)}/spend`),
+  saveBudget: (orgId: string, body: { project_id: string | null; limit_usd: number; warn_percent: number;
+    on_limit: "pause" | "free_only" }) => request<SpendDto>("PUT", `${orgPath(orgId)}/spend-budgets`, body),
+  removeBudget: (orgId: string, id: string) =>
+    request<SpendDto>("DELETE", `${orgPath(orgId)}/spend-budgets/${encodeURIComponent(id)}`),
+  savePrice: (orgId: string, body: { adapter_type: string; model: string; input_usd_per_mtok: number;
+    output_usd_per_mtok: number }) => request<{ items: PriceDto[] }>("PUT", `${orgPath(orgId)}/model-prices`, body),
+  removePrice: (orgId: string, id: string) =>
+    request<{ items: PriceDto[] }>("DELETE", `${orgPath(orgId)}/model-prices/${encodeURIComponent(id)}`),
+  resumeProvider: (orgId: string, id: string) =>
+    request("POST", `${orgPath(orgId)}/providers/${encodeURIComponent(id)}/resume`),
+  modelRoutes: (orgId: string) => request<{ items: ModelRouteDto[] }>("GET", `${orgPath(orgId)}/model-routes`),
+  setRouteStrategy: (orgId: string, id: string, strategy: "ordered" | "cheapest") =>
+    request("PATCH", `${orgPath(orgId)}/model-routes/${encodeURIComponent(id)}`, { strategy }),
   testProvider: (orgId: string, providerId: string, model: string) =>
     request<{ ok: boolean }>("POST", `${orgPath(orgId)}/providers/${encodeURIComponent(providerId)}/health`, { model }),
   setupDeliveryTeam: (orgId: string, modelRoute: string) =>

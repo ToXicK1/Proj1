@@ -177,3 +177,36 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
 - **Studio:** a new "Agents and routing" tab with the registry by department and an editor for routing rules.
 - **Live (local `qwen3-vl:4b-instruct`).** On its own, the Intent Capture lead called `read_project`, then `search_approved_work`, then answered. Its runs record department, task, digest, grants, the produced version and the request ID, and the reviewer's input is exactly that version.
 - Migration `0020_orchestration`.
+
+## 2026-11-23 — AI spending controls and provider failover (RD-15, RD-16)
+
+- **Prices** (`app/providers/costs.py`, `model_prices`).
+  - Claude defaults from Anthropic's list prices (Opus 5.5 $4/$20, Sonnet 5.5 $2/$10, Haiku 5.5 $0.10/$0.50, Fable 5.2 $8/$40 per million input/output tokens). Cache reads cost 0.1× input and cache writes 1.25×.
+  - Administrators can override any price and must enter prices for other paid providers.
+  - A model with no price records no cost and is counted separately ("runs with no price"); a cost is never guessed. The mock provider costs nothing.
+  - Every run's cost includes cache reads and writes (`token_usage.cache_read_tokens/cache_write_tokens`).
+- **Budgets** (`spend_budgets`): one per month for the organization, plus optional ones per project.
+  - Checked on the server before every AI call (`service._affordable`).
+  - Administrators get a notification once a month when spending passes the warning percentage, and again when it reaches the limit.
+  - At the limit, either *pause*: the step fails with `budget_exhausted` and no paid call is made. Or *free only*: work continues only on providers that cost nothing (a zero price, or a local OpenAI-compatible model with no price).
+- **Provider pauses** (`ai_providers.paused_until/paused_reason`), saved in their own transaction so they hold even when the run fails.
+  - Out of credit or at a spend cap (402, Anthropic `billing_error`/"credit balance", 429 `enforced_spend_limit_reached`, OpenAI `insufficient_quota`): skipped until the 1st of next month, never retried.
+  - Key refused: skipped until the key is replaced (rotating the key clears the pause).
+  - Rate limited, down or slow: skipped for 60 or 30 seconds, or the provider's `retry-after` (up to an hour).
+  - Routes go straight to their next provider. Administrators can resume a provider.
+- **Route strategy** (`model_routes.strategy`): *ordered* (primary, then fallbacks) or *cheapest* (the cheapest priced candidate first; unpriced ones last).
+- **Claude adapter**, rebuilt on the documented Messages API:
+  - instructions sent as a cached system block, plus top-level automatic caching of the growing tool conversation;
+  - adaptive thinking with summarized reasoning on 5.x models, which feeds the live activity panel (no temperature or thinking budget, which these models reject); output room of at least 16,000 tokens;
+  - tools converted to `input_schema`, and tool turns replayed with Claude's own blocks (thinking signatures kept);
+  - server-sent event streaming of text, reasoning and tool arguments;
+  - refusals become `content_filtered`.
+- **APIs** (organization administrators only, audited):
+  - `GET /api/v1/orgs/{org}/spend`;
+  - `PUT/DELETE …/model-prices` and `…/spend-budgets`;
+  - `POST …/providers/{id}/resume`;
+  - `PATCH …/model-routes/{id}` (strategy).
+  - Oversight carries a spend summary for administrators only.
+- **Studio:** a new "Spend and budgets" tab with this month's spend by model (including tokens served from cache), budgets, provider pauses with Resume, route strategy, and the price list. **Oversight:** a spend tile and a paused-provider notice.
+- Migration `0021_spend_controls`.
+- **Not done:** Anthropic's Batches API (50% cheaper but asynchronous, up to 24 h) is not used, because stages wait at human gates and need answers in minutes. No live call to a paid provider has been made: that needs your key.

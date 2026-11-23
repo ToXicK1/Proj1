@@ -50,7 +50,7 @@ def test_anthropic_sends_documented_headers_and_parses_usage():
     assert request.headers["x-api-key"] == "sk-test-1234567890"
     assert request.headers["anthropic-version"] == "2023-06-01"
     body = json.loads(request.content)
-    assert body["model"] == "model-x" and body["system"] == REQ.system
+    assert body["model"] == "model-x" and body["system"][0]["text"] == REQ.system
     assert body["messages"] == [{"role": "user", "content": "hello"}]
     assert result.text == '{"summary": "ok"}'
     assert (result.usage.input_tokens, result.usage.output_tokens) == (11, 7)

@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
 from app.core.config import Settings
-from app.providers import routing, service
+from app.providers import routing, service, spend
 from app.providers.models import AiProvider, ModelRoute, SecretReference
 
 router = APIRouter(prefix="/api/v1/orgs/{organization_id}", tags=["providers"])
@@ -45,6 +45,7 @@ class RouteIn(_Strict):
     primary_provider_id: uuid.UUID
     primary_model: str = Field(min_length=1, max_length=120)
     fallbacks: list[FallbackIn] = Field(default_factory=list, max_length=3)
+    strategy: Literal["ordered", "cheapest"] = "ordered"
 
     @field_validator("fallbacks")
     @classmethod
@@ -69,6 +70,7 @@ def _provider_out(db, provider: AiProvider) -> dict:  # type: ignore[no-untyped-
             "checked_at": provider.last_health_at.isoformat() if provider.last_health_at else None,
             "error_kind": provider.last_health_error,
         },
+        **spend.provider_state(provider),
     }
 
 
@@ -79,6 +81,7 @@ def _route_out(route: ModelRoute) -> dict:
         "primary_provider_id": str(route.primary_provider_id),
         "primary_model": route.primary_model,
         "fallbacks": route.fallbacks,
+        "strategy": route.strategy,
     }
 
 
@@ -122,7 +125,7 @@ def create_route(organization_id: uuid.UUID, body: RouteIn, caller: CsrfCaller, 
     route = service.create_route(
         db, caller.user, organization_id=organization_id, key=body.key,
         primary_provider_id=body.primary_provider_id, primary_model=body.primary_model,
-        fallbacks=[f.model_dump(mode="python") for f in body.fallbacks],
+        fallbacks=[f.model_dump(mode="python") for f in body.fallbacks], strategy=body.strategy,
     )
     return _route_out(route)
 

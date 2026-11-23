@@ -59,6 +59,10 @@ class AiProvider(Base):
     last_health_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_health_error: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # Skipped by routing until this time: out of credit (until next month), key refused, or briefly after
+    # rate limits and outages. An administrator can clear it.
+    paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paused_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class ModelRoute(Base):
@@ -74,6 +78,8 @@ class ModelRoute(Base):
     primary_model: Mapped[str] = mapped_column(String(120), nullable=False)
     fallbacks: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # ordered: the primary, then the fallbacks in order. cheapest: the cheapest priced healthy provider first.
+    strategy: Mapped[str] = mapped_column(String(16), nullable=False, default="ordered", server_default="ordered")
 
 
 class AgentRun(Base):
@@ -117,6 +123,8 @@ class TokenUsage(Base):
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     # NULL when no price is configured for the model. Cost is never invented.
     cost_micro_usd: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    cache_read_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    cache_write_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 
 class ToolExecution(Base):
@@ -156,3 +164,43 @@ class RoutingPolicy(Base):
     # Reviewer rules only: the review must come from a different provider than the work it reviews.
     require_different_provider: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ModelPrice(Base):
+    """An organization's price for one model, overriding the published default. Micro-dollars per million tokens."""
+
+    __tablename__ = "model_prices"
+    __table_args__ = (UniqueConstraint("organization_id", "adapter_type", "model", name="uq_model_price"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id"), nullable=False,
+                                                       index=True)
+    adapter_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    input_micro_usd: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    output_micro_usd: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    cache_read_micro_usd: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    cache_write_micro_usd: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class SpendBudget(Base):
+    """A monthly spending limit for the organization (project_id empty) or one project."""
+
+    __tablename__ = "spend_budgets"
+    __table_args__ = (UniqueConstraint("organization_id", "project_id", name="uq_spend_budget",
+                                       postgresql_nulls_not_distinct=True),  # one organization-wide budget
+                      CheckConstraint("on_limit in ('pause','free_only')", name="on_limit_valid"),
+                      CheckConstraint("warn_percent between 1 and 100", name="warn_valid"),
+                      CheckConstraint("monthly_limit_micro_usd > 0", name="limit_valid"))
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id"), nullable=False,
+                                                       index=True)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("projects.id"), nullable=True)
+    monthly_limit_micro_usd: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    warn_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
+    # pause: stop AI work until the limit is raised or the month ends. free_only: keep going on unpriced-free
+    # providers only (for example a local model), never on a paid one.
+    on_limit: Mapped[str] = mapped_column(String(16), nullable=False, default="pause")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

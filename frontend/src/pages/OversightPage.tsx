@@ -1,10 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ApiError, api, type OversightDto } from "../api";
+import { ApiError, api, type OversightDto, type SpendOverviewDto } from "../api";
 import { Avatar, EmptyState, LiveIndicator, PageHeader, Skeleton, StatusPill, type Tone } from "../components/ui";
 import { STEP_LABELS } from "../portal/Collaboration";
 
 /** For administrators and project managers: what is happening on every project and who it waits on. */
+function SpendStat({ spend }: { spend: SpendOverviewDto }) {
+  const share = spend.limit_usd ? spend.spent_usd / spend.limit_usd : 0;
+  const cls = share >= 1 ? "stat-blocked" : spend.warn_percent && share * 100 >= spend.warn_percent ? "stat-pending" : "";
+  return (
+    <li className={cls}>
+      <strong>${spend.spent_usd.toFixed(2)}</strong>
+      {spend.limit_usd ? ` of $${spend.limit_usd.toFixed(2)} AI budget this month` : " AI spend this month (no budget set)"}
+    </li>
+  );
+}
+
 export function OversightPage() {
   const [data, setData] = useState<OversightDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +43,12 @@ export function OversightPage() {
         <li className={t.working ? "stat-progress" : ""}><strong>{t.working}</strong> AI tasks in progress</li>
         <li className={t.issues ? "stat-blocked" : ""}><strong>{t.issues}</strong> need attention</li>
         <li><strong>{t.open_tickets}</strong> open tickets</li>
+        {data.spend && <SpendStat spend={data.spend} />}
       </ul>
+      {data.spend && data.spend.paused_providers.length > 0 && (
+        <p role="status" className="notice">Paused AI providers: {data.spend.paused_providers.join(", ")}. AI work
+          uses the next provider on each route. An administrator can resume them in Studio, Spend and budgets.</p>
+      )}
       {data.projects.length === 0 && <EmptyState title="There are no projects yet." />}
       {data.projects.map((p) => (
         <section key={p.id} className="panel stack" aria-label={`Project ${p.name}`}>

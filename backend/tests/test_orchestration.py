@@ -282,3 +282,33 @@ def test_existing_teams_get_the_read_tools_on_their_next_provisioning(env, monke
     registry = env.client.get(f"/api/v1/orgs/{env.org}/agent-registry").json()["departments"]
     leads = [e for d in registry for e in d["leads"]]
     assert leads and all(sorted(e["tools"]) == sorted(LEAD_TOOLS) and e["version"] == 2 for e in leads)
+
+
+# Repairs name exactly what was wrong ----------------------------------------------------------------------------------
+
+def test_an_empty_field_is_named_in_the_repair_and_a_corrected_reply_is_used(env):  # noqa: F811
+    """The live run's failure: a model said there was nothing to report with null, and the repair did not say why."""
+    env.setup_team()
+    first_lead = {"done": False}
+
+    def null_then_fixed(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        system = body["messages"][0]["content"]
+        if "KEYS: problem_statement" in system and not first_lead["done"]:
+            first_lead["done"] = True
+            reply = {"problem_statement": None, "target_users": [], "desired_outcomes": "Faster hiring",
+                     "open_questions": []}
+            return httpx.Response(200, json={"model": body["model"], "usage": {"prompt_tokens": 5, "completion_tokens": 5},
+                                             "choices": [{"finish_reason": "stop",
+                                                          "message": {"content": json.dumps(reply)}}]})
+        return env.model.handler(request)
+
+    env.client.app.state.provider_transport = httpx.MockTransport(null_then_fixed)
+    env.start()
+    assert env.step_status(FIRST) == "Awaiting Review"
+    leads = [r for r in env.model.requests if "KEYS: problem_statement" in r["system"]]
+    assert "never use null or an empty string" in leads[0]["system"]
+    repair = leads[0]["user"]  # the second call: the first was answered by the null reply above
+    assert "these keys were empty or null: problem_statement" in repair
+    assert "If nothing applies, say so in words" in repair
+    assert "target_users" not in repair.split("could not be used:")[1].split(".")[0]  # empty lists are fine

@@ -36,6 +36,29 @@ def _map_status(status: int) -> str:
     return "bad_response"
 
 
+QUOTA_MARKERS = ("enforced_spend_limit_reached", "insufficient_quota", "billing_error", "credit balance",
+                 "exceeded your current quota", "billing_hard_limit_reached")
+
+
+def http_error(response: httpx.Response) -> ProviderError:
+    """Maps a failed response to a normalized error. Out-of-credit and spend-cap answers are told apart from
+    ordinary rate limits (some providers send both as 429), because retrying cannot fix them. Vendor text is
+    read only to classify; it never reaches callers."""
+    status = response.status_code
+    try:
+        body = response.read().decode("utf-8", "replace").lower()[:4000]
+    except Exception:  # noqa: BLE001 - classification only
+        body = ""
+    retry_after = None
+    try:
+        retry_after = float(response.headers["retry-after"]) if "retry-after" in response.headers else None
+    except ValueError:
+        retry_after = None
+    if status == 402 or (status in (400, 403, 429) and any(m in body for m in QUOTA_MARKERS)):
+        return ProviderError("quota_exhausted", f"HTTP {status}")
+    return ProviderError(_map_status(status), f"HTTP {status}", retry_after)
+
+
 def _send(client: httpx.Client, method: str, url: str, *, headers: dict[str, str], body: dict[str, Any] | None,
           timeout: float) -> dict[str, Any]:
     try:
@@ -45,7 +68,7 @@ def _send(client: httpx.Client, method: str, url: str, *, headers: dict[str, str
     except httpx.HTTPError as exc:
         raise ProviderError("unavailable", type(exc).__name__) from exc
     if response.status_code >= 400:
-        raise ProviderError(_map_status(response.status_code), f"HTTP {response.status_code}")
+        raise http_error(response)
     try:
         data = response.json()
     except ValueError as exc:
@@ -67,6 +90,89 @@ class _Base:
     adapter_type: str = field(default="", init=False)
 
 
+# Claude models that think adaptively and reject sampling parameters (current API, see the claude-api reference)
+_CLAUDE_ADAPTIVE = ("claude-opus-5", "claude-sonnet-5", "claude-haiku-5", "claude-fable-5", "claude-mythos-5")
+
+
+def _claude_messages(request: CompletionRequest) -> list[dict[str, Any]]:
+    """Our conversation (OpenAI-shaped, provider-neutral) in Claude's shape. Tool results go back together in one
+    user turn; an assistant turn that used tools is replayed with Claude's own blocks when we have them."""
+    if not request.messages:
+        return [{"role": "user", "content": request.user}]
+    out: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
+
+    def flush() -> None:
+        if results:
+            out.append({"role": "user", "content": list(results)})
+            results.clear()
+
+    for m in request.messages:
+        role = m.get("role")
+        if role == "system":
+            continue
+        if role == "tool":
+            results.append({"type": "tool_result", "tool_use_id": m["tool_call_id"], "content": str(m.get("content", ""))})
+            continue
+        flush()
+        if role == "assistant":
+            native = m.get("_native_anthropic")
+            if native:
+                out.append({"role": "assistant", "content": list(native)})
+                continue
+            blocks: list[dict[str, Any]] = [{"type": "text", "text": m["content"]}] if m.get("content") else []
+            for call in m.get("tool_calls") or []:
+                try:
+                    args = json.loads(call["function"]["arguments"] or "{}")
+                except ValueError:
+                    args = {}
+                blocks.append({"type": "tool_use", "id": call["id"], "name": call["function"]["name"], "input": args})
+            out.append({"role": "assistant", "content": blocks or [{"type": "text", "text": ""}]})
+        else:
+            out.append({"role": "user", "content": str(m.get("content", ""))})
+    flush()
+    return out
+
+
+def _claude_body(request: CompletionRequest) -> dict[str, Any]:
+    adaptive = request.model.startswith(_CLAUDE_ADAPTIVE)
+    body: dict[str, Any] = {
+        "model": request.model,
+        # Reasoning shares the output budget on these models, so leave room for it; unused tokens cost nothing.
+        "max_tokens": max(request.max_tokens, 16000) if adaptive else request.max_tokens,
+        # The instructions repeat on every call of an agent: cache them. Top-level caching also covers the
+        # growing conversation during tool use. Cached input is billed at about a tenth of the normal price.
+        "system": [{"type": "text", "text": request.system, "cache_control": {"type": "ephemeral"}}],
+        "cache_control": {"type": "ephemeral"},
+        "messages": _claude_messages(request),
+    }
+    if adaptive:
+        body["thinking"] = {"type": "adaptive", "display": "summarized"}  # a readable summary for the activity log
+    else:
+        body["temperature"] = request.temperature
+    if request.tools:
+        body["tools"] = [{"name": t["function"]["name"], "description": t["function"].get("description", ""),
+                          "input_schema": t["function"]["parameters"]} for t in request.tools]
+    return body
+
+
+def _claude_result(blocks: list[dict[str, Any]], usage: dict[str, Any], model: str, stop_reason: str | None,
+                   latency: int) -> CompletionResult:
+    if stop_reason == "refusal":
+        raise ProviderError("content_filtered", "refused")
+    text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+    thinking = "".join(b.get("thinking", "") for b in blocks if b.get("type") == "thinking")
+    calls = tuple({"id": str(b["id"]), "name": str(b["name"]), "arguments": json.dumps(b.get("input") or {})}
+                  for b in blocks if b.get("type") == "tool_use")
+    return CompletionResult(
+        text=text,
+        usage=Usage(int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0)),
+                    int(usage.get("cache_read_input_tokens") or 0), int(usage.get("cache_creation_input_tokens") or 0)),
+        model=model, latency_ms=latency, thinking=thinking, tool_calls=calls,
+        native_content=tuple(blocks) if calls else (),
+    )
+
+
 @dataclass
 class AnthropicAdapter(_Base):
     adapter_type: str = field(default="anthropic", init=False)
@@ -75,29 +181,102 @@ class AnthropicAdapter(_Base):
         url = f"{(self.base_url or ANTHROPIC_BASE).rstrip('/')}/v1/messages"
         headers = {"x-api-key": self.api_key or "", "anthropic-version": "2023-06-01",
                    "content-type": "application/json"}
-        body = {
-            "model": request.model,
-            "max_tokens": request.max_tokens,
-            "temperature": request.temperature,
-            "system": request.system,
-            "messages": [{"role": "user", "content": request.user}],
-        }
+        body = _claude_body(request)
         started = time.perf_counter()
+        if request.on_delta is not None:
+            return self._stream(url, headers, {**body, "stream": True}, request, started)
         data = _send(self.client, "POST", url, headers=headers, body=body, timeout=request.timeout_seconds)
-        latency = int((time.perf_counter() - started) * 1000)
-        if data.get("stop_reason") == "refusal":
-            raise ProviderError("content_filtered", "refused")
         blocks = data.get("content")
         if not isinstance(blocks, list):
             raise _bad("missing content")
-        text = "".join(b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text")
-        usage = data.get("usage") or {}
-        return CompletionResult(
-            text=text,
-            usage=Usage(int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0))),
-            model=str(data.get("model", request.model)),
-            latency_ms=latency,
-        )
+        return _claude_result([b for b in blocks if isinstance(b, dict)], data.get("usage") or {},
+                              str(data.get("model", request.model)), data.get("stop_reason"),
+                              int((time.perf_counter() - started) * 1000))
+
+    def _stream(self, url: str, headers: dict[str, str], body: dict[str, Any], request: CompletionRequest,
+                started: float) -> CompletionResult:
+        """Claude's server-sent events: text and reasoning are reported as they arrive; tool arguments are
+        collected until each tool block ends."""
+        emit = request.on_delta
+        assert emit is not None
+        blocks: dict[int, dict[str, Any]] = {}
+        partial: dict[int, str] = {}
+        usage: dict[str, Any] = {}
+        stop_reason = None
+        model = request.model
+        try:
+            with self.client.stream("POST", url, headers=headers, json=body,
+                                    timeout=request.timeout_seconds) as response:
+                if response.status_code >= 400:
+                    raise http_error(response)
+                if "text/event-stream" not in response.headers.get("content-type", ""):
+                    response.read()
+                    try:
+                        data = response.json()
+                    except ValueError as exc:
+                        raise ProviderError("bad_response", "response is not JSON") from exc
+                    result = _claude_result([b for b in data.get("content") or [] if isinstance(b, dict)],
+                                            data.get("usage") or {}, str(data.get("model", model)),
+                                            data.get("stop_reason"), int((time.perf_counter() - started) * 1000))
+                    if result.thinking:
+                        emit("thinking", result.thinking)
+                    if result.text:
+                        emit("text", result.text)
+                    return result
+                for line in response.iter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    try:
+                        event = json.loads(line[5:].strip())
+                    except ValueError:
+                        continue
+                    kind = event.get("type")
+                    if kind == "error":
+                        message = json.dumps(event.get("error") or {}).lower()
+                        if any(m in message for m in QUOTA_MARKERS):
+                            raise ProviderError("quota_exhausted", "stream error")
+                        raise ProviderError("rate_limited" if "rate_limit" in message else "unavailable",
+                                            "stream error")
+                    if kind == "message_start":
+                        message = event.get("message") or {}
+                        model = str(message.get("model") or model)
+                        usage.update(message.get("usage") or {})
+                    elif kind == "content_block_start":
+                        index = int(event.get("index", len(blocks)))
+                        blocks[index] = dict(event.get("content_block") or {})
+                        if blocks[index].get("type") == "tool_use":
+                            blocks[index]["input"] = {}
+                            partial[index] = ""
+                    elif kind == "content_block_delta":
+                        index = int(event.get("index", 0))
+                        delta = event.get("delta") or {}
+                        block = blocks.setdefault(index, {"type": "text", "text": ""})
+                        if delta.get("type") == "text_delta":
+                            block["text"] = block.get("text", "") + delta.get("text", "")
+                            emit("text", delta.get("text", ""))
+                        elif delta.get("type") == "thinking_delta":
+                            block["thinking"] = block.get("thinking", "") + delta.get("thinking", "")
+                            emit("thinking", delta.get("thinking", ""))
+                        elif delta.get("type") == "signature_delta":
+                            block["signature"] = block.get("signature", "") + delta.get("signature", "")
+                        elif delta.get("type") == "input_json_delta":
+                            partial[index] = partial.get(index, "") + delta.get("partial_json", "")
+                    elif kind == "content_block_stop":
+                        index = int(event.get("index", 0))
+                        if index in partial:
+                            try:
+                                blocks[index]["input"] = json.loads(partial.pop(index) or "{}")
+                            except ValueError:
+                                blocks[index]["input"] = {}
+                    elif kind == "message_delta":
+                        stop_reason = (event.get("delta") or {}).get("stop_reason") or stop_reason
+                        usage.update({k: v for k, v in (event.get("usage") or {}).items() if v is not None})
+        except httpx.TimeoutException as exc:
+            raise ProviderError("timeout", type(exc).__name__) from exc
+        except httpx.HTTPError as exc:
+            raise ProviderError("unavailable", type(exc).__name__) from exc
+        return _claude_result([blocks[i] for i in sorted(blocks)], usage, model, stop_reason,
+                              int((time.perf_counter() - started) * 1000))
 
 
 class ThinkSplitter:
@@ -156,7 +335,7 @@ def _stream_chat(client: httpx.Client, url: str, headers: dict[str, str], body: 
     try:
         with client.stream("POST", url, headers=headers, json=body, timeout=request.timeout_seconds) as response:
             if response.status_code >= 400:
-                raise ProviderError(_map_status(response.status_code), f"HTTP {response.status_code}")
+                raise http_error(response)
             if "text/event-stream" not in response.headers.get("content-type", ""):
                 response.read()  # the server answered without streaming: use the whole reply
                 try:
@@ -244,7 +423,7 @@ def _chat_completions(
         "model": request.model,
         "max_tokens": request.max_tokens,
         "temperature": request.temperature,
-        "messages": list(request.messages) or [
+        "messages": [{k: v for k, v in m.items() if not k.startswith("_")} for m in request.messages] or [
             {"role": "system", "content": request.system},
             {"role": "user", "content": request.user},
         ],
