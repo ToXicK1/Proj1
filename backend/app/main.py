@@ -25,6 +25,7 @@ from app.providers.spend import router as spend_router
 from app.skills.router import router as skills_router
 from app.storage import service as storage
 from app.studio.router import router as studio_router
+from app.work.router import router as work_router
 from app.workflows.router import router as workflows_router
 
 
@@ -81,6 +82,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(approvals_router)
     app.include_router(providers_router)
     app.include_router(spend_router)
+    app.include_router(work_router)
     app.include_router(agents_router)
     app.include_router(skills_router)
     app.include_router(governance_router)

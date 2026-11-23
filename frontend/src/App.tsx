@@ -8,6 +8,8 @@ import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { ProjectPage } from "./pages/ProjectPage";
+import { DepartmentWorkspacePage } from "./pages/DepartmentWorkspacePage";
+import { ProfessionalTeamPage } from "./pages/ProfessionalTeamPage";
 import { SignupPage } from "./pages/SignupPage";
 import { StudioPage } from "./pages/StudioPage";
 import { OversightPage } from "./pages/OversightPage";
@@ -143,6 +145,8 @@ export function App() {
             </RequireAuth>
           }
         />
+        <Route path="/projects/:projectId/team" element={<RequireAuth><ProfessionalTeamPage /></RequireAuth>} />
+        <Route path="/projects/:projectId/work/:dept" element={<RequireAuth><DepartmentWorkspacePage /></RequireAuth>} />
         <Route path="*" element={<section className="narrow-page"><h1>Page not found</h1><p className="muted">That address does not lead anywhere. <Link to="/">Go to your projects</Link>.</p></section>} />
       </Routes>
     </Shell>

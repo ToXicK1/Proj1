@@ -55,10 +55,36 @@ test("each role gets its own space, the team can talk, and tickets reach the rig
   // The analyst sees only the Business Analyst space, not the owner's sections or other departments.
   await analyst.goto(projectUrl);
   const nav = analyst.getByRole("navigation", { name: "Professional profiles" });
-  await expect(nav.getByRole("link")).toHaveText(["Business Analyst"]);
+  await expect(nav.getByRole("link")).toHaveText(["Professional team", "Business Analyst"]);
   await expect(analyst.getByRole("tab")).toHaveText(["Workspace", "Tickets", "Conversations"]);
   await expect(analyst.getByRole("region", { name: "Business Analyst status" })).toContainText("Waiting for approval from Bea Analyst", LONG);
   await expect(analyst.getByRole("tab", { name: "Project brief" })).toHaveCount(0);
+
+  // The analyst's own workspace: a requirement is created, versioned and visible only inside the department.
+  await nav.getByRole("link", { name: "Business Analyst" }).click();
+  await expect(analyst.getByRole("heading", { name: "Business Analyst", level: 1 })).toBeVisible();
+  const modules = analyst.getByRole("navigation", { name: "Business Analyst modules" });
+  await modules.getByRole("button", { name: "Requirements", exact: true }).click();
+  await analyst.getByRole("button", { name: "New" }).click();
+  const form = analyst.getByRole("complementary", { name: "New record" });
+  await form.getByLabel("Title (required)").fill("Book a visit online");
+  await form.getByLabel("description (required)").fill("Patients book a visit without phoning");
+  await form.getByLabel("type (required)").selectOption("functional");
+  await form.getByRole("button", { name: "Create" }).click();
+  const record = analyst.getByRole("complementary", { name: "Record REQ-001" });
+  await expect(record).toContainText("Book a visit online");
+  await record.getByRole("button", { name: "Edit" }).click();
+  await record.getByLabel("type (required)").selectOption("business");
+  await record.getByRole("button", { name: "Save new version" }).click();
+  await expect(record).toContainText("version 2");
+  await record.getByRole("button", { name: "Compare with v2" }).click();
+  await expect(record.getByRole("table", { name: "Changes from v1 to v2" })).toContainText("business");
+  await nav.getByRole("link", { name: "Professional team" }).click();
+  await expect(analyst.getByRole("list", { name: "Departments" }).getByRole("listitem")).toHaveCount(6);
+  await expect(analyst.getByRole("list", { name: "Departments" })).toContainText("1 records");
+  await architect.goto(projectUrl.replace(/\/?$/, "") + "/work/ba?m=requirements");
+  await expect(architect.getByText("No records here yet.")).toBeVisible(LONG);
+  await analyst.goto(projectUrl);
 
   // The project discussion lives in the workspace and names who wrote each message.
   await analyst.getByLabel("Message your department about this project").fill("Drafting the booking rules now");

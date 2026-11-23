@@ -108,3 +108,26 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
 - **Regression found and fixed:** a 30-second cooldown made an immediate retry, or the reviewer call, on a route's only provider fail as "paused". Cooldowns now apply only when another provider is available.
 - **Frontend:** typecheck and build clean; 17 unit tests passed.
 - **Live:** no call to a paid provider was made (needs your key; RB-25). The live end-to-end run on the local model went through Intent Capture, Reverse Engineering and Requirements Analysis with approvals. At Code Generation the model's code built but its own unit tests failed; the sensors blocked the step and it went back for rework. The rework outlasted the test's 20-minute wait, so the Phase 6 live exit check has not passed yet.
+
+## 2026-11-23 — Step 7.0: work records and the workspace shell
+
+- **`tests/test_work.py` (9), all passed:**
+  - Create and edit with full history.
+  - Optimistic locking (409 on a stale version).
+  - Field-by-field compare, search and archive.
+  - The database refuses to change a stored version.
+  - Bodies are checked against their kind.
+  - Other departments, owners and members cannot change work, and cannot read drafts.
+  - AI suggestions must be confirmed by a person before submission.
+  - Packages freeze exact versions; only the department decides; an edit made after submission is not approved.
+  - Other departments see only approved versions.
+  - Handoffs only for approved packages; only the receiver replies; no workflow transition is created.
+  - Links, comments anchored to a field, and traceability.
+  - Team overview counts come from records.
+- **Migration 0022:** no drift; downgrade and re-upgrade succeed.
+- **Frontend:** typecheck and build clean; 17 unit tests passed.
+- **Browser (isolated Compose test stack, mock model):**
+  - Shared `collab.spec.ts` passed. It now also covers: the analyst opens the BA workspace from the sidebar, creates REQ-001, edits it to version 2, compares versions, sees six department cards on the Professional team page; the architect sees no BA drafts.
+  - Shared `lifecycle.spec.ts` passed. Personal mode: 19 passed.
+  - Two earlier attempts failed for test-setup reasons, not product ones: an email-verification wait under load, and a rerun without a fresh stack. A third failed on an ambiguous locator in the new spec, which was fixed.
+- **Backend full suite:** not rerun after step 7.0. The new tests and the drift check ran on their own.

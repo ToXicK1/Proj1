@@ -2307,3 +2307,36 @@ details[open] > :not(summary) {
     white-space: nowrap;
   }
 }
+
+
+/* Department workspaces (step 7.0): module navigation, a work area that gets the most room, and a context panel. */
+.workspace-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
+.workspace-grid.with-panel { grid-template-columns: 220px minmax(0, 1fr) 300px; }
+.workspace-nav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 16px; }
+.workspace-nav .nav-link { text-align: left; background: none; border: 0; border-radius: var(--radius-sm);
+  padding: 6px 10px; color: var(--text); cursor: pointer; font: inherit; }
+.workspace-nav .nav-link:hover { background: var(--surface-sunken); }
+.workspace-nav .nav-link.active { background: var(--action); color: var(--action-text); }
+.workspace-nav .nav-link.later { color: var(--text-muted); }
+.workspace-main { min-width: 0; }
+.workspace-context { position: sticky; top: 16px; }
+.records { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.records:has(> aside) { grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); }
+.records tr.selected td { background: var(--surface-sunken); }
+.record-detail .fields { display: grid; gap: 8px; margin: 0; }
+.record-detail .fields dt { font-weight: 600; text-transform: capitalize; }
+.record-detail .fields dd { margin: 0; }
+.team-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+button.link { background: none; border: 0; padding: 0; color: var(--action); cursor: pointer;
+  font: inherit; text-decoration: underline; }
+.grow { flex: 1 1 240px; }
+@media (max-width: 1100px) {
+  .workspace-grid.with-panel { grid-template-columns: 200px minmax(0, 1fr); }
+  .workspace-grid.with-panel .workspace-context { grid-column: 1 / -1; position: static; }
+  .records:has(> aside) { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .workspace-grid, .workspace-grid.with-panel { grid-template-columns: minmax(0, 1fr); }
+  .workspace-nav { position: static; flex-direction: row; flex-wrap: wrap; }
+}

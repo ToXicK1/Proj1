@@ -210,3 +210,32 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
 - **Studio:** a new "Spend and budgets" tab with this month's spend by model (including tokens served from cache), budgets, provider pauses with Resume, route strategy, and the price list. **Oversight:** a spend tile and a paused-provider notice.
 - Migration `0021_spend_controls`.
 - **Not done:** Anthropic's Batches API (50% cheaper but asynchronous, up to 24 h) is not used, because stages wait at human gates and need answers in minutes. No live call to a paid provider has been made: that needs your key.
+
+## 2026-11-23 — Step 7.0: work records and the workspace shell (RD-17, RD-18)
+
+- **Work records** (`app/work/`, migration `0022_work_records`):
+  - `work_items`, `work_item_versions` (append-only, blocked by a database trigger), `work_item_links`, `work_comments`, `work_packages`, `handoffs`.
+  - Kinds are defined in code with field checks (`app/work/kinds.py`). The BA kinds exist today: requirement, user story, stakeholder, assumption, risk, discovery question, document, process flow.
+  - Keys like `REQ-001` are unique per project.
+  - Every edit is a new version with author and reason. Edits use optimistic locking (`expected_version`, 409 on conflict).
+  - Versions can be compared field by field. Records are archived and restored, never deleted.
+  - Provenance on every version: confirmed, assumption, AI suggestion or open question. Only the engine's `propose()` creates AI suggestions; it records the agent and its sources. HTTP callers cannot create AI suggestions.
+  - Typed links between records; traceability is computed from them.
+  - Comments are tied to an exact version, optionally anchored to a field.
+- **Packages:**
+  - Submitting freezes the exact record versions (with a SHA-256 fingerprint). AI suggestions and open questions must be confirmed first.
+  - Only the department's assigned professionals submit and decide (approve, or request changes with a reason). There is no AI path to either.
+  - A record edited after submission is not approved by the decision.
+  - Other departments read only approved packages, at the approved versions.
+- **Handoffs:** only for approved packages. They record sender, recipient, package, exact versions, note, time and reply. The receiver acknowledges or asks for clarification, and both sides are notified. Handoffs never change workflow state.
+- **Access** (server-side): own department, project managers and administrators read; only the department's assigned professionals change. Owners and plain members have no access here.
+- **API** under `/api/v1/projects/{id}/work`: kinds, team, items (search, filter, sort), versions, compare, archive, links, comments, traceability, packages, decisions, handoffs.
+- **Frontend:**
+  - *Professional team* page (`/projects/:id/team`): six cards with people, AI lead, current lifecycle step, approvals waiting, blockers, records to confirm, packages and handoffs. All figures come from records.
+  - *Department workspace* (`/projects/:id/work/ba|architect|design|dev|qa|devops`): each department's own module navigation from the brief, a work area and a collapsible context panel.
+    - Built today: BA records (requirements, discovery questions, documents, stories, process flows, stakeholders, risks and assumptions), Reviews & Approvals (packages), Handoffs, Traceability and Conversations. Shared record screens offer search, filters, sorting, create, edit, confirm, archive, history, compare, links and comments.
+    - Modules not built yet say which step brings them; nothing is simulated.
+    - The AI assistant panel says it arrives in 7.1.
+    - Structured fields (document sections, process diagrams) are edited as JSON until their own editors arrive in 7.1.
+  - The sidebar's department links open the workspaces for the internal team; owners keep their deliverables view.
+- **Not yet:** lifecycle approvals still happen in the project's step reviews; they move into the workspace in 7.1, together with the BA lifecycle stages proposing records.

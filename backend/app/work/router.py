@@ -1,0 +1,201 @@
+import uuid
+from typing import Any, Literal
+
+from fastapi import APIRouter, Query
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
+from app.collab import service as collab
+from app.portal.lifecycle import STAGES, TEAM, lead_key
+from app.work import kinds
+from app.work import service as work
+
+router = APIRouter(prefix="/api/v1/projects/{project_id}/work", tags=["work"])
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ItemIn(_Strict):
+    kind: str = Field(min_length=1, max_length=48)
+    title: str = Field(min_length=1, max_length=300)
+    body: dict[str, Any]
+    provenance: Literal["confirmed", "assumption", "open_question"] = "confirmed"
+    reason: str = Field(default="", max_length=500)
+
+
+class ItemEdit(_Strict):
+    expected_version: int = Field(ge=1)
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    body: dict[str, Any] | None = None
+    provenance: Literal["confirmed", "assumption", "open_question"] | None = None
+    reason: str = Field(default="", max_length=500)
+
+
+class ArchiveIn(_Strict):
+    archived: bool
+    reason: str = Field(default="", max_length=300)
+
+
+class LinkIn(_Strict):
+    to_item_id: uuid.UUID
+    link_type: str = Field(max_length=24)
+
+
+class CommentIn(_Strict):
+    body: str = Field(min_length=1, max_length=5000)
+    version: int | None = Field(default=None, ge=1)
+    anchor: dict[str, Any] | None = None
+
+
+class PackageIn(_Strict):
+    title: str = Field(default="", max_length=200)
+    item_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    note: str = Field(default="", max_length=2000)
+
+
+class DecisionIn(_Strict):
+    decision: Literal["approve", "request_changes"]
+    note: str = Field(default="", max_length=2000)
+
+
+class HandoffIn(_Strict):
+    to_department: str = Field(max_length=64)
+    note: str = Field(default="", max_length=2000)
+
+
+class ReplyIn(_Strict):
+    action: Literal["acknowledge", "request_clarification"]
+    reply: str = Field(default="", max_length=2000)
+
+
+@router.get("/kinds")
+def list_kinds(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    work._scope(db, caller.user, project_id)
+    return {"items": kinds.describe()}
+
+
+@router.get("/team")
+def team(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    """The six departments with people, AI lead, current step and pending work, from real records only."""
+    project, scope = work._scope(db, caller.user, project_id)
+    out = []
+    for member in TEAM:
+        people = collab.holders(db, project, member.profile)
+        first = next((s for s in STAGES if s.profile == member.profile), None)
+        card: dict[str, Any] = {
+            "profile": member.profile, "title": member.title,
+            "people": sorted(work._names(db, people).values()),
+            "ai_lead": lead_key(first) if first else None,
+            "visible": work.reads_all(scope, member.profile),
+            "can_edit": caller.user.id in people,
+            "work": work.counts(db, project.id, member.profile),
+        }
+        if card["visible"]:
+            status = collab.department_status(db, caller.user, project_id, member.profile)
+            steps = status["steps"]
+            current = next((s for s in steps if s["status"] not in ("APPROVED", "COMPLETED", "SKIPPED")), None)
+            card.update(started=status["started"], current=current, issues=status["issues"],
+                        steps=len(steps), steps_done=sum(s["status"] in ("APPROVED", "COMPLETED") for s in steps),
+                        awaiting_approval=sum(s["status"] == "AWAITING_HUMAN_REVIEW" for s in steps))
+        out.append(card)
+    return {"departments": out, "kind": scope.kind}
+
+
+@router.get("/{department}/items")
+def list_items(project_id: uuid.UUID, department: str, caller: CurrentCaller, db: DbSession,
+               kind: str | None = None, status: str | None = None, provenance: str | None = None,
+               q: str | None = Query(default=None, max_length=100), sort: str = "key",
+               include_archived: bool = False) -> dict:
+    return work.list_items(db, caller.user, project_id, department, kind=kind, status=status, provenance=provenance,
+                           q=q, sort=sort, include_archived=include_archived)
+
+
+@router.post("/{department}/items", status_code=201)
+def create_item(project_id: uuid.UUID, department: str, body: ItemIn, caller: CsrfCaller, db: DbSession) -> dict:
+    return work.create(db, caller.user, project_id, department, kind=body.kind, title=body.title, body=body.body,
+                       provenance=body.provenance, reason=body.reason)
+
+
+@router.get("/items/{item_id}")
+def get_item(project_id: uuid.UUID, item_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    return work.get_item(db, caller.user, project_id, item_id)
+
+
+@router.put("/items/{item_id}")
+def edit_item(project_id: uuid.UUID, item_id: uuid.UUID, body: ItemEdit, caller: CsrfCaller, db: DbSession) -> dict:
+    return work.update(db, caller.user, project_id, item_id, expected_version=body.expected_version,
+                       title=body.title, body=body.body, provenance=body.provenance, reason=body.reason)
+
+
+@router.post("/items/{item_id}/archive")
+def archive_item(project_id: uuid.UUID, item_id: uuid.UUID, body: ArchiveIn, caller: CsrfCaller,
+                 db: DbSession) -> dict:
+    return work.set_archived(db, caller.user, project_id, item_id, body.archived, body.reason)
+
+
+@router.get("/items/{item_id}/compare")
+def compare(project_id: uuid.UUID, item_id: uuid.UUID, caller: CurrentCaller, db: DbSession,
+            a: int = Query(ge=1), b: int = Query(ge=1)) -> dict:
+    return work.compare(db, caller.user, project_id, item_id, a, b)
+
+
+@router.post("/items/{item_id}/links")
+def add_link(project_id: uuid.UUID, item_id: uuid.UUID, body: LinkIn, caller: CsrfCaller, db: DbSession) -> dict:
+    return work.link(db, caller.user, project_id, item_id, body.to_item_id, body.link_type)
+
+
+@router.delete("/links/{link_id}", status_code=204)
+def remove_link(project_id: uuid.UUID, link_id: uuid.UUID, caller: CsrfCaller, db: DbSession) -> None:
+    work.unlink(db, caller.user, project_id, link_id)
+
+
+@router.post("/items/{item_id}/comments")
+def add_comment(project_id: uuid.UUID, item_id: uuid.UUID, body: CommentIn, caller: CsrfCaller,
+                db: DbSession) -> dict:
+    return {"items": work.comment(db, caller.user, project_id, item_id, body=body.body, version=body.version,
+                                  anchor=body.anchor)}
+
+
+@router.post("/comments/{comment_id}/resolve", status_code=204)
+def resolve(project_id: uuid.UUID, comment_id: uuid.UUID, caller: CsrfCaller, db: DbSession) -> None:
+    work.resolve_comment(db, caller.user, project_id, comment_id)
+
+
+@router.get("/traceability")
+def traceability(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    return work.traceability(db, caller.user, project_id)
+
+
+@router.get("/{department}/packages")
+def packages(project_id: uuid.UUID, department: str, caller: CurrentCaller, db: DbSession) -> dict:
+    return {"items": work.list_packages(db, caller.user, project_id, department)}
+
+
+@router.post("/{department}/packages", status_code=201)
+def submit(project_id: uuid.UUID, department: str, body: PackageIn, caller: CsrfCaller, db: DbSession) -> dict:
+    return work.submit_package(db, caller.user, project_id, department, title=body.title, item_ids=body.item_ids,
+                               note=body.note)
+
+
+@router.post("/packages/{package_id}/decision")
+def decide(project_id: uuid.UUID, package_id: uuid.UUID, body: DecisionIn, caller: CsrfCaller,
+           db: DbSession) -> dict:
+    return work.decide_package(db, caller.user, project_id, package_id, decision=body.decision, note=body.note)
+
+
+@router.post("/packages/{package_id}/handoffs", status_code=201)
+def hand_off(project_id: uuid.UUID, package_id: uuid.UUID, body: HandoffIn, caller: CsrfCaller,
+             db: DbSession) -> dict:
+    return work.hand_off(db, caller.user, project_id, package_id, to_department=body.to_department, note=body.note)
+
+
+@router.get("/{department}/handoffs")
+def handoffs(project_id: uuid.UUID, department: str, caller: CurrentCaller, db: DbSession) -> dict:
+    return {"items": work.list_handoffs(db, caller.user, project_id, department)}
+
+
+@router.post("/handoffs/{handoff_id}/reply")
+def reply(project_id: uuid.UUID, handoff_id: uuid.UUID, body: ReplyIn, caller: CsrfCaller, db: DbSession) -> dict:
+    return work.reply_handoff(db, caller.user, project_id, handoff_id, action=body.action, reply=body.reply)

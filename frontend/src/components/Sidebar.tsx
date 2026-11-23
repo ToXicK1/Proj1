@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DEPARTMENT_PATH, PATH_DEPARTMENT } from "../workspace/modules";
 import { Link, matchPath, useLocation } from "react-router-dom";
 import { api, type AccessDto, type ProjectDto, type ScopeDto } from "../api";
 import { PROFILES } from "../portal/roles";
@@ -39,9 +40,11 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   const [scope, setScope] = useState<ScopeDto | null>(null);
   const [open, setOpen] = useState(false); // the drawer on small screens
   const userId = state.status === "authenticated" ? state.user.id : null;
-  const projectId = matchPath("/projects/:projectId", location.pathname)?.params.projectId ?? "";
+  const projectId = matchPath({ path: "/projects/:projectId", end: false }, location.pathname)?.params.projectId ?? "";
   const params = new URLSearchParams(location.search);
-  const profile = params.get("profile");
+  const dept = matchPath("/projects/:projectId/work/:dept", location.pathname)?.params.dept;
+  const onTeam = matchPath("/projects/:projectId/team", location.pathname) !== null;
+  const profile = dept ? PATH_DEPARTMENT[dept] ?? null : onTeam ? "team" : params.get("profile");
   const kind = scope?.kind ?? "member";
 
   useEffect(() => {
@@ -109,9 +112,16 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
                   </Link>
                   {here && scope && kind !== "member" && scope.profiles.length > 0 && (
                     <nav className="nav-sub" aria-label="Professional profiles">
+                      {kind !== "owner" && (
+                        <NavLink active={profile === "team"} to={`/projects/${encodeURIComponent(projectId)}/team`}>
+                          Professional team
+                        </NavLink>
+                      )}
                       {PROFILES.filter(([key]) => scope.profiles.includes(key)).map(([key, label]) => (
                         <NavLink key={key} active={profile === key}
-                          to={`/projects/${encodeURIComponent(projectId)}?tab=${kind === "owner" ? "Deliverables" : "Workspace"}&profile=${key}`}>
+                          to={kind === "owner"
+                            ? `/projects/${encodeURIComponent(projectId)}?tab=Deliverables&profile=${key}`
+                            : `/projects/${encodeURIComponent(projectId)}/work/${DEPARTMENT_PATH[key]}`}>
                           {label}
                         </NavLink>
                       ))}
