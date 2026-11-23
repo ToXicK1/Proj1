@@ -131,3 +131,16 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - Shared `lifecycle.spec.ts` passed. Personal mode: 19 passed.
   - Two earlier attempts failed for test-setup reasons, not product ones: an email-verification wait under load, and a rerun without a fresh stack. A third failed on an ambiguous locator in the new spec, which was fixed.
 - **Backend full suite:** not rerun after step 7.0. The new tests and the drift check ran on their own.
+
+## 2026-11-23 — Step 7.1a
+
+- **`tests/test_stage_records.py` (5), all passed:**
+  - AI output becomes suggestions linked to the step; unusable entries are skipped and counted.
+  - A record step cannot be approved around its package.
+  - Approving the package approves the step on the exact system-assembled version; the approval decision and the package point at the same version.
+  - Own edits need a second professional, and administrators are notified when there is none.
+  - Requested changes rework the step: confirmed records are kept and new suggestions are added.
+- **Bug found by these tests and fixed:** a package decision on a step did not queue the workflow, so neither the next step nor the rework would start.
+- **`tests/test_work.py` updated for RD-19:** a second analyst approves, and the author is refused.
+- **Migration 0023:** no drift; downgrade and re-upgrade succeed. Frontend typecheck clean.
+- **Backend full suite:** 503 tests: 498 passed, 5 skipped (live model tests), 0 failed.

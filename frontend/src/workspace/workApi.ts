@@ -27,6 +27,10 @@ export interface PackageDto {
   items: { item_id: string; key: string; kind: string; title: string; version_id: string; number: number; sha256: string }[];
   submitted_by: string | null; submitted_at: string; decided_by: string | null; decided_at: string | null;
   decision_note: string;
+  /** The lifecycle step this package is the deliverable of, if any: deciding it decides the step. */
+  step: string | null;
+  /** RD-19: the submitter changed content in it, so another professional of the department must approve. */
+  edited_by_submitter: boolean;
 }
 export interface HandoffDto {
   id: string; from: string; to: string; status: string; note: string; reply: string; sender: string | null;

@@ -47,6 +47,9 @@ class WorkItem(Base):
     current_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
+    # The lifecycle step whose AI output proposed this record, if any.
+    stage_execution_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("stage_executions.id"),
+                                                                 nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -132,7 +135,13 @@ class WorkPackage(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     number: Mapped[int] = mapped_column(Integer, nullable=False)  # 1, 2, ... per project and department
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="submitted")
-    snapshot: Mapped[list] = mapped_column(JSONB, nullable=False)  # [{item_id, key, version_id, number, sha256}]
+    snapshot: Mapped[list] = mapped_column(JSONB, nullable=False)  # [{item_id, key, version_id, number, sha256,
+    #                                                                   content_author}]
+    # Set when the package is the deliverable of a lifecycle step: the artifact version the gate approves.
+    stage_execution_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("stage_executions.id"),
+                                                                 nullable=True)
+    artifact_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("artifact_versions.id"),
+                                                                  nullable=True)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     note: Mapped[str] = mapped_column(String(2000), nullable=False, default="")
     submitted_by_user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)

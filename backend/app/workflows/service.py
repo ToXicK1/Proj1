@@ -562,6 +562,12 @@ def _finish_run(db: Session, *, execution_id: uuid.UUID, stage_key: str, spec: d
         _, produced = artifacts.current_version(db, stage.id)
         for run in db.execute(select(AgentRun).where(AgentRun.id.in_(lead_sink))).scalars():
             run.output_artifact_version_id = produced.id
+    if spec.get("records"):
+        from app.work import bridge
+
+        _, produced = artifacts.current_version(db, stage.id)
+        bridge.propose_from_output(db, project=db.get(Project, execution.project_id), stage_execution_id=stage.id,
+                                   stage_key=stage_key, spec=spec, output=output, artifact_version_id=produced.id)
     failures, _ = hooks.run_hooks(db, hook_scope(db, execution, stage_key), "stage.ai_completed")
     transition_stage(db, execution_id=execution_id, stage_key=stage_key, to_status=StageStatus.VALIDATING,
                      actor=ActorType.SYSTEM, commit=False)

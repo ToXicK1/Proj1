@@ -436,13 +436,49 @@ def _package_out(db: Session, p: WorkPackage) -> dict[str, Any]:
             "items": p.snapshot, "sha256": p.sha256, "note": p.note,
             "submitted_by": names.get(p.submitted_by_user_id), "submitted_at": p.submitted_at.isoformat(),
             "decided_by": names.get(p.decided_by_user_id) if p.decided_by_user_id else None,
-            "decided_at": p.decided_at.isoformat() if p.decided_at else None, "decision_note": p.decision_note}
+            "decided_at": p.decided_at.isoformat() if p.decided_at else None, "decision_note": p.decision_note,
+            "step": _step_key(db, p.stage_execution_id),
+            "edited_by_submitter": _second_person_needed(p.snapshot, p.submitted_by_user_id)}
+
+
+def step_execution_id(db: Session, package_id: uuid.UUID) -> uuid.UUID | None:
+    """The workflow execution a step package belongs to, or None for a package outside the lifecycle."""
+    from app.workflows.models import StageExecution
+
+    package = db.get(WorkPackage, package_id)
+    if package is None or package.stage_execution_id is None:
+        return None
+    return db.get(StageExecution, package.stage_execution_id).workflow_execution_id
+
+
+def _step_key(db: Session, stage_execution_id: uuid.UUID | None) -> str | None:
+    if stage_execution_id is None:
+        return None
+    from app.workflows.models import StageExecution
+
+    return db.get(StageExecution, stage_execution_id).stage_key
+
+
+def content_author(db: Session, item: WorkItem) -> uuid.UUID | None:
+    """Who last changed the record's content (title or body): a person's id, or None for the AI. Confirming a
+    suggestion or changing only its provenance is not a content change (RD-19)."""
+    versions = db.execute(select(WorkItemVersion).where(WorkItemVersion.item_id == item.id)
+                          .order_by(WorkItemVersion.number.desc())).scalars().all()
+    for newer, older in zip(versions, [*versions[1:], None], strict=True):
+        if older is None or (newer.title, newer.body) != (older.title, older.body):
+            return newer.author_user_id
+    return None
+
+
+def _second_person_needed(snapshot: list[dict], user_id: uuid.UUID) -> bool:
+    return any(entry.get("content_author") == str(user_id) for entry in snapshot)
 
 
 def submit_package(db: Session, user: User, project_id: uuid.UUID, department: str, *, title: str,
-                   item_ids: list[uuid.UUID], note: str) -> dict[str, Any]:
+                   item_ids: list[uuid.UUID], note: str, stage_key: str | None = None) -> dict[str, Any]:
     """Freezes the current version of each chosen record. Records still marked as AI suggestions or open questions
-    cannot be submitted: a person must confirm them (or mark them as assumptions) first."""
+    cannot be submitted: a person must confirm them (or mark them as assumptions) first. With `stage_key`, the
+    package is that lifecycle step's deliverable and its decision is the step's approval."""
     project, _ = _scope(db, user, project_id)
     department = _department(department)
     _require_editor(db, user, project, department)
@@ -465,9 +501,17 @@ def submit_package(db: Session, user: User, project_id: uuid.UUID, department: s
     snapshot = []
     for item in sorted(items, key=lambda i: i.key):
         v = db.get(WorkItemVersion, item.current_version_id)
+        author = content_author(db, item)
         snapshot.append({"item_id": str(item.id), "key": item.key, "kind": item.kind, "title": v.title,
-                         "version_id": str(v.id), "number": v.number, "sha256": v.sha256})
+                         "version_id": str(v.id), "number": v.number, "sha256": v.sha256,
+                         "content_author": str(author) if author else None})
         item.status = "in_review"
+    stage_execution_id = artifact_version_id = None
+    if stage_key:
+        from app.work import bridge
+
+        stage_execution_id, artifact_version_id = bridge.bind_package(db, project=project, stage_key=stage_key,
+                                                                      department=department, items=list(items))
     for old in db.execute(select(WorkPackage).where(WorkPackage.project_id == project.id,
                                                     WorkPackage.department == department,
                                                     WorkPackage.status == "submitted")).scalars():
@@ -478,8 +522,11 @@ def submit_package(db: Session, user: User, project_id: uuid.UUID, department: s
                           department=department, title=title.strip()[:200] or f"Package {number}", number=number,
                           status="submitted", snapshot=snapshot,
                           sha256=hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest(),
-                          note=note[:2000], submitted_by_user_id=user.id)
+                          note=note[:2000], submitted_by_user_id=user.id, stage_execution_id=stage_execution_id,
+                          artifact_version_id=artifact_version_id)
     db.add(package)
+    if _second_person_needed(snapshot, user.id) and not (holders(db, project, department) - {user.id}):
+        _escalate_reviewer(db, project, department, package)
     _audit(db, project, "work.package_submitted", user, {"package": str(package.id), "department": department,
                                                           "items": len(snapshot), "sha256": package.sha256})
     db.commit()
@@ -502,6 +549,9 @@ def decide_package(db: Session, user: User, project_id: uuid.UUID, package_id: u
         raise AppError(409, "already_decided", f"This package is {package.status.replace('_', ' ')}")
     if decision == "request_changes" and not note.strip():
         raise AppError(422, "note_required", "Say what needs to change")
+    if decision == "approve" and _second_person_needed(package.snapshot, user.id):
+        raise AppError(403, "separation_of_duties", "This package contains your own edits; another professional of "
+                       "the department must approve it")
     package.status = "approved" if decision == "approve" else "changes_requested"
     package.decided_by_user_id, package.decided_at, package.decision_note = user.id, datetime.now(UTC), note[:2000]
     for entry in package.snapshot:
@@ -509,8 +559,28 @@ def decide_package(db: Session, user: User, project_id: uuid.UUID, package_id: u
         if item.current_version_id == uuid.UUID(entry["version_id"]) and item.status == "in_review":
             item.status = "approved" if decision == "approve" else "changes_requested"
     _audit(db, project, f"work.package_{package.status}", user, {"package": str(package.id), "sha256": package.sha256})
-    db.commit()
+    if package.stage_execution_id is not None:
+        from app.work import bridge
+
+        bridge.decide_step(db, user, package, decision, note)  # the step's gate; commits with the package
+    else:
+        db.commit()
     return _package_out(db, package)
+
+
+def _escalate_reviewer(db: Session, project: Project, department: str, package: WorkPackage) -> None:
+    """RD-19: nobody else in the department can approve the submitter's own edits. Administrators are asked to
+    assign a second professional; the package waits."""
+    from app.organizations.models import Membership
+
+    admins = db.execute(select(Membership.user_id).where(Membership.organization_id == project.organization_id,
+                                                         Membership.role == "org_admin",
+                                                         Membership.status == "active")).scalars().all()
+    for admin in admins:
+        db.add(Notification(id=uuid7(), organization_id=project.organization_id, project_id=project.id,
+                            user_id=admin, kind="package_needs_reviewer",
+                            message=(f"{package.title} contains its submitter's own edits and needs a second "
+                                     f"{department.replace('_', ' ')} to approve it. Assign one in Team.")[:300]))
 
 
 def list_packages(db: Session, user: User, project_id: uuid.UUID, department: str) -> list[dict[str, Any]]:

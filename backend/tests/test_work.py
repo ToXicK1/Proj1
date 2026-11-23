@@ -23,6 +23,7 @@ def env(client, engine, settings, box):  # noqa: F811
     portal.setup_team()
     portal.analyst, portal.ah = portal.holder(BA)
     portal.architect, portal.sh = portal.holder(SA)
+    portal.colleague, portal.ch = portal.holder(BA)  # a second analyst: approves what the first one wrote (RD-19)
     return portal
 
 
@@ -129,12 +130,14 @@ def test_a_package_freezes_exact_versions_and_only_the_department_decides(env):
     assert r.status_code == 403
     assert env.analyst.post(_w(env, f"/packages/{package['id']}/decision"), headers=env.ah,
                             json={"decision": "request_changes"}).status_code == 422  # needs a reason
-    done = env.analyst.post(_w(env, f"/packages/{package['id']}/decision"), headers=env.ah,
+    own = env.analyst.post(_w(env, f"/packages/{package['id']}/decision"), headers=env.ah, json={"decision": "approve"})
+    assert own.status_code == 403 and own.json()["code"] == "separation_of_duties"
+    done = env.colleague.post(_w(env, f"/packages/{package['id']}/decision"), headers=env.ch,
                             json={"decision": "approve", "note": "Ready for architecture"}).json()
     assert done["status"] == "approved"
     statuses = {i["key"]: i["status"] for i in env.analyst.get(_w(env, f"/{BA}/items")).json()["items"]}
     assert statuses == {"REQ-001": "approved", "REQ-002": "draft"}
-    again = env.analyst.post(_w(env, f"/packages/{package['id']}/decision"), headers=env.ah,
+    again = env.colleague.post(_w(env, f"/packages/{package['id']}/decision"), headers=env.ch,
                              json={"decision": "approve"})
     assert again.status_code == 409
 
@@ -153,7 +156,7 @@ def test_handoffs_record_exact_versions_and_never_move_workflow_state(env):
     early = env.analyst.post(_w(env, f"/packages/{package['id']}/handoffs"), headers=env.ah,
                              json={"to_department": SA})
     assert early.status_code == 409  # not approved yet
-    env.analyst.post(_w(env, f"/packages/{package['id']}/decision"), headers=env.ah, json={"decision": "approve"})
+    env.colleague.post(_w(env, f"/packages/{package['id']}/decision"), headers=env.ch, json={"decision": "approve"})
     with env.engine.connect() as conn:
         before = conn.execute(text("select count(*) from stage_transitions")).scalar_one()
     sent = env.analyst.post(_w(env, f"/packages/{package['id']}/handoffs"), headers=env.ah,
@@ -199,4 +202,4 @@ def test_team_overview_counts_come_from_records(env):
     ba = cards[BA]
     assert ba["visible"] and ba["can_edit"] and ba["work"]["records"] == 2 and ba["work"]["to_confirm"] == 1
     assert cards[SA]["visible"] is False and "current" not in cards[SA]
-    assert len(ba["people"]) == 1
+    assert len(ba["people"]) == 2

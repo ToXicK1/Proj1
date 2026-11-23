@@ -171,6 +171,12 @@ def submit_decision(
         scope = hook_scope(db, execution, stage_key)
 
         if decision == "APPROVE":
+            if spec.get("records"):
+                from app.work.bridge import is_package_version
+
+                if not is_package_version(db, version):
+                    raise AppError(409, "package_required", "This step is approved through its package of "
+                                   "confirmed records, in the department's workspace")
             blocked = sensors.blocking(db, stage, spec, version)
             if blocked:
                 raise AppError(409, "sensor_blocking", f"Mandatory checks are not satisfied: {', '.join(blocked)}")

@@ -211,3 +211,12 @@ in the UI until then.
 - **D4: (a).** Department by department: step 7.0 (shared core and shell) first, then the BA lifecycle and workspace.
 
 The Figma and GitHub connections are built in the Designer (7.2) and Developer (7.3) steps; they are not needed earlier.
+
+## 10. Step 7.1 in slices (2026-11-23)
+
+| Slice | Content |
+|---|---|
+| 7.1a | Rule RD-19 (second person for a package with the submitter's own edits). AI stages propose records from their output (a stage's `records` map from output key to record kind). Stage-bound packages: submitting a package for a step creates a system-assembled artifact version of that step and runs the step's sensors on it; the decision goes through the existing approval gate (slots, sensors, hooks, audit), so approving the package *is* approving the step. Rework replaces unconfirmed AI suggestions and keeps confirmed or edited records |
+| 7.1b | The 8-stage BA department lifecycle template with the new step kinds: `ai_review` (independent review of the whole department's work), `review_aggregate` (Human Professional Review of the package) and `owner_input` (User Review and Approval, RD-2) |
+| 7.1c | Workspace UI: step reviews inside the workspace, the document section editor, the process-flow diagram editor, Scope & Priorities, Change Requests, and the AI assistant panel |
+| 7.1d | Live run of the BA department on the real model (the Phase 7 exit check) |

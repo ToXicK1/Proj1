@@ -239,3 +239,19 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
     - Structured fields (document sections, process diagrams) are edited as JSON until their own editors arrive in 7.1.
   - The sidebar's department links open the workspaces for the internal team; owners keep their deliverables view.
 - **Not yet:** lifecycle approvals still happen in the project's step reviews; they move into the workspace in 7.1, together with the BA lifecycle stages proposing records.
+
+## 2026-11-23 — Step 7.1a: lifecycle steps work through records and packages (RD-19)
+
+- **Steps propose records.** A step spec can carry `records`, a map from an output key to a record kind; the compiler checks the kind, the department, that the key is a required output, and that the step is human-gated and builds no code. When the AI finishes, each usable entry of that list becomes an AI suggestion linked to the step, sourced to the step's artifact version. Unusable entries are skipped and counted in the activity log.
+- **Rework keeps people's work.** When a step is reworked, its suggestions nobody confirmed are archived and replaced by the new run's. Records a person confirmed or edited stay.
+- **The step is approved through its package.**
+  - Submitting a package for a step requires every live record of that step. It assembles a system-authored artifact version of the step from the exact record versions, and runs the step's sensors on it.
+  - The decision goes through the normal approval gate (slots, sensors, hooks, audit, transition), so approving the package *is* approving the step.
+  - The old direct approval of a record step's AI version is refused (`package_required`).
+  - After a step decision, the workflow is queued to continue: the next step, or the rework.
+- **RD-19, second person for own edits.** Each package entry records who last changed the record's content. Confirming a suggestion or changing only its provenance does not count as an edit.
+  - A package with the submitter's own edits cannot be approved by the submitter (`separation_of_duties`).
+  - If the department has no other assigned professional, administrators are notified to assign one.
+  - The workspace shows both the step and this rule on each package.
+- Migration `0023_stage_records`.
+- **Not yet:** the BA lifecycle template that uses this (7.1b), and the step review screens inside the workspace (7.1c). No lifecycle step in the default template has `records` yet, so running projects behave as before.

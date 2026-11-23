@@ -1,11 +1,12 @@
 import uuid
 from typing import Any, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
 from app.collab import service as collab
+from app.jobs.api import queue
 from app.portal.lifecycle import STAGES, TEAM, lead_key
 from app.work import kinds
 from app.work import service as work
@@ -51,6 +52,7 @@ class CommentIn(_Strict):
 
 class PackageIn(_Strict):
     title: str = Field(default="", max_length=200)
+    stage_key: str | None = Field(default=None, max_length=64)
     item_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
     note: str = Field(default="", max_length=2000)
 
@@ -176,13 +178,18 @@ def packages(project_id: uuid.UUID, department: str, caller: CurrentCaller, db: 
 @router.post("/{department}/packages", status_code=201)
 def submit(project_id: uuid.UUID, department: str, body: PackageIn, caller: CsrfCaller, db: DbSession) -> dict:
     return work.submit_package(db, caller.user, project_id, department, title=body.title, item_ids=body.item_ids,
-                               note=body.note)
+                               note=body.note, stage_key=body.stage_key)
 
 
 @router.post("/packages/{package_id}/decision")
-def decide(project_id: uuid.UUID, package_id: uuid.UUID, body: DecisionIn, caller: CsrfCaller,
-           db: DbSession) -> dict:
-    return work.decide_package(db, caller.user, project_id, package_id, decision=body.decision, note=body.note)
+def decide(project_id: uuid.UUID, package_id: uuid.UUID, body: DecisionIn, request: Request, tasks: BackgroundTasks,
+           caller: CsrfCaller, db: DbSession) -> dict:
+    out = work.decide_package(db, caller.user, project_id, package_id, decision=body.decision, note=body.note)
+    execution_id = work.step_execution_id(db, package_id)
+    if execution_id is not None:  # a step decision: let the workflow continue (next step, or the rework)
+        queue(request, tasks, db, "portal.drive", {"execution_id": str(execution_id)},
+              dedupe_key=f"drive:{execution_id}", project_id=project_id)
+    return out
 
 
 @router.post("/packages/{package_id}/handoffs", status_code=201)

@@ -50,6 +50,12 @@ export function Packages({ projectId, department, canEdit }: { projectId: string
           <p className="muted small">Submitted by {p.submitted_by} on {new Date(p.submitted_at).toLocaleString()}
             {p.decided_by ? ` · decided by ${p.decided_by} on ${new Date(p.decided_at ?? "").toLocaleString()}` : ""}
             {" · fingerprint "}<code>{p.sha256.slice(0, 12)}</code></p>
+          {p.step && <p className="small">This is the deliverable of the lifecycle step <strong>{p.step.replace(/_/g, " ")}</strong>:
+            deciding it decides the step.</p>}
+          {p.edited_by_submitter && p.status === "submitted" && (
+            <p className="notice small">It contains {p.submitted_by}'s own edits, so another professional of this department
+              must approve it. If there is nobody else, an administrator has been asked to assign one.</p>
+          )}
           <ul className="list">{p.items.map((i) => <li key={i.version_id}><strong>{i.key}</strong> v{i.number} {i.title}</li>)}</ul>
           {p.decision_note && <p>Note: {p.decision_note}</p>}
           {canEdit && p.status === "submitted" && (

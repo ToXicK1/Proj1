@@ -52,6 +52,9 @@ class StageSpec(_Strict):
     reviewer: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_\-]{1,63}$")
     sensors: list[SensorSpec] = Field(default_factory=list, max_length=30)
     reads: list[str] = Field(default_factory=list, max_length=20)  # earlier stages whose approved work it needs
+    # Output key -> work record kind: the AI's list under that key becomes records the professional confirms, and the
+    # step is approved through a package of them (step 7.1a).
+    records: dict[str, str] = Field(default_factory=dict, max_length=10)
     # Support specialists that contribute advisory notes before the lead works (each recorded on its own)
     specialists: list[str] = Field(default_factory=list, max_length=3)
 
@@ -163,6 +166,20 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
             if stage.sandbox:
                 problems.append(f"stages[{i}].condition: a stage whose code is built and tested cannot be skipped")
             problems += conditions.problems(stage.condition, _upstream(stage.id, graph), f"stages[{i}].condition")
+        if stage.records:
+            from app.work.kinds import KINDS
+
+            for key, kind in stage.records.items():
+                if kind not in KINDS:
+                    problems.append(f"stages[{i}].records.{key}: unknown record kind '{kind}'")
+                elif KINDS[kind].department != stage.profile:
+                    problems.append(f"stages[{i}].records.{key}: '{kind}' records belong to another department")
+                if key not in stage.output_required_keys:
+                    problems.append(f"stages[{i}].records.{key}: must be one of the stage's required output keys")
+            if stage.sandbox:
+                problems.append(f"stages[{i}].records: a stage that builds code is approved on its build evidence")
+            if not stage.human_gate:
+                problems.append(f"stages[{i}].records: record steps are approved by a person")
         for ref in stage.reads:
             if ref not in _upstream(stage.id, graph):
                 problems.append(f"stages[{i}].reads: stage '{ref}' is not upstream, so its work cannot exist yet")
