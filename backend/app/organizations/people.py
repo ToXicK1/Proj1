@@ -77,10 +77,24 @@ def create_person(db: Session, settings: Settings, actor: User, *, organization_
     _audit(db, organization_id, "member.created", actor, {"user": str(user.id), "role": role,
                                                            "profiles": sorted(set(profiles))})
     db.commit()
+    if role == "project_manager" and "project_manager" not in profiles:
+        profiles = [*profiles, "project_manager"]  # the seventh professional profile (RD-20)
+        _ensure_pm_profile(db, actor, organization_id)
     # Role, profiles and project access through the one existing path, so the rules stay in one place.
     members.set_access(db, actor, organization_id=organization_id, user_id=user.id, role=role, profiles=profiles)
     db.refresh(user)
     return user, temp
+
+
+def _ensure_pm_profile(db: Session, actor: User, organization_id: uuid.UUID) -> None:
+    """Organizations set up before RD-20 may not have the Project Manager profile yet."""
+    from app.agents import service as agents
+    from app.agents.models import Profile
+
+    if db.execute(select(Profile.id).where(Profile.organization_id == organization_id,
+                                           Profile.key == "project_manager")).first() is None:
+        agents.create_profile(db, actor, organization_id=organization_id, key="project_manager",
+                              name="Project Manager")
 
 
 def reset_password(db: Session, settings: Settings, actor: User, *, organization_id: uuid.UUID,

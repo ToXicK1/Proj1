@@ -117,7 +117,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
                           Professional team
                         </NavLink>
                       )}
-                      {PROFILES.filter(([key]) => scope.profiles.includes(key)).map(([key, label]) => (
+                      {PROFILES.filter(([key]) => scope.profiles.includes(key) && (kind !== "owner" || key !== "project_manager"))
+                        .map(([key, label]) => (
                         <NavLink key={key} active={profile === key}
                           to={kind === "owner"
                             ? `/projects/${encodeURIComponent(projectId)}?tab=Deliverables&profile=${key}`

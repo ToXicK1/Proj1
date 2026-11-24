@@ -53,7 +53,7 @@ def test_first_account_administers_and_the_platform_is_ready(shared, engine):
     assert access["status"] == "active" and access["is_admin"] and access["can_create_projects"]
     org = admin.get("/api/v1/orgs").json()["items"][0]["id"]
     catalog = admin.get(f"/api/v1/orgs/{org}/studio/catalog").json()
-    assert catalog["model_routes"] == ["default"] and len(catalog["profiles"]) == 6
+    assert catalog["model_routes"] == ["default"] and len(catalog["profiles"]) == 7
     with Session(engine) as db:
         assert db.execute(select(AiProvider.name).where(AiProvider.organization_id == uuid.UUID(org))).scalar_one() \
             == "Local AI"

@@ -72,7 +72,7 @@ def test_admins_and_project_managers_see_every_project_but_only_managers_chat(en
     assert admin.get("/api/v1/team-chat/channels").json()["items"] == []
     assert admin.get("/api/v1/team-chat/messages/general").status_code == 404
     assert admin.get(env.base + "/team-chat/business_analyst").status_code == 404
-    assert len(manager.get(env.base + "/scope").json()["channels"]) == 6
+    assert len(manager.get(env.base + "/scope").json()["channels"]) == 7  # with the Project Manager (RD-20)
     assert manager.get("/api/v1/team-chat/channels").json()["items"][0]["key"] == "general"
     assert manager.get(env.base + "/team-chat/business_analyst").status_code == 200
     # Oversight shows every project and what waits on whom, to overseers only.

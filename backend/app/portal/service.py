@@ -73,6 +73,9 @@ from app.workflows.state_machine import ActorType, StageStatus
 
 S = StageStatus
 _MESSAGE_NAMES: ContextVar[dict | None] = ContextVar("_message_names", default=None)
+# The departments the client's portal shows as cards and AI representatives. The Project Manager is a person the
+# client talks to directly (Messages now; a project PM chat and one client assistant in P5), not an AI stand-in.
+CLIENT_TEAM = tuple(m for m in TEAM if m.profile != "project_manager")
 QUESTIONS: tuple[tuple[str, str, bool], ...] = (
     ("problem", "What problem should this project solve?", True),
     ("users", "Who will use it?", True),
@@ -446,11 +449,11 @@ def _roll_up(statuses: list[str]) -> str:
 
 def _stage_cards(db: Session, project: Project, steps: list, intake_done: bool) -> list[dict]:
     cards = []
-    for member in TEAM:
+    for member in CLIENT_TEAM:
         mine = [(step, row) for step, row in steps if step.profile == member.profile]
         statuses = [DISPLAY[S(row.status)] if row else "Not Started" for _, row in mine]
         status = _roll_up(statuses)
-        if member is TEAM[0] and not intake_done:
+        if member is CLIENT_TEAM[0] and not intake_done:
             status = "Awaiting User Input"
         done = sum(1 for x in statuses if x in ("Approved", "Completed"))
         people = _holders(db, project, member.profile)
@@ -778,11 +781,11 @@ def post_message(db: Session, user: User, project_id: uuid.UUID, *, body: str, p
                  artifact_version_id: uuid.UUID | None) -> tuple[list[dict[str, Any]], uuid.UUID | None]:
     """Stores the message, classifies it, and returns what to show. Text can never trigger an action."""
     project = _owner(db, user, project_id)
-    if profile is not None and profile not in BY_PROFILE:
+    if profile is not None and profile not in {m.profile for m in CLIENT_TEAM}:
         raise AppError(422, "unknown_representative", "Choose someone from your project team")
     version = _owner_visible_version(db, project_id, artifact_version_id)
     result = classify(body)
-    target = result.profile or profile or TEAM[0].profile
+    target = result.profile or profile or CLIENT_TEAM[0].profile
     owner_row = _store(db, project, target, "owner", user.id, body, result.intent, version.id if version else None)
     if result.feedback_kind:
         db.add(OwnerFeedback(id=uuid7(), organization_id=project.organization_id, project_id=project.id,

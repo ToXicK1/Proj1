@@ -574,6 +574,16 @@ interface Problem {
   problems?: string[];
 }
 
+/** Sends a file as the request body (its type in Content-Type), with the session's CSRF token. */
+export async function uploadFile<T>(path: string, file: File): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json", "Content-Type": file.type || "application/octet-stream" };
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  const res = await fetch(path, { method: "POST", headers, credentials: "same-origin", body: file });
+  const data = (await res.json().catch(() => ({}))) as Problem & T;
+  if (!res.ok) throw new ApiError(res.status, data.code ?? "http_error", data.title ?? "Something went wrong", data.problems);
+  return data;
+}
+
 export async function request<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -635,6 +645,9 @@ export const api = {
     request("PUT", `/api/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`, { role }),
   removeProjectMember: (projectId: string, userId: string) =>
     request("DELETE", `/api/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`),
+  assignManager: (projectId: string, userId: string | null) =>
+    request<{ project_manager_id: string | null }>("PUT", `/api/v1/projects/${encodeURIComponent(projectId)}/manager`,
+      { user_id: userId }),
   authConfig: () => request<{ account_mode: "managed" | "self_service" }>("GET", "/api/v1/auth/config"),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<{ user: UserDto }>("POST", "/api/v1/auth/password", { current_password: currentPassword, new_password: newPassword }),

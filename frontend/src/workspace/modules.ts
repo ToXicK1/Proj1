@@ -4,13 +4,31 @@ import type { Tone } from "../components/ui";
  * shared screens, or not built yet: then it says which step brings it, and nothing pretends to work. */
 
 export type Module =
-  | { key: string; label: string; screen: "overview" | "steps" | "packages" | "handoffs" | "traceability" | "conversations" | "scope" | "changes" }
+  | { key: string; label: string; screen: "overview" | "steps" | "packages" | "handoffs" | "traceability" | "conversations" | "scope" | "changes" | "intake" }
   | { key: string; label: string; screen: "records"; kinds: string[] }
   | { key: string; label: string; screen: "later"; step: string; what: string };
 
 const later = (key: string, label: string, step: string, what: string): Module => ({ key, label, screen: "later", step, what });
 
 export const MODULES: Record<string, Module[]> = {
+  // RD-20: the Project Manager's own workspace. The modules arrive in the roadmap's phases (PM_CLIENT_ARCHITECTURE.md).
+  project_manager: [
+    { key: "overview", label: "PM Overview", screen: "overview" },
+    { key: "meetings", label: "Client Meetings", screen: "records", kinds: ["meeting"] },
+    later("analysis", "AI Meeting Analysis", "P3", "the PM assistant's provisional analysis of your meeting notes"),
+    { key: "intake", label: "Project Intake", screen: "intake" },
+    later("brief", "Project Brief", "P4", "the versioned Project Brief you approve before the BA starts"),
+    later("ba_handoff", "BA Handoff", "P4", "handing the approved intake package to the Business Analyst"),
+    later("sprints", "Sprint Management", "P6", "sprint plans you approve before the engine starts them"),
+    later("tasks", "Task Allocation", "P6", "department tasks with owners, priorities and due dates"),
+    later("timeline", "Timeline and Dependencies", "P6", "milestones and what blocks what"),
+    later("risks", "Risks and Issues", "P6", "the project's risks and issues with explicit owners"),
+    later("changes", "Change Requests", "P7", "change requests with impact from each department"),
+    later("reports", "Deliverable Reviews and Reports", "P8", "status reports you review before the client sees them"),
+    { key: "steps", label: "Lifecycle steps", screen: "steps" },
+    { key: "handoffs", label: "Handoffs", screen: "handoffs" },
+    { key: "conversations", label: "PM Conversations", screen: "conversations" },
+  ],
   business_analyst: [
     { key: "overview", label: "BA Overview", screen: "overview" },
     { key: "steps", label: "Lifecycle steps", screen: "steps" },
@@ -123,7 +141,7 @@ export const MODULES: Record<string, Module[]> = {
 };
 
 export const DEPARTMENT_PATH: Record<string, string> = {
-  business_analyst: "ba", solution_architect: "architect", ui_ux_designer: "design",
+  project_manager: "pm", business_analyst: "ba", solution_architect: "architect", ui_ux_designer: "design",
   software_developer: "dev", qa_security: "qa", devops_release: "devops",
 };
 export const PATH_DEPARTMENT: Record<string, string> = Object.fromEntries(

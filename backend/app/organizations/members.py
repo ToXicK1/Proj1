@@ -245,7 +245,7 @@ def set_access(db: Session, actor: User, *, organization_id: uuid.UUID, user_id:
         for key in sorted(set(profiles)):
             db.add(MemberProfile(id=uuid7(), organization_id=organization_id, user_id=user_id, profile_key=key,
                                  confirmed_by=actor.id))
-        if profiles:
+        if set(profiles) - {"project_manager"}:
             joined = set(db.execute(select(ProjectMember.project_id).where(ProjectMember.user_id == user_id)).scalars())
             for project_id in db.execute(select(Project.id).where(Project.organization_id == organization_id)).scalars():
                 if project_id not in joined:

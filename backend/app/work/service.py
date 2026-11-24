@@ -141,6 +141,12 @@ def create(db: Session, user: User, project_id: uuid.UUID, department: str, *, k
     clean = _checked(kind, department, title, body, provenance)
     if provenance in ("ai_suggestion", "system_draft"):
         raise AppError(422, "invalid_provenance", "Only the AI proposes suggestions and only the platform drafts")
+    if kind == "project_intake":
+        if db.execute(select(WorkItem.id).where(WorkItem.project_id == project.id, WorkItem.kind == kind,
+                                                WorkItem.status != "archived")).first():
+            raise AppError(409, "intake_exists", "This project already has its intake; edit that one")
+        if clean.get("validation") == "validated":
+            raise AppError(422, "validate_later", "Create the intake as a draft, then validate it")
     item = WorkItem(id=uuid7(), organization_id=project.organization_id, project_id=project.id,
                     department=department, kind=kind, key=_next_key(db, project.id, KINDS[kind].prefix),
                     title=title.strip(), status="draft", provenance=provenance, owner_user_id=user.id)
@@ -199,8 +205,14 @@ def update(db: Session, user: User, project_id: uuid.UUID, item_id: uuid.UUID, *
                      new_provenance)
     if _sha(new_title, clean, new_provenance) == current.sha256:
         raise AppError(409, "unchanged", "Nothing changed")
+    validating = item.kind == "project_intake" and clean.get("validation") == "validated" \
+        and current.body.get("validation") != "validated"
+    if validating and new_provenance != "confirmed":
+        raise AppError(422, "intake_not_confirmed", "Only a confirmed intake can be validated")
     _add_version(db, item, title=new_title, body=clean, provenance=new_provenance, author=user, agent=None,
-                 reason=reason or "edited", sources=[])
+                 reason=reason or ("validated the intake" if validating else "edited"), sources=[])
+    if validating:
+        _audit(db, project, "work.intake_validated", user, {"item": str(item.id), "version": item.current_version})
     if item.status in ("approved", "changes_requested", "in_review"):
         item.status = "draft"  # an edited record needs a new package before it counts as approved again
     _audit(db, project, "work.edited", user, {"item": str(item.id), "version": item.current_version})

@@ -198,7 +198,7 @@ def test_team_overview_counts_come_from_records(env):
     _create(env)
     _ai_proposal(env)
     cards = {c["profile"]: c for c in env.analyst.get(_w(env, "/team")).json()["departments"]}
-    assert len(cards) == 6
+    assert len(cards) == 7  # six engineering departments and the Project Manager (RD-20)
     ba = cards[BA]
     assert ba["visible"] and ba["can_edit"] and ba["work"]["records"] == 2 and ba["work"]["to_confirm"] == 1
     assert cards[SA]["visible"] is False and "current" not in cards[SA]

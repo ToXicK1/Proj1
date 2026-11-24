@@ -1,4 +1,8 @@
-import { request } from "../api";
+import { request, uploadFile } from "../api";
+
+export interface AttachmentDto {
+  id: string; filename: string; content_type: string; size_bytes: number; uploaded_by: string | null; created_at: string;
+}
 
 export type Provenance = "confirmed" | "assumption" | "ai_suggestion" | "open_question" | "system_draft";
 
@@ -104,6 +108,14 @@ export const workApi = {
     request<{ items: AssistantExchangeDto[] }>("GET", `${base(p)}/${id(department)}/assistant`),
   addProposal: (p: string, exchangeId: string, index: number) =>
     request<AssistantExchangeDto>("POST", `${base(p)}/assistant/${id(exchangeId)}/proposals/${index}`),
+  attachments: (p: string, itemId: string) =>
+    request<{ items: AttachmentDto[] }>("GET", `${base(p)}/items/${id(itemId)}/attachments`),
+  attach: (p: string, itemId: string, file: File) =>
+    uploadFile<AttachmentDto>(`${base(p)}/items/${id(itemId)}/attachments?filename=${encodeURIComponent(file.name)}`, file),
+  attachmentUrl: (p: string, attachmentId: string) => `${base(p)}/attachments/${id(attachmentId)}`,
+  clientForm: (p: string) =>
+    request<{ answers: { field: string; label: string; value: string; tag: string | null }[]; status: string | null }>(
+      "GET", `${base(p)}/client-form`),
   steps: (p: string, department: string) =>
     request<{ items: StepDto[]; can_edit: boolean }>("GET", `${base(p)}/${id(department)}/steps`),
   sendBack: (p: string, reviewKey: string, step: string, note: string) =>

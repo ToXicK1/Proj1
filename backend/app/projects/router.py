@@ -58,6 +58,18 @@ def create_project(
     return ProjectOut.of(project).model_dump()
 
 
+class ManagerIn(_Strict):
+    user_id: uuid.UUID | None = None
+
+
+@router.put("/projects/{project_id}/manager")
+def assign_manager(project_id: uuid.UUID, body: ManagerIn, caller: CsrfCaller, db: DbSession) -> dict:
+    """Administrators only: the project's Project Manager (RD-20)."""
+    project = service.assign_manager(db, caller.user, project_id, body.user_id)
+    return {"project_id": str(project.id),
+            "project_manager_id": str(project.project_manager_id) if project.project_manager_id else None}
+
+
 @router.get("/projects")
 def list_projects(caller: CurrentCaller, db: DbSession) -> dict:
     items = service.projects_for_user(db, caller.user.id)

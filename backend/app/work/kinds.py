@@ -28,11 +28,34 @@ class Kind:
 
 PRIORITY = ("must", "should", "could", "wont")
 LEVEL = ("high", "medium", "low")
+PM = "project_manager"
 BA = "business_analyst"
 SA = "solution_architect"
 UX = "ui_ux_designer"
 
 KINDS: dict[str, Kind] = {k.key: k for k in (
+    # Project Manager (P2): client meetings held in person, and the structured intake the PM validates (RD-21) ---
+    Kind("meeting", PM, "MTG", "Client meeting", (
+        Field("held_at", "text", required=True),  # date and time as the PM writes it, e.g. 2026-11-24 10:00
+        Field("status", "enum", required=True, choices=("planned", "held", "follow_up_needed", "closed")),
+        Field("participants", "list"), Field("objectives", "list"),
+        Field("raw_notes", "text"),  # what was said, in the PM's own words
+        Field("summary", "text"),
+        Field("decisions", "list"), Field("assumptions", "list"), Field("constraints", "list"),
+        Field("risks", "list"), Field("open_questions", "list"), Field("follow_ups", "list"),
+        Field("references", "list"),  # links and document names
+    )),
+    Kind("project_intake", PM, "INT", "Project intake", (
+        Field("business_problem", "text", required=True),
+        Field("validation", "enum", required=True, choices=("draft", "validated")),
+        Field("objectives", "list"), Field("proposed_solution", "text"),
+        Field("stakeholders", "list"), Field("target_users", "list"),
+        Field("features_discussed", "list"), Field("functional_expectations", "list"),
+        Field("non_functional_expectations", "list"), Field("technical_constraints", "list"),
+        Field("budget_timeline", "text"), Field("integrations", "list"), Field("dependencies", "list"),
+        Field("assumptions", "list"), Field("risks", "list"), Field("decisions", "list"),
+        Field("open_questions", "list"),
+    )),
     Kind("requirement", BA, "REQ", "Requirement", (
         Field("description", "text", required=True),
         Field("type", "enum", required=True, choices=("business", "functional", "non_functional", "constraint")),

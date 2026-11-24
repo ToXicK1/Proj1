@@ -180,7 +180,7 @@ def test_every_scope_is_a_valid_workflow_matching_the_lifecycle():
     assert counts["feature"] == counts["enterprise"] == 30
     assert counts["mvp"] == 20 and counts["poc"] == 5 and counts["bugfix"] == 6 and counts["refactor"] == 7
     assert counts["infra"] == 12 and counts["security-patch"] == 7 and counts["classic"] == 15
-    assert {s.profile for s in aws} == {m.profile for m in TEAM}
+    assert {s.profile for s in aws} == {m.profile for m in TEAM} - {"project_manager"}  # the PM has no AI steps here
     assert [s["id"] for s in compile_workflow(workflow_spec("ba-department"), known_work=set(KNOWN_WORK)).spec[
         "stages"]] == [s.id for s in BA_STAGES]
     for stage in workflow_spec("feature")["stages"]:
@@ -426,7 +426,7 @@ def test_only_admins_set_up_the_team_and_setup_can_repeat(env):
     env.setup_team()
     catalog = env.client.get(f"/api/v1/orgs/{env.org}/studio/catalog").json()
     gated = sum(1 for s in STAGES if s.gated)
-    assert len(catalog["profiles"]) == 6 and len(catalog["agents"]) == gated + 6
+    assert len(catalog["profiles"]) == 7 and len(catalog["agents"]) == gated + 7  # one reviewer per profile
     assert env.client.post(f"/api/v1/orgs/{env.org}/studio/default-lifecycle", headers=env.h,
                            json={"model_route": "missing"}).status_code == 404
     other, h, _ = env.person()

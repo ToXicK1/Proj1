@@ -49,12 +49,15 @@ class Member:
 
 
 TEAM: tuple[Member, ...] = (
+    # RD-20: the Project Manager coordinates the six engineering departments; it never overrides their decisions.
+    Member("project_manager", "Project Manager"),
     Member("business_analyst", "Business Analyst"), Member("solution_architect", "Solution Architect"),
     Member("ui_ux_designer", "UI/UX Designer"), Member("software_developer", "Software Developer"),
     Member("qa_security", "QA & Security Engineer"), Member("devops_release", "DevOps & Release Engineer"),
 )
 BY_PROFILE = {m.profile: m for m in TEAM}
-BA, SA, UX, DEV, QA, OPS = (m.profile for m in TEAM)
+PM, BA, SA, UX, DEV, QA, OPS = (m.profile for m in TEAM)
+ENGINEERING = (BA, SA, UX, DEV, QA, OPS)  # the six engineering departments
 
 
 @dataclass(frozen=True)

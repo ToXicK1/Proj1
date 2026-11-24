@@ -152,6 +152,23 @@ class WorkPackage(Base):
     decision_note: Mapped[str] = mapped_column(String(2000), nullable=False, default="")
 
 
+class WorkAttachment(Base):
+    """A file attached to a record (a meeting's documents, references). The bytes live in object storage; this row
+    says which record they belong to and who added them. Never served to anyone who cannot read the record."""
+
+    __tablename__ = "work_attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("projects.id"), nullable=False, index=True)
+    item_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("work_items.id"), nullable=False, index=True)
+    stored_object_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("stored_objects.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(200), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 HANDOFF_STATUS = ("sent", "acknowledged", "clarification_requested")
 
 

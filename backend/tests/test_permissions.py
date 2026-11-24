@@ -114,7 +114,7 @@ def test_administrators_are_kept_out_of_team_chat_and_owners_too(team):
     channels = {who: team.people[who][0].get("/api/v1/team-chat/channels").json()["items"]
                 for who in ("owner", "admin", "manager", "approver")}
     assert channels["owner"] == [] and channels["admin"] == []
-    assert len(channels["manager"]) == 7
+    assert len(channels["manager"]) == 8  # general and seven profiles (RD-20)
     assert [c["key"] for c in channels["approver"]] == ["general", BY_STAGE[FIRST].profile]
 
 

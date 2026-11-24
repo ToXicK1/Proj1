@@ -38,6 +38,7 @@ from app.studio.models import WorkflowDraft  # noqa: F401
 from app.work.assistant import AssistantExchange  # noqa: F401
 from app.work.models import (  # noqa: F401
     Handoff,
+    WorkAttachment,
     WorkComment,
     WorkItem,
     WorkItemLink,

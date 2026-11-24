@@ -76,7 +76,8 @@ def create_project(
     db.flush()  # project row first so the membership's foreign key is satisfied
     db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=owner.id, project_role="project_owner"))
     holders = set(db.execute(select(MemberProfile.user_id).where(
-        MemberProfile.organization_id == organization_id)).scalars()) - {owner.id}
+        MemberProfile.organization_id == organization_id,
+        MemberProfile.profile_key != "project_manager")).scalars()) - {owner.id}
     for holder in holders:  # the people who hold a profile work on every project of the organization
         db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=holder, project_role="team_member"))
     overseers = set(db.execute(select(Membership.user_id).where(
@@ -96,6 +97,33 @@ def create_project(
         payload={"project_type": project_type},
     )
     hooks.run_hooks(db, hooks.HookScope(organization_id, project.id, project.project_type), "project.created")
+    db.commit()
+    return project
+
+
+def assign_manager(db: Session, actor: User, project_id: uuid.UUID, user_id: uuid.UUID | None) -> Project:
+    """An administrator names the project's Project Manager (or removes them). They must hold the PM profile."""
+    from app.organizations.service import require_org_admin
+
+    project = db.get(Project, project_id)
+    if project is None:
+        raise not_found()
+    require_org_admin(db, actor.id, project.organization_id)
+    if user_id is not None:
+        member = membership_for(db, user_id, project.organization_id)
+        holds = db.execute(select(MemberProfile.id).where(
+            MemberProfile.organization_id == project.organization_id, MemberProfile.user_id == user_id,
+            MemberProfile.profile_key == "project_manager")).first()
+        if member is None or member.status != "active" or not holds:
+            raise AppError(422, "not_a_project_manager", "Choose a person who holds the Project Manager profile")
+        if not db.execute(select(ProjectMember.id).where(ProjectMember.project_id == project.id,
+                                                         ProjectMember.user_id == user_id)).first():
+            db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=user_id, project_role="team_member"))
+    previous, project.project_manager_id = project.project_manager_id, user_id
+    append_event(db, chain_key=org_chain(project.organization_id), event_type="project.manager_assigned",
+                 actor_type="human", actor_id=str(actor.id), organization_id=project.organization_id,
+                 project_id=project.id, payload={"from": str(previous) if previous else None,
+                                                 "to": str(user_id) if user_id else None})
     db.commit()
     return project
 

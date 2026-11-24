@@ -1,5 +1,7 @@
-/** The six professional departments and which project sections each kind of person sees. */
+/** The seven professional profiles (RD-20: the Project Manager first) and which project sections each kind of
+ * person sees. */
 export const PROFILES = [
+  ["project_manager", "Project Manager"],
   ["business_analyst", "Business Analyst"],
   ["solution_architect", "Solution Architect"],
   ["ui_ux_designer", "UI/UX Designer"],
@@ -7,6 +9,9 @@ export const PROFILES = [
   ["qa_security", "QA & Security"],
   ["devops_release", "DevOps & Release"],
 ] as const;
+
+/** The six engineering departments: what an administrator ticks for a department professional. */
+export const ENGINEERING = PROFILES.filter(([key]) => key !== "project_manager");
 
 export const TABS = ["Overview", "Workspace", "Lifecycle", "Project brief", "Deliverables", "Tickets",
   "Conversations", "Testing"] as const;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { ENGINEERING } from "../portal/roles";
 import {
   ApiError,
   api,
@@ -21,7 +22,8 @@ function message(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
 }
 
-const PROFILES = JOIN_ROLES.filter(([value]) => value !== "project_owner");
+// Departments an administrator can tick. A Project Manager gets the PM profile with the role itself (RD-20).
+const PROFILES = JOIN_ROLES.filter(([value]) => ENGINEERING.some(([key]) => key === value));
 
 function MemberAccess({ member, onSave }: {
   member: OrgMemberDto;
@@ -221,7 +223,7 @@ export function TeamPage() {
         {error && <p role="alert" className="error">{error}</p>}
         {notice && <p role="status" className="notice">{notice}</p>}
         {oneTime && <OneTimePassword who={oneTime.who} password={oneTime.password} onDone={() => setOneTime(null)} />}
-        <AddPerson orgId={orgId} onCreated={(who, password) => { setOneTime({ who, password }); void reload(); }} />
+        {managed && <AddPerson orgId={orgId} onCreated={(who, password) => { setOneTime({ who, password }); void reload(); }} />}
         {!managed && <form onSubmit={invite}>
           <label>
             Email address

@@ -99,6 +99,12 @@ def _notify(db: Session, project: Project, people: set[uuid.UUID], kind: str, me
 
 
 def holders(db: Session, project: Project, profile: str) -> set[uuid.UUID]:
+    if profile == "project_manager":  # not everyone with the profile: the one PM assigned to this project
+        pm = project.project_manager_id
+        holds = pm is not None and db.execute(select(MemberProfile.id).where(
+            MemberProfile.organization_id == project.organization_id, MemberProfile.user_id == pm,
+            MemberProfile.profile_key == "project_manager")).first() is not None
+        return {pm} if holds else set()
     on_project = set(db.execute(select(ProjectMember.user_id).where(ProjectMember.project_id == project.id)).scalars())
     return on_project & set(db.execute(select(MemberProfile.user_id).where(
         MemberProfile.organization_id == project.organization_id, MemberProfile.profile_key == profile)).scalars())
@@ -334,7 +340,7 @@ def create_ticket(db: Session, user: User, project_id: uuid.UUID, *, title: str,
     if scope.kind == "member":
         raise AppError(403, "not_permitted", "Only the project owner and the team can raise tickets")
     if profile not in ALL_PROFILES:
-        raise AppError(422, "unknown_department", "Choose one of the six departments")
+        raise AppError(422, "unknown_department", "Choose one of the departments")
     team = holders(db, project, profile)
     if assignee is not None and assignee not in team:
         raise AppError(422, "not_in_department", "That person does not work in this department")
@@ -675,7 +681,7 @@ def oversight(db: Session, user: User) -> dict[str, Any]:
             ProjectMember.project_id == project.id, ProjectMember.project_role == "project_owner")).scalars().all()
         departments, approvals, working, issues = [], [], [], []
         started = False
-        for member in TEAM:
+        for member in (m for m in TEAM if m.profile != "project_manager"):  # the delivery departments' steps
             status = department_status(db, user, project.id, member.profile)
             started = started or status["started"]
             who = ", ".join(status["people"]) or "nobody assigned"

@@ -6,7 +6,7 @@ import { SelectedRecord } from "./Assistant";
 import { SectionsEditor, asSections, toMarkdown } from "./SectionsEditor";
 
 const FlowEditor = lazy(() => import("./FlowEditor").then((m) => ({ default: m.FlowEditor })));
-import { type ItemDto, type KindDto, type KindFieldDto, type Provenance, workApi } from "./workApi";
+import { type AttachmentDto, type ItemDto, type KindDto, type KindFieldDto, type Provenance, workApi } from "./workApi";
 
 const problem = (e: unknown) =>
   e instanceof ApiError ? [e.message, ...(e.problems ?? [])].join(" ") : "That did not work. Please try again.";
@@ -348,6 +348,8 @@ export function RecordDetail({ projectId, itemId, kinds, onChange }: {
         </div>
       )}
 
+      <Attachments projectId={projectId} itemId={item.id} canEdit={Boolean(item.can_edit)} />
+
       {item.links && (
         <section className="stack-sm" aria-label="Links">
           <h3>Linked records</h3>
@@ -422,6 +424,45 @@ export function RecordDetail({ projectId, itemId, kinds, onChange }: {
         </form>
       </section>
     </aside>
+  );
+}
+
+function Attachments({ projectId, itemId, canEdit }: { projectId: string; itemId: string; canEdit: boolean }) {
+  const [items, setItems] = useState<AttachmentDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => {
+    workApi.attachments(projectId, itemId).then((r) => setItems(r.items)).catch(() => setItems([]));
+  }, [projectId, itemId]);
+  useEffect(load, [load]);
+  if (items === null) return null;
+  return (
+    <section className="stack-sm" aria-label="Attachments">
+      <h3>Attachments</h3>
+      {items.length === 0 && <p className="muted small">No files attached.</p>}
+      <ul className="list small">
+        {items.map((a) => (
+          <li key={a.id}><a href={workApi.attachmentUrl(projectId, a.id)} download={a.filename}>{a.filename}</a>
+            <span className="muted"> · {Math.max(1, Math.round(a.size_bytes / 1024))} KB · {a.uploaded_by}</span></li>
+        ))}
+      </ul>
+      {canEdit && (
+        <label className="small">Attach a file (PDF, image, text, CSV or Office; up to 10 MB)
+          <input type="file" disabled={busy} accept=".pdf,.png,.jpg,.jpeg,.txt,.md,.csv,.doc,.docx,.xlsx,.pptx"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              setError(null);
+              setBusy(true);
+              try { await workApi.attach(projectId, itemId, file); load(); }
+              catch (err) { setError(problem(err)); }
+              finally { setBusy(false); }
+            }} />
+        </label>
+      )}
+      {error && <p role="alert" className="error small">{error}</p>}
+    </section>
   );
 }
 

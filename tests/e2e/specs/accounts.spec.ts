@@ -70,6 +70,43 @@ test("the administrator creates the people and the project; everyone chooses the
   await admin.getByRole("button", { name: "Create project" }).click();
   await expect(admin.getByRole("heading", { name: "Clinic booking" })).toBeVisible({ timeout: 30_000 });
 
+  const projectUrl = admin.url().replace(/[?#].*$/, "");
+
+  // RD-20: the Project Manager is the seventh profile, assigned to this project by the administrator.
+  await admin.getByRole("link", { name: "Team", exact: true }).click();
+  const pmTemp = await addPerson(admin, "Pam Manager", `pam-${tag}@example.com`, "Project Manager");
+  await admin.goto(`${projectUrl}/team`);
+  const departments = admin.getByRole("list", { name: "Departments" });
+  await expect(departments.getByRole("listitem")).toHaveCount(7);
+  const pmCard = departments.getByRole("listitem").first();
+  await expect(pmCard).toContainText("Project Manager");
+  await pmCard.getByLabel("Assign a Project Manager").selectOption({ label: "Pam Manager" });
+  await pmCard.getByRole("button", { name: "Assign" }).click();
+  await expect(pmCard).toContainText("Pam Manager");
+  const pm = await signIn(browser, `pam-${tag}@example.com`, pmTemp);
+  await chooseOwnPassword(pm, pmTemp);
+  await pm.goto(projectUrl);
+  await pm.getByRole("navigation", { name: "Professional profiles" }).getByRole("link", { name: "Project Manager" }).click();
+  await expect(pm.getByRole("heading", { name: "Project Manager", level: 1 })).toBeVisible();
+  const pmModules = pm.getByRole("navigation", { name: "Project Manager modules" });
+  await pmModules.getByRole("button", { name: /^Sprint Management/ }).click();
+  await expect(pm.getByText("Sprint Management is not available yet")).toBeVisible();
+  await expect(pm.getByText("arrives in step P6")).toBeVisible();
+  // P2: the PM records the client meeting and attaches a document (kept in object storage).
+  await pmModules.getByRole("button", { name: "Client Meetings", exact: true }).click();
+  await pm.getByRole("button", { name: "New" }).click();
+  const form = pm.getByRole("complementary", { name: "New record" });
+  await form.getByLabel("Title (required)").fill("Discovery with Olu");
+  await form.getByLabel("held at (required)").fill("2026-11-24 10:00");
+  await form.getByLabel("status (required)").selectOption("held");
+  await form.getByLabel("raw notes").fill("Phone lines are busy every morning.");
+  await form.getByRole("button", { name: "Create" }).click();
+  const meeting = pm.getByRole("complementary", { name: "Record MTG-001" });
+  await expect(meeting).toContainText("Discovery with Olu");
+  await meeting.getByLabel(/^Attach a file/).setInputFiles({ name: "booking-form.txt", mimeType: "text/plain",
+    buffer: Buffer.from("The clinic's paper booking form") });
+  await expect(meeting.getByRole("link", { name: "booking-form.txt" })).toBeVisible();
+
   // The client signs in with the temporary password, chooses their own, and finds the project.
   const client = await signIn(browser, `olu-${tag}@example.com`, clientTemp);
   await chooseOwnPassword(client, clientTemp);

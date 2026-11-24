@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
@@ -259,6 +259,54 @@ def add_proposal(project_id: uuid.UUID, exchange_id: uuid.UUID, index: int, call
     from app.work import assistant
 
     return assistant.add_proposal(db, caller.user, project_id, exchange_id, index)
+
+
+@router.post("/items/{item_id}/attachments", status_code=201)
+async def add_attachment(project_id: uuid.UUID, item_id: uuid.UUID, request: Request, caller: CsrfCaller,
+                         db: DbSession, filename: str = Query(min_length=1, max_length=255)) -> dict:
+    """The file is the request body (Content-Type: its type); its name is the `filename` query parameter."""
+    from app.work import attachments
+
+    data = await request.body()
+    return attachments.attach(db, request.app.state.settings, caller.user, project_id, item_id, filename=filename,
+                              content_type=request.headers.get("content-type", ""), data=data,
+                              transport=request.app.state.storage_transport)
+
+
+@router.get("/items/{item_id}/attachments")
+def item_attachments(project_id: uuid.UUID, item_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    from app.work import attachments
+
+    return {"items": attachments.list_for(db, caller.user, project_id, item_id)}
+
+
+@router.get("/attachments/{attachment_id}")
+def get_attachment(project_id: uuid.UUID, attachment_id: uuid.UUID, request: Request, caller: CurrentCaller,
+                   db: DbSession) -> Response:
+    from app.work import attachments
+
+    row, data = attachments.download(db, request.app.state.settings, caller.user, project_id, attachment_id,
+                                     transport=request.app.state.storage_transport)
+    return Response(content=data, media_type=row.content_type, headers={
+        "Content-Disposition": f'attachment; filename="{row.filename}"', "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store"})
+
+
+@router.get("/client-form")
+def client_form(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    """The client's optional pre-meeting answers (D3): unconfirmed input for the PM's intake. Internal team only."""
+    from sqlalchemy import select
+
+    from app.portal.models import IntakeRevision
+    from app.portal.service import LABELS
+
+    project, _ = work._scope(db, caller.user, project_id)
+    row = db.execute(select(IntakeRevision).where(IntakeRevision.project_id == project.id)
+                     .order_by(IntakeRevision.revision.desc())).scalars().first()
+    items = (row.items or {}) if row else {}
+    return {"answers": [{"field": key, "label": LABELS.get(key, key), "value": str((v or {}).get("value") or ""),
+                         "tag": (v or {}).get("tag")} for key, v in items.items() if (v or {}).get("value")],
+            "status": row.status if row else None}
 
 
 @router.get("/{department}/handoffs")

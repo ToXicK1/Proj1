@@ -359,3 +359,31 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
 - **The first administrator:** `python -m app.cli create-admin --email … --name …`, run in the API container, prints the temporary password once to that terminal. In shared mode it also connects the default AI and sets up the departments, as the first sign-up used to.
 - Migration `0026_managed_accounts`. Docker Compose passes `AIDLC_ACCOUNT_MODE` (default `managed`).
 - **Your main stack:** once rebuilt, it runs in managed mode. The existing demo accounts keep working; new people are added from Team.
+
+## 2026-11-24 — P1: the Project Manager as the seventh profile (RD-20)
+
+- `project_manager` is the first of seven professional profiles. A person created with the role Project Manager holds it automatically, and the profile is created on demand in organizations set up earlier.
+- **One accountable PM per project** (`projects.project_manager_id`, migration `0027_project_manager`). An administrator assigns it (`PUT /api/v1/projects/{id}/manager`), choosing only people who hold the PM profile. The PM department's "holders" are that one person, not every PM in the organization. Holding the PM profile does not add someone to every project's team, unlike the engineering departments.
+- **The PM's limits, enforced on the server and covered by tests:**
+  - the PM cannot write, edit or approve another department's records or packages;
+  - the PM cannot create projects or accounts (administrators do);
+  - the PM cannot accept risks on blocking checks (administrators only, as before).
+  - A PM who is not the project's PM oversees it but cannot change its PM work.
+- **Workspace:** the Professional team shows seven cards with the PM first. An administrator assigns the PM on its card. The PM workspace has the twelve modules from the clarification, with Overview, Lifecycle steps, Handoffs and Conversations working and the rest labelled with the phase that brings them.
+- The client's portal keeps its AI representatives for the six engineering departments only. The PM is a person the client messages (a project PM chat and one client assistant come in P5).
+- The Team page's department checkboxes now show the six engineering departments only; they previously also listed "Administrator" and "Project Manager".
+
+## 2026-11-24 — P2: client meetings and project intake (RD-21)
+
+- **Client meetings** (record kind `meeting`, `MTG-…`): when, status, participants, objectives, raw notes, summary, decisions, assumptions, constraints, risks, open questions, follow-ups and references. Versioned with history, links and comments like every record. Only the project's assigned PM writes them.
+- **Attachments** on any record (`work_attachments`, migration `0028_meetings_intake`):
+  - Only the record's department attaches, and only readers of the record download.
+  - Allowed: PDF, PNG and JPEG images, text, Markdown, CSV and Office documents. HTML, SVG and scripts are refused, and files are limited to 10 MB.
+  - Bytes go to object storage under a random name; the original filename is kept for display only, with path parts removed.
+  - Downloads are always served as attachments with `nosniff` and `no-store`, and each upload is audited with its SHA-256.
+  - Files are sent as the request body, so no new dependency was needed.
+- **Project intake** (`project_intake`, `INT-001`): business problem, objectives, proposed solution, stakeholders, target users, features discussed, functional and non-functional expectations, technical constraints, budget and timeline, integrations, dependencies, assumptions, risks, decisions and open questions.
+  - There is one intake per project, created as a draft.
+  - Validating it (`validation: validated`) needs a confirmed intake. It is recorded as its own version ("validated the intake") and audited (`work.intake_validated`).
+- **The client's optional pre-meeting form (D3)** is shown read-only above the intake as unconfirmed input (`GET /work/client-form`).
+- **Not yet:** the client's form still starts the old lifecycle when the client confirms it. Moving the start to the PM's approved brief is P4.

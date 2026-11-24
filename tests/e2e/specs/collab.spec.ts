@@ -80,7 +80,7 @@ test("each role gets its own space, the team can talk, and tickets reach the rig
   await record.getByRole("button", { name: "Compare with v2" }).click();
   await expect(record.getByRole("table", { name: "Changes from v1 to v2" })).toContainText("business");
   await nav.getByRole("link", { name: "Professional team" }).click();
-  await expect(analyst.getByRole("list", { name: "Departments" }).getByRole("listitem")).toHaveCount(6);
+  await expect(analyst.getByRole("list", { name: "Departments" }).getByRole("listitem")).toHaveCount(7);  // with the PM (RD-20)
   await expect(analyst.getByRole("list", { name: "Departments" })).toContainText("1 records");
   await architect.goto(projectUrl.replace(/\/?$/, "") + "/work/ba?m=requirements");
   await expect(architect.getByText("No records here yet.")).toBeVisible(LONG);

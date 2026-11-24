@@ -8,6 +8,7 @@ import { MODULES, PATH_DEPARTMENT } from "../workspace/modules";
 import { Records } from "../workspace/Records";
 import { Handoffs, Later, Packages, Traceability } from "../workspace/Screens";
 import { Steps } from "../workspace/Steps";
+import { Intake } from "../workspace/Intake";
 import { ChangeRequests, ScopeBoard } from "../workspace/Scope";
 import { Assistant, SelectedRecord } from "../workspace/Assistant";
 import { type KindDto, type TeamCardDto, workApi } from "../workspace/workApi";
@@ -72,6 +73,7 @@ export function DepartmentWorkspacePage() {
             <Records key={current.key} projectId={projectId} department={department} kinds={current.kinds} all={kinds} />
           )}
           {current.screen === "steps" && <Steps projectId={projectId} department={department} />}
+          {current.screen === "intake" && <Intake projectId={projectId} all={kinds} />}
           {current.screen === "scope" && <ScopeBoard projectId={projectId} department={department} />}
           {current.screen === "changes" && <ChangeRequests projectId={projectId} department={department} />}
           {current.screen === "packages" && <Packages projectId={projectId} department={department} canEdit={canEdit} />}

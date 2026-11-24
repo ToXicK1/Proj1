@@ -235,3 +235,24 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
 - **Backend full suite after P0:** 523 tests: 518 passed, 5 skipped (live model tests), 0 failed. No migration drift.
 - **The older browser specs (self-service mode) were NOT re-run for P0.** After `accounts.spec.ts` passed, Playwright's Chrome on this machine stopped loading pages. A bare probe showed Chrome launching in 3.5 s and then hanging on `page.goto`, past even its own 30-second timeout, against a stack that served the same page instantly to another browser. Earlier traces showed `ERR_NETWORK_IO_SUSPENDED` (the OS suspending Chrome's networking). The bundled Chromium cannot start here (blocked by Application Control). These specs need re-running once Chrome works again.
 - **Test-script incident, found and fixed:** the managed run script held the throwaway test administrator's temporary password in a shell variable named `TEMP`, which on Windows is also the temporary-files location. Node and Playwright therefore created a cache folder named after that password inside `tests/e2e`. The folder was never committed, it held only caches, and the stack it belonged to had already been destroyed with its database. The folder was deleted and the variable renamed. The product itself never writes temporary passwords anywhere.
+
+## 2026-11-24 — P1 and P2
+
+- **`tests/test_pm.py` (2):**
+  - The PM is the seventh profile; PM accounts hold it; seven team cards with the PM first.
+  - Only an administrator assigns the PM, and only someone holding the PM profile; exactly that person is the project's PM, and another PM can see but not edit.
+  - The PM cannot write, edit or approve the BA's records or packages, nor create projects or accounts.
+- **`tests/test_meetings.py` (3):**
+  - A meeting with an attached document: the filename's path parts are dropped, the stored key is random, downloads are sent as attachments with nosniff, HTML is refused (415), files over 10 MB are refused (413), and uploads are audited.
+  - Only the assigned PM writes or attaches; the client sees neither meetings nor files.
+  - One intake per project; it is created as a draft and validated only once confirmed, and validation is audited.
+- **Existing tests updated for seven profiles:** the team-page cards (7), the project manager's channels (8 including general), the profiles and reviewer agents (7), and the standard lifecycle using six of the seven profiles (the PM has no AI steps there). Oversight keeps listing the six delivery departments (a product choice: the PM has no lifecycle steps to show).
+- **Migrations 0027 and 0028.** Frontend typecheck clean; 18 unit tests passed.
+- **Backend full suite (P1 and P2):** 528 tests: 523 passed, 5 skipped, 0 failed. No drift through migration 0028; downgrade and re-upgrade succeed.
+- **Browser, each on a fresh stack:**
+  - The managed `accounts.spec.ts`, now with PM assignment, the PM workspace and a meeting with an attached file, passed in 1.2 minutes.
+  - Shared `ba-department.spec.ts` passed. Shared `collab.spec.ts` passed after its card count went from 6 to 7. Shared `lifecycle.spec.ts` passed after a fix. Personal 19 passed after a fix.
+- **Regressions the browser specs found and fixed:**
+  - The Team page's department checkboxes had lost their full titles ("QA & Security Engineer").
+  - In self-service mode the Team page showed both "Add a person" and invitations, making its email field ambiguous. Each mode now shows only its own form.
+- **Not re-verified:** after those two UI fixes, three reruns of the managed spec failed for environment reasons. One failed in warm-up, unable to load the sign-in page; two ran out of the 4-minute limit at steps that had passed, with every step far slower than before. A probe showed this machine's Chrome stalling 15 seconds on a request to the API that curl answered in 0.06 seconds. The fixes do not touch the managed path except to show "Add a person" in managed mode, and one of the failed runs got through those steps. The spec still needs a clean rerun.
