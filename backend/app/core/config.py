@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     model_context_tokens: int = 4096  # used only to warn when a prompt may not fit
     provider_stream: bool = True  # stream replies so the activity log can show them as they are written
     signup_mode: Literal["shared", "personal"] = "shared"  # one organization, or one per signup
+    # managed (RD-22): administrators create every account and project; nobody signs up. self_service: people sign
+    # up and administrators confirm them (kept for the older test stacks).
+    account_mode: Literal["managed", "self_service"] = "managed"
+    temp_password_days: int = 7
     bootstrap_admin_email: str | None = None  # an existing account that administers the shared organization
     default_llm_base_url: str | None = None  # connected automatically for the shared organization
     default_llm_model: str | None = None

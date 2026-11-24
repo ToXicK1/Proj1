@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.auth.deps import CurrentCaller, DbSession
 from app.organizations import service
@@ -16,6 +16,6 @@ def list_my_orgs(caller: CurrentCaller, db: DbSession) -> dict:
 
 
 @router.get("/access")
-def my_access(caller: CurrentCaller, db: DbSession) -> dict:
+def my_access(request: Request, caller: CurrentCaller, db: DbSession) -> dict:
     """Where this account stands, including a request still waiting for an administrator."""
-    return service.access_for(db, caller.user.id)
+    return service.access_for(db, caller.user.id, managed=request.app.state.settings.account_mode == "managed")

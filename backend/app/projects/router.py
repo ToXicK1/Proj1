@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.deps import CsrfCaller, CurrentCaller, DbSession
@@ -18,6 +18,7 @@ class ProjectCreateIn(_Strict):
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
     project_type: str = Field(min_length=1, max_length=64)
+    owner_user_id: uuid.UUID | None = None  # the client, chosen by an administrator
 
 
 class ProjectOut(BaseModel):
@@ -42,7 +43,7 @@ class ProjectOut(BaseModel):
 
 @router.post("/orgs/{organization_id}/projects", status_code=201)
 def create_project(
-    organization_id: uuid.UUID, body: ProjectCreateIn, caller: CsrfCaller, db: DbSession
+    organization_id: uuid.UUID, body: ProjectCreateIn, request: Request, caller: CsrfCaller, db: DbSession
 ) -> dict:
     project = service.create_project(
         db,
@@ -51,6 +52,8 @@ def create_project(
         name=body.name,
         description=body.description,
         project_type=body.project_type,
+        owner_user_id=body.owner_user_id,
+        managed=request.app.state.settings.account_mode == "managed",
     )
     return ProjectOut.of(project).model_dump()
 

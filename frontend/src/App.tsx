@@ -8,6 +8,7 @@ import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { ProjectPage } from "./pages/ProjectPage";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { DepartmentWorkspacePage } from "./pages/DepartmentWorkspacePage";
 import { ProfessionalTeamPage } from "./pages/ProfessionalTeamPage";
 import { SignupPage } from "./pages/SignupPage";
@@ -23,6 +24,9 @@ function RequireAuth({ children }: { children: ReactNode }) {
   if (state.status === "loading") return <Skeleton />;
   if (state.status === "anonymous") {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
+  }
+  if (state.user.must_change_password && location.pathname !== "/change-password") {
+    return <Navigate to="/change-password" replace />;  // nothing else works until it is changed (RD-22)
   }
   return <>{children}</>;
 }
@@ -145,6 +149,7 @@ export function App() {
             </RequireAuth>
           }
         />
+        <Route path="/change-password" element={<RequireAuth><ChangePasswordPage /></RequireAuth>} />
         <Route path="/projects/:projectId/team" element={<RequireAuth><ProfessionalTeamPage /></RequireAuth>} />
         <Route path="/projects/:projectId/work/:dept" element={<RequireAuth><DepartmentWorkspacePage /></RequireAuth>} />
         <Route path="*" element={<section className="narrow-page"><h1>Page not found</h1><p className="muted">That address does not lead anywhere. <Link to="/">Go to your projects</Link>.</p></section>} />

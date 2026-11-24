@@ -19,6 +19,8 @@ export interface UserDto {
   id: string;
   email: string;
   display_name: string;
+  /** Signed in with an administrator's temporary password: only the change-password page works. */
+  must_change_password?: boolean;
 }
 
 export interface SessionDto {
@@ -521,6 +523,8 @@ export interface AccessDto {
   is_manager: boolean;
   oversees: boolean;
   can_create_projects: boolean;
+  /** managed: administrators create every account and project (RD-22). */
+  account_mode?: "managed" | "self_service";
   profiles: string[];
   requested_role: string | null;
   organization: string | null;
@@ -631,6 +635,15 @@ export const api = {
     request("PUT", `/api/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`, { role }),
   removeProjectMember: (projectId: string, userId: string) =>
     request("DELETE", `/api/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`),
+  authConfig: () => request<{ account_mode: "managed" | "self_service" }>("GET", "/api/v1/auth/config"),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ user: UserDto }>("POST", "/api/v1/auth/password", { current_password: currentPassword, new_password: newPassword }),
+  createPerson: (orgId: string, body: { email: string; display_name: string; role: string; profiles: string[] }) =>
+    request<{ user: { id: string; email: string; display_name: string }; temporary_password: string; expires_at: string }>(
+      "POST", `/api/v1/orgs/${encodeURIComponent(orgId)}/people`, body),
+  resetPassword: (orgId: string, userId: string) =>
+    request<{ temporary_password: string }>("POST",
+      `/api/v1/orgs/${encodeURIComponent(orgId)}/people/${encodeURIComponent(userId)}/reset-password`),
   studioCatalog: (orgId: string) => request<StudioCatalogDto>("GET", `${studioPath(orgId)}/catalog`),
   agentRegistry: (orgId: string) =>
     request<{ departments: RegistryDepartmentDto[] }>("GET", `${orgPath(orgId)}/agent-registry`),
@@ -762,10 +775,11 @@ export const api = {
     request<{ ok: boolean }>("POST", `${orgPath(orgId)}/providers/${encodeURIComponent(providerId)}/health`, { model }),
   setupDeliveryTeam: (orgId: string, modelRoute: string) =>
     request("POST", `${studioPath(orgId)}/default-lifecycle`, { model_route: modelRoute }),
-  createProject: (orgId: string, name: string, description: string, projectType: string) =>
+  createProject: (orgId: string, name: string, description: string, projectType: string, ownerUserId?: string) =>
     request<ProjectDto>("POST", `/api/v1/orgs/${encodeURIComponent(orgId)}/projects`, {
       name,
       description,
       project_type: projectType,
+      owner_user_id: ownerUserId ?? null,
     }),
 };

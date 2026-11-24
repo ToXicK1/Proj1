@@ -32,14 +32,21 @@ class LoginIn(_Strict):
     password: str = Field(min_length=1, max_length=256)
 
 
+class PasswordIn(_Strict):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
 class UserOut(BaseModel):
     id: str
     email: str
     display_name: str
+    must_change_password: bool = False
 
 
 def _user_out(user) -> UserOut:  # type: ignore[no-untyped-def]
-    return UserOut(id=str(user.id), email=user.email, display_name=user.display_name)
+    return UserOut(id=str(user.id), email=user.email, display_name=user.display_name,
+                   must_change_password=bool(user.must_change_password))
 
 
 def _limit(request: Request, limiter: SlidingWindowLimiter, scope: str) -> None:
@@ -48,8 +55,24 @@ def _limit(request: Request, limiter: SlidingWindowLimiter, scope: str) -> None:
         raise AppError(429, "rate_limited", "Too many requests. Try again shortly.")
 
 
+@router.get("/config")
+def auth_config(request: Request) -> dict[str, str]:
+    """Public: whether people can sign up themselves, so the sign-in page shows the right options."""
+    return {"account_mode": request.app.state.settings.account_mode}
+
+
+@router.post("/password")
+def change_password(body: PasswordIn, request: Request, caller: CsrfCaller, db: DbSession) -> dict:
+    _limit(request, request.app.state.auth_limiter, "password")
+    service.change_password(db, request.app.state.settings, caller.user, current=body.current_password,
+                            new=body.new_password, keep_token=caller.raw_token)
+    return {"user": _user_out(caller.user).model_dump()}
+
+
 @router.post("/signup", status_code=202)
 def signup(body: SignupIn, request: Request, db: DbSession, settings: AppSettings) -> dict[str, str]:
+    if request.app.state.settings.account_mode == "managed":
+        raise AppError(403, "signup_disabled", "Accounts are created by your administrator")
     _limit(request, request.app.state.auth_limiter, "signup")
     service.signup(db, settings, email=body.email, password=body.password, display_name=body.display_name,
                    requested_role=body.requested_role)

@@ -10,6 +10,8 @@ const channel = process.env.E2E_CHANNEL ?? "chrome";
 // lifecycle.spec.ts, collab.spec.ts and ba-department.spec.ts each need their own empty stack in shared mode (the first account becomes
 // the administrator), so run them one at a time. The other specs need one account per organization.
 const shared = process.env.E2E_SIGNUP_MODE === "shared";
+// Managed accounts (RD-22): an administrator creates everyone; only accounts.spec.ts runs on such a stack.
+const managed = process.env.E2E_ACCOUNT_MODE === "managed";
 
 export default defineConfig({
   testDir: "./specs",
@@ -27,7 +29,9 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testIgnore: shared ? /^(?!.*(lifecycle|lifecycle-live|collab|ba-department|ba-department-live)\.spec).*$/ : /(layout|lifecycle|lifecycle-live|collab|ba-department|ba-department-live)\.spec\.ts/ },
-    { name: "mobile-chromium", use: { ...devices["Pixel 5"], channel }, testMatch: shared ? /^$/ : /layout\.spec\.ts/ },
+    managed
+      ? { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testMatch: /accounts\.spec\.ts/ }
+      : { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testIgnore: shared ? /^(?!.*(lifecycle|lifecycle-live|collab|ba-department|ba-department-live)\.spec).*$/ : /(layout|lifecycle|lifecycle-live|collab|ba-department|ba-department-live|accounts)\.spec\.ts/ },
+    { name: "mobile-chromium", use: { ...devices["Pixel 5"], channel }, testMatch: shared || managed ? /^$/ : /layout\.spec\.ts/ },
   ],
 });

@@ -19,6 +19,8 @@ export const PROJECT_TYPES = [
 ] as const;
 
 export function HomePage() {
+  const [clients, setClients] = useState<{ user_id: string; display_name: string; email: string }[]>([]);
+  const [ownerId, setOwnerId] = useState("");
   const navigate = useNavigate();
   const { state } = useSession();
   const [orgs, setOrgs] = useState<OrgDto[]>([]);
@@ -50,6 +52,14 @@ export function HomePage() {
     };
   }, []);
 
+  const managedAdmin = access?.account_mode === "managed" && access?.can_create_projects;
+  useEffect(() => {
+    const org = orgs.find((item) => item.role === "org_admin");
+    if (!managedAdmin || !org) return;
+    api.listMembers(org.id).then((m) => setClients(m.members.filter((x) => x.role === "project_owner" && x.status === "active")))
+      .catch(() => setClients([]));
+  }, [managedAdmin, orgs]);
+
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
@@ -60,7 +70,7 @@ export function HomePage() {
     }
     setBusy(true);
     try {
-      const project = await api.createProject(org.id, name, description, type);
+      const project = await api.createProject(org.id, name, description, type, ownerId || undefined);
       navigate(`/projects/${project.id}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Could not create the project.");
@@ -152,8 +162,19 @@ export function HomePage() {
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} rows={4}
                   placeholder="For example: an AI-powered recruitment platform where companies upload job descriptions." />
               </label>
+              {managedAdmin && (
+                <label>
+                  Client (project owner)
+                  <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} required>
+                    <option value="">Choose the client</option>
+                    {clients.map((c) => <option key={c.user_id} value={c.user_id}>{c.display_name} · {c.email}</option>)}
+                  </select>
+                  {clients.length === 0 && <span className="hint">Add the client in Team first (role: Client).</span>}
+                </label>
+              )}
               {formError && <p role="alert" className="error">{formError}</p>}
-              <button type="submit" className="block" disabled={busy || !name.trim() || orgs.length === 0}>
+              <button type="submit" className="block"
+                disabled={busy || !name.trim() || orgs.length === 0 || (Boolean(managedAdmin) && !ownerId)}>
                 {busy ? "Creating…" : "Create project"}
               </button>
               <p className="hint">Your team asks follow-up questions before any work starts.</p>

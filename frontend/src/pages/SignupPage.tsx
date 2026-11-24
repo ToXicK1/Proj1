@@ -1,8 +1,12 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, JOIN_ROLES, api } from "../api";
 
 export function SignupPage() {
+  const [managed, setManaged] = useState<boolean | null>(null);
+  useEffect(() => {
+    api.authConfig().then((c) => setManaged(c.account_mode === "managed")).catch(() => setManaged(false));
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -24,6 +28,17 @@ export function SignupPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (managed) {
+    return (
+      <section className="narrow-page stack-sm">
+        <h1>Accounts are created by your administrator</h1>
+        <p className="muted">Ask your administrator for an account. They will give you a temporary password, which
+          you change the first time you sign in.</p>
+        <Link to="/login">Back to sign in</Link>
+      </section>
+    );
   }
 
   if (sent) {

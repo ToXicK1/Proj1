@@ -213,6 +213,10 @@ def authenticate(db: Session, settings: Settings, *, email: str, password: str) 
     if user.status != "active":
         raise AppError(403, "account_unavailable", "This account is not available")
 
+    if user.must_change_password and user.temp_password_expires_at is not None \
+            and _expired(user.temp_password_expires_at, now):
+        raise AppError(403, "temporary_password_expired",
+                       "This temporary password has expired. Ask your administrator for a new one.")
     user.failed_login_count = 0
     user.locked_until = None
     append_event(
@@ -220,6 +224,25 @@ def authenticate(db: Session, settings: Settings, *, email: str, password: str) 
     )
     db.commit()
     return user
+
+
+def change_password(db: Session, settings: Settings, user: User, *, current: str, new: str,
+                    keep_token: str) -> None:
+    """The person's own change, including the forced first one. Other sessions end; this one stays."""
+    if not verify_password(user.password_hash, current):
+        raise AppError(403, "invalid_credentials", "Your current password is incorrect")
+    validate_password(new, settings)
+    if new == current:
+        raise AppError(422, "same_password", "Choose a password different from the temporary one")
+    user.password_hash = hash_password(new)
+    user.must_change_password, user.temp_password_expires_at = False, None
+    user.updated_at = datetime.now(UTC)
+    db.execute(update(UserSession).where(UserSession.user_id == user.id, UserSession.revoked_at.is_(None),
+                                         UserSession.token_hash != sha256_hex(keep_token))
+               .values(revoked_at=datetime.now(UTC)))
+    append_event(db, chain_key=PLATFORM_CHAIN, event_type="auth.password_changed", actor_type="human",
+                 actor_id=str(user.id))
+    db.commit()
 
 
 def create_session(db: Session, settings: Settings, user: User) -> str:

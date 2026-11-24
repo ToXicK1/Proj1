@@ -219,3 +219,19 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - `ba-department.spec.ts` is extended: the analyst works all six AI steps through the UI, the Human Professional Review lists the BRD and SRS, and the BRD opens in BRD / SRS Documents with its sections, Markdown export and "Confirm draft". It passed.
   - Shared `collab.spec.ts` and `lifecycle.spec.ts` passed; personal 19 passed.
   - One earlier attempt failed because the operating system suspended networking mid-run (`ERR_NETWORK_IO_SUSPENDED` in the trace); the rerun passed.
+
+## 2026-11-24 — P0: administrator-created accounts
+
+- **`tests/test_accounts.py` (6), all passed:**
+  - Nothing works until the temporary password is changed; a wrong, reused or weak password is refused; the session carries on and the temporary password stops working.
+  - People are created with a role; the temporary password is shown once and never stored or audited in plain text; a duplicate email is refused.
+  - Only administrators create people, and nobody signs up.
+  - An expired temporary password is refused.
+  - A reset ends sessions and issues a new temporary password, and administrators cannot reset their own.
+  - Administrators create projects for a client: a client is required, the project manager and the administrator oversee it, and clients and PMs cannot create projects.
+- **Browser (new `accounts.spec.ts`, managed stack, first administrator from the command), passed:** no sign-up; the administrator's forced change; adding a client and an analyst (each password shown once); creating the project for the client; the client's and the analyst's first sign-ins; and a reset.
+  - The first two attempts failed: the managed message was placed inside the wrong branch of the sign-up page (fixed), and the spec opened a page before sign-in finished (a test race, fixed).
+- **Migration 0026:** no drift; downgrade and re-upgrade succeed. Frontend typecheck clean; 18 unit tests passed.
+- **Backend full suite after P0:** 523 tests: 518 passed, 5 skipped (live model tests), 0 failed. No migration drift.
+- **The older browser specs (self-service mode) were NOT re-run for P0.** After `accounts.spec.ts` passed, Playwright's Chrome on this machine stopped loading pages. A bare probe showed Chrome launching in 3.5 s and then hanging on `page.goto`, past even its own 30-second timeout, against a stack that served the same page instantly to another browser. Earlier traces showed `ERR_NETWORK_IO_SUSPENDED` (the OS suspending Chrome's networking). The bundled Chromium cannot start here (blocked by Application Control). These specs need re-running once Chrome works again.
+- **Test-script incident, found and fixed:** the managed run script held the throwaway test administrator's temporary password in a shell variable named `TEMP`, which on Windows is also the temporary-files location. Node and Playwright therefore created a cache folder named after that password inside `tests/e2e`. The folder was never committed, it held only caches, and the stack it belonged to had already been destroyed with its database. The folder was deleted and the variable renamed. The product itself never writes temporary passwords anywhere.

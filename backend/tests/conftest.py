@@ -68,6 +68,7 @@ def settings(db_url: str) -> Settings:
         login_lockout_minutes=15,
         auth_rate_limit_per_minute=1000,
         signup_mode="personal",  # most tests work inside one private organization per account
+        account_mode="self_service",  # most tests sign people up; tests/test_accounts.py covers managed accounts
         jobs_inline=True,  # queued work runs in-process right after each response
     )
 

@@ -61,8 +61,79 @@ function MemberAccess({ member, onSave }: {
   );
 }
 
+const ROLES: [string, string][] = [["project_owner", "Client (project owner)"], ["project_manager", "Project Manager"],
+  ["member", "Department professional"], ["org_admin", "Administrator"]];
+
+/** A temporary password, shown to the administrator exactly once to pass on. */
+function OneTimePassword({ who, password, onDone }: { who: string; password: string; onDone: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <section className="notice stack-sm" role="region" aria-label="Temporary password">
+      <p><strong>Temporary password for {who}</strong>. It is shown only now. Give it to them privately; they must
+        choose their own password when they first sign in. It expires in 7 days.</p>
+      <p><code className="mono temp-password">{password}</code></p>
+      <div className="actions">
+        <button type="button" className="secondary" onClick={() => {
+          void navigator.clipboard?.writeText(password).then(() => setCopied(true));
+        }}>{copied ? "Copied" : "Copy"}</button>
+        <button type="button" onClick={onDone}>I have passed it on</button>
+      </div>
+    </section>
+  );
+}
+
+function AddPerson({ orgId, onCreated }: { orgId: string; onCreated: (who: string, password: string) => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("member");
+  const [profiles, setProfiles] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <form className="stack-sm" aria-label="Add a person" onSubmit={async (e) => {
+      e.preventDefault();
+      setError(null);
+      setBusy(true);
+      try {
+        const made = await api.createPerson(orgId, { email, display_name: name, role, profiles: role === "member" ? profiles : [] });
+        onCreated(made.user.display_name, made.temporary_password);
+        setName(""); setEmail(""); setRole("member"); setProfiles([]);
+      } catch (err) {
+        setError(message(err, "Could not create the account."));
+      } finally {
+        setBusy(false);
+      }
+    }}>
+      <h2>Add a person</h2>
+      <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} /></label>
+      <label>Email address<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+      <label>Role
+        <select value={role} onChange={(e) => setRole(e.target.value)}>
+          {ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </label>
+      {role === "member" && (
+        <fieldset className="stack-sm">
+          <legend>Department</legend>
+          {PROFILES.map(([value, label]) => (
+            <label key={value} className="check">
+              <input type="checkbox" checked={profiles.includes(value)}
+                onChange={(e) => setProfiles(e.target.checked ? [...profiles, value] : profiles.filter((p) => p !== value))} />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {error && <p role="alert" className="error">{error}</p>}
+      <button type="submit" disabled={busy || !name.trim() || !email.trim()}>{busy ? "Creating…" : "Create account"}</button>
+    </form>
+  );
+}
+
 export function TeamPage() {
   const [orgs, setOrgs] = useState<OrgDto[] | null>(null);
+  const [oneTime, setOneTime] = useState<{ who: string; password: string } | null>(null);
+  const [managed, setManaged] = useState(false);
   const [orgId, setOrgId] = useState("");
   const [allProjects, setAllProjects] = useState<ProjectDto[]>([]);
   const [data, setData] = useState<OrgMembersDto | null>(null);
@@ -76,8 +147,9 @@ export function TeamPage() {
   const [access, setAccess] = useState<ProjectMemberDto[]>([]);
 
   useEffect(() => {
-    Promise.all([api.listOrgs(), api.listProjects()])
-      .then(([o, p]) => {
+    Promise.all([api.listOrgs(), api.listProjects(), api.access().catch(() => null)])
+      .then(([o, p, a]) => {
+        setManaged(a?.account_mode === "managed");
         const admin = o.items.filter((item) => item.role === "org_admin");
         setOrgs(admin);
         setOrgId(admin[0]?.id ?? "");
@@ -148,7 +220,9 @@ export function TeamPage() {
         )}
         {error && <p role="alert" className="error">{error}</p>}
         {notice && <p role="status" className="notice">{notice}</p>}
-        <form onSubmit={invite}>
+        {oneTime && <OneTimePassword who={oneTime.who} password={oneTime.password} onDone={() => setOneTime(null)} />}
+        <AddPerson orgId={orgId} onCreated={(who, password) => { setOneTime({ who, password }); void reload(); }} />
+        {!managed && <form onSubmit={invite}>
           <label>
             Email address
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -176,7 +250,7 @@ export function TeamPage() {
             </label>
           )}
           <button type="submit" disabled={!email.trim()}>Send invitation</button>
-        </form>
+        </form>}
       </section>
 
       <section className="card">
@@ -190,10 +264,17 @@ export function TeamPage() {
                   <MemberAccess key={`${m.user_id}-${m.status}-${m.role}-${m.profiles.join()}`} member={m}
                     onSave={(role, profiles) => void act(() => api.setMemberAccess(orgId, m.user_id, role, profiles),
                       `Access saved for ${m.display_name}.`)} />
-                  <button type="button" className="secondary"
-                    onClick={() => void act(() => api.removeMember(orgId, m.user_id), `${m.display_name} was removed.`)}>
-                    Remove
-                  </button>
+                  <div className="actions">
+                    <button type="button" className="secondary"
+                      onClick={() => void act(async () => {
+                        const r = await api.resetPassword(orgId, m.user_id);
+                        setOneTime({ who: m.display_name, password: r.temporary_password });
+                      })}>Reset password for {m.display_name}</button>
+                    <button type="button" className="secondary"
+                      onClick={() => void act(() => api.removeMember(orgId, m.user_id), `${m.display_name} was removed.`)}>
+                      Remove
+                    </button>
+                  </div>
                 </div>
               )}
             </li>

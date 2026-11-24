@@ -1,9 +1,13 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { ApiError } from "../api";
+import { ApiError, api } from "../api";
 import { useSession } from "../session";
 
 export function LoginPage() {
+  const [managed, setManaged] = useState(false);
+  useEffect(() => {
+    api.authConfig().then((c) => setManaged(c.account_mode === "managed")).catch(() => setManaged(false));
+  }, []);
   const { state, signIn } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
@@ -53,7 +57,8 @@ export function LoginPage() {
         </button>
       </form>
       <p className="muted">
-        New here? <Link to="/signup">Create an account</Link>
+        {managed ? "Your administrator creates accounts and gives you a temporary password."
+          : <>New here? <Link to="/signup">Create an account</Link></>}
       </p>
     </section>
   );

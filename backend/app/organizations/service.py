@@ -42,7 +42,7 @@ def require_org_admin(db: Session, user_id: uuid.UUID, organization_id: uuid.UUI
         raise AppError(403, "not_permitted", "Only organization administrators can do this")
 
 
-def access_for(db: Session, user_id: uuid.UUID) -> dict:
+def access_for(db: Session, user_id: uuid.UUID, managed: bool = False) -> dict:
     rows = db.execute(select(Organization, Membership).join(Membership).where(Membership.user_id == user_id)).all()
     profiles = list(db.execute(select(MemberProfile.profile_key).where(MemberProfile.user_id == user_id)).scalars())
     active = [m for _, m in rows if m.status == "active"]
@@ -52,7 +52,10 @@ def access_for(db: Session, user_id: uuid.UUID) -> dict:
         "is_admin": any(m.role == "org_admin" for m in active),
         "is_manager": any(m.role == "project_manager" for m in active),
         "oversees": any(m.role in ("org_admin", "project_manager") for m in active),
-        "can_create_projects": any(m.role in ("org_admin", "project_owner") for m in active),
+        # Managed accounts (RD-22): only administrators create projects, for a client they choose.
+        "can_create_projects": any(m.role in (("org_admin",) if managed else ("org_admin", "project_owner"))
+                                   for m in active),
+        "account_mode": "managed" if managed else "self_service",
         "profiles": sorted(profiles),
         "requested_role": pending[1].requested_role if pending else None,
         "organization": pending[0].name if pending else None,

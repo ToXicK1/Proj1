@@ -10,6 +10,8 @@ interface SessionContextValue {
   state: SessionState;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Re-reads the account, for example after the first password change. */
+  refresh: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -49,7 +51,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ state, signIn, signOut }), [state, signIn, signOut]);
+  const refresh = useCallback(async () => {
+    const session = await api.me();
+    setCsrfToken(session.csrf_token);
+    setState({ status: "authenticated", user: session.user });
+  }, []);
+
+  const value = useMemo(() => ({ state, signIn, signOut, refresh }), [state, signIn, signOut, refresh]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 

@@ -46,7 +46,7 @@ confirmation of the decisions in section 9.
 | C1 | **Who does discovery** | The owner fills an 8-question brief in the portal and confirms it, which starts the lifecycle | The PM meets the client, records meetings, validates an intake package, and starts the BA handoff |
 | C2 | **Client approvals** | RD-2 (your earlier decision): the owner never approves; they give input, and the assigned professional approves | "Client reviews and approves the BRD", "approve or reject applicable deliverables", "approve applicable milestones" |
 | C3 | **The PM's standing** | An organization role with oversight only: no profile, workspace, AI persona or approvals, and it cannot create projects | A first-class professional profile with a workspace, an AI persona and approval duties (brief, sprint plans, reports, change requests) |
-| C4 | **Who creates the project** | Owners and administrators create projects; owners sign up themselves | The PM initiates the project after the meeting (and presumably invites the client) |
+| C4 | **Who creates accounts and projects** | People sign up themselves with a requested role, verify their email, and an administrator confirms them; owners and administrators create projects | The administrator creates every account with its role and a temporary password, and creates projects and assigns people to them; the person changes the password at first sign-in (D2, amended) |
 | C5 | **Client AI** | Several per-department AI representatives | One project assistant that answers from authorized project records and routes decisions to the PM |
 | C6 | **Shape of the lifecycle** | One linear pipeline of steps (the department preview runs BA, then Architect and Designer in parallel) | Iterative sprints after the backlog, QA alongside development, a BA verification phase, continuous DevOps |
 
@@ -156,6 +156,7 @@ The stage states stay the same. New step kinds and records:
 
 ### 5.5 APIs (new or extended)
 
+- `/api/v1/orgs/{org}/people` (administrator): create an account with role and profiles, returning the temporary password once; reset it; `/api/v1/auth/password` for the forced first change.
 - `/projects/{id}/work/project_manager/...`: the existing record, package and handoff APIs, used by the new department.
 - `/projects/{id}/meetings/{record}/attachments`: upload and download through object storage, with role checks.
 - `/projects/{id}/pm/analysis`: PM AI meeting analysis (a queued job; results are suggestions).
@@ -169,6 +170,7 @@ The stage states stay the same. New step kinds and records:
 
 | Action | Client | PM | BA | Architect, Designer, Developer | QA & Security | DevOps & Release |
 |---|---|---|---|---|---|---|
+| Accounts, roles, projects, assignment | — | — (the administrator does this) |  |  |  |  |
 | Meetings, intake, brief | read the brief (if shared) | create, validate, approve the brief | read the approved brief | read the approved brief | read | read |
 | BRD baseline | approve (if D1) | review scope alignment | approve the package | read | read | read |
 | Sprint plan | see progress | approve | contribute | contribute | contribute | contribute |
@@ -193,6 +195,7 @@ The stage states stay the same. New step kinds and records:
 
 | Phase | Objective | Backend and database | Frontend | AI | Tests and acceptance |
 |---|---|---|---|---|---|
+| P0 | Administrator-provisioned accounts | accounts created by an administrator with role and profiles; a generated temporary password (hash only, shown once, expires after 7 days); forced change at first sign-in (every other action refused until then); administrator reset (new temporary password, sessions ended); self-signup off by configuration; a command to create the first administrator; projects created by administrators with people assigned; migration | Team page: add person, show the temporary password once, reset; a change-password page that opens first; project creation and assignment for administrators | — | the temporary password is never stored or logged in plain text; nothing works before the change; an expired one is refused; non-administrators cannot create accounts or projects; tests and browser specs move from self-signup to provisioned accounts |
 | P1 | PM as the seventh profile | profile, `TEAM`, PM record kinds, permission rules for the PM's limits, migration | Professional team shows 7; PM workspace shell | — | a PM is assigned per project; specialist overrides are refused (architecture, QA, release) |
 | P2 | Client meetings and intake | meeting kind, attachments (object storage), intake kinds, validation | Client Meetings, Project Intake modules | — | records, files, validation and audit; the client cannot see internal notes |
 | P3 | PM AI persona | PM lead and assistant; meeting analysis job; suggestions only | AI Meeting Analysis module | PM agents, routing, budgets | analysis is provisional; nothing is validated without the PM |
@@ -218,7 +221,7 @@ Each phase ends with its own tests, a browser check and a live run where it invo
 | ID | Question | Answer |
 |---|---|---|
 | D1 | Client approvals | **The client approves chosen items:** the BRD baseline, design sign-off, UAT and milestones. The professional approves first; the client's is a second, required approval on those items only. Elsewhere the client gives input. This amends RD-2 |
-| D2 | Projects and client accounts | **The PM creates the project and invites the client;** the client portal opens when they accept. Client self-signup is turned off |
+| D2 | Accounts and projects (amended 2026-11-24) | **The administrator does it all.** They create each account (client, PM, professionals, other administrators) with one of the platform's roles and a generated temporary password, shown to them once to pass on. The person must change it at first sign-in. The administrator also creates projects and assigns the client, the PM and the professionals to them. Self-signup and invitations by the PM are not used. The permissions behind each role stay as the platform defines them; custom roles are not part of this |
 | D3 | The client's 8-question brief form | **An optional pre-meeting form.** Its answers feed the PM's intake as unconfirmed input; only the PM validates the intake and approves the brief |
 | D4 | Client AI | **One project assistant** replaces the per-department representatives. It answers from client-visible approved records and project status, and routes decisions and scope changes to the PM |
 | D5 | Shape of delivery | **Baseline, then sprints.** PM intake, the BA baseline and the first architecture and design stay lifecycle steps; each approved sprint plan starts its own sprint workflow; several sprints can run; DevOps has a continuous track |

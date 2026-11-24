@@ -28,6 +28,7 @@ services:
       AIDLC_DATABASE_URL: postgresql+pg8000://aidlc:aidlc@db:5432/aidlc
       AIDLC_PUBLIC_BASE_URL: http://localhost:${AIDLC_WEB_PORT:-5173}
       AIDLC_SIGNUP_MODE: ${AIDLC_SIGNUP_MODE:-shared}
+      AIDLC_ACCOUNT_MODE: ${AIDLC_ACCOUNT_MODE:-managed}
       AIDLC_DEFAULT_LLM_BASE_URL: ${AIDLC_DEFAULT_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
       AIDLC_DEFAULT_LLM_MODEL: ${AIDLC_DEFAULT_LLM_MODEL:-qwen3-vl:4b-instruct}
       AIDLC_DEFAULT_LLM_ADAPTER: ${AIDLC_DEFAULT_LLM_ADAPTER:-openai_compatible}
@@ -60,6 +61,7 @@ services:
       AIDLC_DATABASE_URL: postgresql+pg8000://aidlc:aidlc@db:5432/aidlc
       AIDLC_PUBLIC_BASE_URL: http://localhost:${AIDLC_WEB_PORT:-5173}
       AIDLC_SIGNUP_MODE: ${AIDLC_SIGNUP_MODE:-shared}
+      AIDLC_ACCOUNT_MODE: ${AIDLC_ACCOUNT_MODE:-managed}
       AIDLC_DEFAULT_LLM_BASE_URL: ${AIDLC_DEFAULT_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
       AIDLC_DEFAULT_LLM_MODEL: ${AIDLC_DEFAULT_LLM_MODEL:-qwen3-vl:4b-instruct}
       AIDLC_DEFAULT_LLM_ADAPTER: ${AIDLC_DEFAULT_LLM_ADAPTER:-openai_compatible}

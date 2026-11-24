@@ -111,6 +111,36 @@ def remove_project_member(project_id: uuid.UUID, user_id: uuid.UUID, caller: Csr
     return {"status": "removed"}
 
 
+class PersonIn(_Strict):
+    email: str = Field(min_length=3, max_length=254)
+    display_name: str = Field(min_length=1, max_length=120)
+    role: Literal["org_admin", "project_manager", "project_owner", "member"]
+    profiles: list[str] = Field(default_factory=list, max_length=20)
+
+
+@router.post("/orgs/{organization_id}/people", status_code=201)
+def create_person(organization_id: uuid.UUID, body: PersonIn, request: Request, caller: CsrfCaller,
+                  db: DbSession) -> dict:
+    """Administrators only. The temporary password is in this response and nowhere else, ever."""
+    from app.organizations import people
+
+    user, temp = people.create_person(db, request.app.state.settings, caller.user, organization_id=organization_id,
+                                      email=body.email, display_name=body.display_name, role=body.role,
+                                      profiles=body.profiles)
+    return {"user": {"id": str(user.id), "email": user.email, "display_name": user.display_name},
+            "temporary_password": temp, "expires_at": user.temp_password_expires_at.isoformat()}
+
+
+@router.post("/orgs/{organization_id}/people/{user_id}/reset-password")
+def reset_password(organization_id: uuid.UUID, user_id: uuid.UUID, request: Request, caller: CsrfCaller,
+                   db: DbSession) -> dict:
+    from app.organizations import people
+
+    temp = people.reset_password(db, request.app.state.settings, caller.user, organization_id=organization_id,
+                                 user_id=user_id)
+    return {"temporary_password": temp}
+
+
 class AccessIn(_Strict):
     role: Literal["org_admin", "project_manager", "project_owner", "member"]
     profiles: list[str] = Field(default_factory=list, max_length=20)

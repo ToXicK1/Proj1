@@ -12,6 +12,8 @@ from app.core.errors import AppError
 from app.core.security import constant_time_equal, csrf_for_session
 
 CSRF_HEADER = "X-CSRF-Token"
+# All a person may do while their administrator-issued temporary password is still in use.
+PASSWORD_CHANGE_PATHS = frozenset({"/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/auth/password"})
 
 
 def get_db(request: Request):  # type: ignore[no-untyped-def]
@@ -39,6 +41,8 @@ def current_caller(request: Request, db: DbSession, settings: AppSettings) -> Ca
     user = db.get(User, session_row.user_id)
     if user is None or user.status != "active":
         raise AppError(401, "unauthenticated", "Sign in required")
+    if user.must_change_password and request.url.path not in PASSWORD_CHANGE_PATHS:
+        raise AppError(403, "password_change_required", "Choose your own password before continuing")
     return Caller(user=user, raw_token=raw, csrf_token=csrf_for_session(settings.secret_key, raw))
 
 

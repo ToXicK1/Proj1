@@ -32,13 +32,27 @@ def create_project(
     name: str,
     description: str,
     project_type: str,
+    owner_user_id: uuid.UUID | None = None,
+    managed: bool = False,
 ) -> Project:
     # Users who are not members of the organization get not_found, not forbidden.
     membership = membership_for(db, user.id, organization_id)
     if membership is None:
         raise not_found()
+    if managed and membership.role != "org_admin":
+        raise AppError(403, "not_permitted", "Only administrators create projects")
     if membership.role == "member":
         raise AppError(403, "not_permitted", "Only project owners can create projects")
+    owner = user
+    if owner_user_id is not None:  # an administrator creates the project for a client
+        if membership.role != "org_admin":
+            raise AppError(403, "not_permitted", "Only administrators create projects for someone else")
+        client = membership_for(db, owner_user_id, organization_id)
+        if client is None or client.role != "project_owner" or client.status != "active":
+            raise AppError(422, "invalid_owner", "Choose a client of this organization as the project owner")
+        owner = db.get(User, owner_user_id)
+    elif managed:
+        raise AppError(422, "owner_required", "Choose the client who owns this project")
 
     name = name.strip()
     project_type = project_type.strip()
@@ -60,14 +74,14 @@ def create_project(
     )
     db.add(project)
     db.flush()  # project row first so the membership's foreign key is satisfied
-    db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=user.id, project_role="project_owner"))
+    db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=owner.id, project_role="project_owner"))
     holders = set(db.execute(select(MemberProfile.user_id).where(
-        MemberProfile.organization_id == organization_id)).scalars()) - {user.id}
+        MemberProfile.organization_id == organization_id)).scalars()) - {owner.id}
     for holder in holders:  # the people who hold a profile work on every project of the organization
         db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=holder, project_role="team_member"))
     overseers = set(db.execute(select(Membership.user_id).where(
         Membership.organization_id == organization_id, Membership.status == "active",
-        Membership.role.in_(OVERSEER_ROLES))).scalars()) - holders - {user.id}
+        Membership.role.in_(OVERSEER_ROLES))).scalars()) - holders - {owner.id}
     for person in overseers:  # administrators and project managers see every project
         db.add(ProjectMember(id=uuid7(), project_id=project.id, user_id=person, project_role="viewer"))
     db.flush()
