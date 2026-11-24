@@ -8,7 +8,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.agents import tool_runtime
-from app.portal.lifecycle import LEAD_TOOLS, STAGES
+from app.portal.lifecycle import LEAD_TOOLS, PM_ASSISTANT, STAGES
 from app.providers.models import AgentRun, ToolExecution
 from app.workflows import service as engine
 from app.workflows.models import StageExecution
@@ -280,7 +280,7 @@ def test_existing_teams_get_the_read_tools_on_their_next_provisioning(env, monke
     monkeypatch.undo()
     env.setup_team()  # provisioning again brings older leads up to date with a new version
     registry = env.client.get(f"/api/v1/orgs/{env.org}/agent-registry").json()["departments"]
-    leads = [e for d in registry for e in d["leads"]]
+    leads = [e for d in registry for e in d["leads"] if e["key"] != PM_ASSISTANT]  # the PM persona has no tools
     assert leads and all(sorted(e["tools"]) == sorted(LEAD_TOOLS) and e["version"] == 2 for e in leads)
 
 

@@ -113,6 +113,10 @@ export const workApi = {
   attach: (p: string, itemId: string, file: File) =>
     uploadFile<AttachmentDto>(`${base(p)}/items/${id(itemId)}/attachments?filename=${encodeURIComponent(file.name)}`, file),
   attachmentUrl: (p: string, attachmentId: string) => `${base(p)}/attachments/${id(attachmentId)}`,
+  analyse: (p: string, meetingId: string) =>
+    request<AssistantExchangeDto>("POST", `${base(p)}/items/${id(meetingId)}/analysis`),
+  analyses: (p: string, meetingId: string) =>
+    request<{ items: AssistantExchangeDto[] }>("GET", `${base(p)}/items/${id(meetingId)}/analysis`),
   clientForm: (p: string) =>
     request<{ answers: { field: string; label: string; value: string; tag: string | null }[]; status: string | null }>(
       "GET", `${base(p)}/client-form`),

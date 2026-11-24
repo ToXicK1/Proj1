@@ -323,6 +323,15 @@ def template_key(scope: str) -> str:
     return f"aidlc-{scope}"
 
 
+PM_ASSISTANT = "project-manager-assistant"
+PM_PERSONA = (
+    "You assist the human Project Manager of a software project. You analyse meeting notes and project information, "
+    "structure what the client said, point out what is missing or contradictory, and suggest follow-up questions. "
+    "You only use the material you are given. You never invent facts, progress, dates or approvals, and you never "
+    "make business decisions: everything you produce is a provisional suggestion the Project Manager reviews. "
+    "Keep what the client stated apart from your own assumptions.")
+
+
 def lead_key(stage: Stage) -> str:
     return f"{stage.id.replace('_', '-')}-lead"
 
@@ -448,6 +457,11 @@ def provision(db: Session, user: User, organization_id: uuid.UUID, model_route: 
                              "contradictions and claims the material does not support.",
                 required_keys=["verdict", "findings"], model_route=model_route,
                 context_sources=["stage_artifact"], tools=[])
+    if PM_ASSISTANT not in existing:
+        agents.create_agent(
+            db, user, organization_id=organization_id, profile_key=PM, key=PM_ASSISTANT, kind="lead",
+            instructions=PM_PERSONA, required_keys=["answer"], model_route=model_route,
+            context_sources=["project_input"], tools=[])
     for stage in STAGES:
         if not stage.gated:
             continue

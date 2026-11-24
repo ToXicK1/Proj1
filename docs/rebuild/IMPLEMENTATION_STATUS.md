@@ -387,3 +387,16 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - Validating it (`validation: validated`) needs a confirmed intake. It is recorded as its own version ("validated the intake") and audited (`work.intake_validated`).
 - **The client's optional pre-meeting form (D3)** is shown read-only above the intake as unconfirmed input (`GET /work/client-form`).
 - **Not yet:** the client's form still starts the old lifecycle when the client confirms it. Moving the start to the PM's approved brief is P4.
+
+## 2026-11-24 — P3: the PM's AI persona
+
+- **Project-level AI runs:** a run outside the lifecycle has no step (`agent_runs.stage_execution_id` is now optional, migration `0029_project_runs`). Such a run gets no read tools, because they are scoped to a step's approved upstream work; it sees only the material it is given. Routing, budgets, failover, the activity log and the run record work as for every other agent. The P5 client assistant will use the same path.
+- **The PM persona** (`project-manager-assistant`, one per organization, created with the rest of the team). Its instructions say it analyses and drafts, uses only what it is given, never invents facts, progress, dates or approvals, never makes business decisions, and keeps what the client stated apart from its own assumptions.
+- **Meeting analysis** (`POST /work/items/{meeting}/analysis`, job `work.meeting_analysis`):
+  - Only the project's assigned PM asks, and only for a client meeting.
+  - The persona reads the meeting, up to five earlier meetings' summaries, the current intake, and the client's pre-meeting answers (tagged as unconfirmed).
+  - It writes a new **Meeting analysis** record (`MA-…`): summary, objectives, features, stakeholders, decisions, assumptions, risks, missing information, contradictions and follow-up questions. The record is an AI suggestion linked to the meeting (`derives_from`) and sourced to the exact meeting version.
+  - The meeting and the intake are never edited. A reply in the wrong shape gets one repair request and then fails with a plain reason; nothing is stored from it.
+- **The PM's assistant panel** now works: it runs on the persona at project level, since the PM has no lifecycle steps.
+- **Workspace:** the **AI Meeting Analysis** module lists the meetings with "Analyze with AI" and each one's status (refreshing while it works), and shows the analyses as records to read, confirm or edit.
+- The offline mock model returns plain lists for the analysis, so demos and browser tests exercise it.

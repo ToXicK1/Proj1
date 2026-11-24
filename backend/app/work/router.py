@@ -292,6 +292,25 @@ def get_attachment(project_id: uuid.UUID, attachment_id: uuid.UUID, request: Req
         "Cache-Control": "private, no-store"})
 
 
+@router.post("/items/{item_id}/analysis", status_code=202)
+def analyse_meeting(project_id: uuid.UUID, item_id: uuid.UUID, request: Request, tasks: BackgroundTasks,
+                    caller: CsrfCaller, db: DbSession) -> dict:
+    """The PM's AI persona analyses a client meeting; the result is a provisional record for the PM (P3)."""
+    from app.work import pm_analysis
+
+    out = pm_analysis.request(db, caller.user, project_id, item_id)
+    queue(request, tasks, db, "work.meeting_analysis", {"exchange_id": out["id"]},
+          dedupe_key=f"meeting-analysis:{out['id']}", project_id=project_id)
+    return out
+
+
+@router.get("/items/{item_id}/analysis")
+def meeting_analyses(project_id: uuid.UUID, item_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    from app.work import pm_analysis
+
+    return {"items": pm_analysis.history(db, caller.user, project_id, item_id)}
+
+
 @router.get("/client-form")
 def client_form(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
     """The client's optional pre-meeting answers (D3): unconfirmed input for the PM's intake. Internal team only."""

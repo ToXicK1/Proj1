@@ -45,6 +45,12 @@ KINDS: dict[str, Kind] = {k.key: k for k in (
         Field("risks", "list"), Field("open_questions", "list"), Field("follow_ups", "list"),
         Field("references", "list"),  # links and document names
     )),
+    Kind("meeting_analysis", PM, "MA", "Meeting analysis", (
+        Field("summary", "text", required=True),
+        Field("objectives", "list"), Field("features", "list"), Field("stakeholders", "list"),
+        Field("decisions", "list"), Field("assumptions", "list"), Field("risks", "list"),
+        Field("missing_information", "list"), Field("contradictions", "list"), Field("follow_up_questions", "list"),
+    )),
     Kind("project_intake", PM, "INT", "Project intake", (
         Field("business_problem", "text", required=True),
         Field("validation", "enum", required=True, choices=("draft", "validated")),

@@ -256,3 +256,17 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - The Team page's department checkboxes had lost their full titles ("QA & Security Engineer").
   - In self-service mode the Team page showed both "Add a person" and invitations, making its email field ambiguous. Each mode now shows only its own form.
 - **Not re-verified:** after those two UI fixes, three reruns of the managed spec failed for environment reasons. One failed in warm-up, unable to load the sign-in page; two ran out of the 4-minute limit at steps that had passed, with every step far slower than before. A probe showed this machine's Chrome stalling 15 seconds on a request to the API that curl answered in 0.06 seconds. The fixes do not touch the managed path except to show "Add a person" in managed mode, and one of the failed runs got through those steps. The spec still needs a clean rerun.
+
+## 2026-11-24 — P3
+
+- **`tests/test_pm_analysis.py` (4), all passed on the first run:**
+  - The analysis is an AI suggestion linked to its meeting with its source version; the meeting is untouched; the model gets the persona's rules and the notes as data, with no tools; the run is recorded at project level.
+  - Only the project's PM asks, the client sees nothing, and only meetings can be analysed.
+  - A reply in the wrong shape is repaired once, then fails with `bad_response`, and no record is stored.
+  - The PM assistant answers with no lifecycle at all.
+- **Migration 0029:** no drift; downgrade and re-upgrade succeed. Frontend typecheck clean; 18 unit tests passed.
+- **Full backend suite:** 525 passed, 5 skipped, 2 failed. Both failures were expected-count tests that predate the PM persona, a seventh agent with no read tools (one more agent in the catalog; no tools to compare). The tests were updated to count it, and both now pass.
+- **Managed browser spec (`accounts.spec.ts`, with "Analyze with AI"):**
+  - The first run failed on a test race. `chooseOwnPassword` waited for the sidebar's Notifications link, which the password page also shows, so the test opened the project before the new password was saved and was sent back to the password page.
+  - The helper now waits until the password page is gone.
+  - The rerun passed (52.5s). This also covers the P1 UI fixes, which had not been re-verified.

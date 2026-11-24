@@ -329,7 +329,7 @@ def run_structured(
     transport: httpx.BaseTransport | None,
     organization_id: uuid.UUID,
     project_id: uuid.UUID,
-    stage_execution_id: uuid.UUID,
+    stage_execution_id: uuid.UUID | None,
     route_key: str,
     system: str,
     user: str,
@@ -368,7 +368,8 @@ def run_structured(
             raise ProviderRunFailed("no_independent_provider", 0)
     candidates = _affordable(db, organization_id, project_id, route, candidates,
                              len(system) + len(user), settings.provider_max_tokens)
-    granted = tuple(tools)
+    # Read tools are scoped to a step's approved upstream work; without a step there is nothing they may read.
+    granted = tuple(tools) if stage_execution_id is not None else ()
     definitions = tuple(tool_runtime.schemas(list(granted)))
     system += "\n" + EVERY_KEY
     if definitions:

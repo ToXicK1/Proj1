@@ -541,6 +541,9 @@ _LIST_SPEC = re.compile(r"(\w+) must be a JSON list of objects, each with a shor
                         re.MULTILINE)
 
 
+_PLAIN_LISTS = re.compile(r"as JSON lists of short texts, \[\] when nothing applies: ([a-z_, ]+)\.")
+
+
 def _mock_lists(system: str) -> dict[str, list[dict[str, Any]]]:
     """For record steps, one example object per list, built from the field description the step gives (offline)."""
     out: dict[str, list[dict[str, Any]]] = {}
@@ -555,6 +558,11 @@ def _mock_lists(system: str) -> dict[str, list[dict[str, Any]]]:
             elif "(required)" in part:
                 item[name] = f"{name.replace('_', ' ')} written by the offline mock"
         out[key] = [item]
+    plain = _PLAIN_LISTS.search(system)  # "these as JSON lists of short texts, [] when nothing applies: a, b."
+    if plain:
+        for key in (k.strip() for k in plain.group(1).split(",")):
+            if key:
+                out.setdefault(key, [f"{key.replace('_', ' ')} noted by the offline mock"])
     return out
 
 

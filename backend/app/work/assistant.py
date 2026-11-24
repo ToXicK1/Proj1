@@ -132,18 +132,26 @@ def run(factory: sessionmaker[Session], settings: Any, transport: Any, exchange_
         execution = db.execute(select(WorkflowExecution).where(WorkflowExecution.project_id == project.id)
                                .order_by(WorkflowExecution.created_at.desc())).scalars().first()
         try:
-            if execution is None:
-                raise AppError(409, "not_started", "The assistant works once the project's lifecycle has started")
-            rows = engine.stage_rows(db, execution.id)
-            steps = [s for s in (*DEPARTMENT_STAGES.get(row.department, ()), *STAGES)
-                     if s.profile == row.department and s.gated and s.id in rows]
-            if not steps:
-                raise AppError(409, "no_step", "This department has no AI step in this project")
-            step = next((s for s in steps if rows[s.id].status not in ("APPROVED", "COMPLETED", "SKIPPED")),
-                        steps[-1])
-            agent_key = lead_key(step)
-            lead = agents.at_version(db, project.organization_id, agent_key,
-                                     uuid.UUID(execution.config_snapshot["agent_versions"][agent_key])).version
+            stage_id = None
+            if row.department == "project_manager":
+                # The PM works before and around the lifecycle: the PM persona, at project level (P3).
+                from app.portal.lifecycle import PM_ASSISTANT
+
+                lead = agents.latest(db, project.organization_id, PM_ASSISTANT).version
+            else:
+                if execution is None:
+                    raise AppError(409, "not_started", "The assistant works once the project's lifecycle has started")
+                rows = engine.stage_rows(db, execution.id)
+                steps = [s for s in (*DEPARTMENT_STAGES.get(row.department, ()), *STAGES)
+                         if s.profile == row.department and s.gated and s.id in rows]
+                if not steps:
+                    raise AppError(409, "no_step", "This department has no AI step in this project")
+                step = next((s for s in steps if rows[s.id].status not in ("APPROVED", "COMPLETED", "SKIPPED")),
+                            steps[-1])
+                stage_id = rows[step.id].id
+                agent_key = lead_key(step)
+                lead = agents.at_version(db, project.organization_id, agent_key,
+                                         uuid.UUID(execution.config_snapshot["agent_versions"][agent_key])).version
             selected = ""
             if row.item_id:
                 item = db.get(WorkItem, row.item_id)
@@ -159,7 +167,7 @@ def run(factory: sessionmaker[Session], settings: Any, transport: Any, exchange_
             title = BY_PROFILE[row.department].title
             parsed = providers.run_structured(
                 db, settings, transport=transport, organization_id=project.organization_id, project_id=project.id,
-                stage_execution_id=rows[step.id].id, kind="lead", agent_version_id=lead.id,
+                stage_execution_id=stage_id, kind="lead", agent_version_id=lead.id,
                 route_key=routing.route_for(db, project.organization_id, "lead", row.department, lead.model_route).key,
                 record={"profile_key": row.department, "task": "assistant"}, tools=tuple(lead.tools),
                 system=f"You are the AI assistant of the {title} department on a software project. Help the "

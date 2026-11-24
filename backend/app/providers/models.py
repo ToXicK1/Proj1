@@ -90,7 +90,9 @@ class AgentRun(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("organizations.id"), nullable=False, index=True)
     project_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("projects.id"), nullable=False, index=True)
-    stage_execution_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("stage_executions.id"), nullable=False, index=True)
+    # None for project-level work outside the lifecycle (the PM's meeting analysis and assistant, P3).
+    stage_execution_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("stage_executions.id"),
+                                                                 nullable=True, index=True)
     route_key: Mapped[str] = mapped_column(String(64), nullable=False)
     provider_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("ai_providers.id"), nullable=False)
     adapter_type: Mapped[str] = mapped_column(String(32), nullable=False)

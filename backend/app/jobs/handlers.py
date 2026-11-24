@@ -62,7 +62,16 @@ def _assistant(ctx: JobContext) -> None:
         assistant.run(ctx.factory, ctx.settings, ctx.transport, exchange_id, finish=ctx.finish_in)
 
 
+def _meeting_analysis(ctx: JobContext) -> None:
+    from app.work import pm_analysis
+
+    with activity.scope(profile_key="project_manager"):
+        pm_analysis.run(ctx.factory, ctx.settings, ctx.transport, uuid.UUID(ctx.payload["exchange_id"]),
+                        finish=ctx.finish_in)
+
+
 HANDLERS: dict[str, Handler] = {
+    "work.meeting_analysis": _meeting_analysis,
     "work.assistant": _assistant,
     "portal.drive": _drive,
     "portal.stage": _stage,

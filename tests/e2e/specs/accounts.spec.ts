@@ -24,6 +24,8 @@ async function chooseOwnPassword(page: Page, temp: string): Promise<void> {
   await page.getByLabel("New password (at least 12 characters)").fill(OWN);
   await page.getByLabel("New password again").fill(OWN);
   await page.getByRole("button", { name: "Save password" }).click();
+  // The sidebar shows on the password page too: wait until the page itself has gone (the change is saved).
+  await expect(page.getByRole("heading", { name: "Choose your own password" })).toHaveCount(0, { timeout: 30_000 });
   await expect(page.getByRole("link", { name: "Notifications" })).toBeVisible({ timeout: 30_000 });
 }
 
@@ -106,6 +108,14 @@ test("the administrator creates the people and the project; everyone chooses the
   await meeting.getByLabel(/^Attach a file/).setInputFiles({ name: "booking-form.txt", mimeType: "text/plain",
     buffer: Buffer.from("The clinic's paper booking form") });
   await expect(meeting.getByRole("link", { name: "booking-form.txt" })).toBeVisible();
+
+  // P3: the PM's AI persona analyses the meeting into a provisional record; nothing is decided for the PM.
+  await pmModules.getByRole("button", { name: "AI Meeting Analysis" }).click();
+  const toAnalyse = pm.getByRole("list", { name: "Meetings to analyse" });
+  await toAnalyse.getByRole("button", { name: "Analyze with AI" }).click();
+  await expect(toAnalyse).toContainText("analysed as MA-001", { timeout: 60_000 });
+  await expect(pm.getByRole("table", { name: "Records" })).toContainText("Analysis of MTG-001");
+  await expect(pm.getByRole("table", { name: "Records" })).toContainText("AI suggestion");
 
   // The client signs in with the temporary password, chooses their own, and finds the project.
   const client = await signIn(browser, `olu-${tag}@example.com`, clientTemp);
