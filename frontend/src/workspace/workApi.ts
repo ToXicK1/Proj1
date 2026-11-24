@@ -1,13 +1,13 @@
 import { request } from "../api";
 
-export type Provenance = "confirmed" | "assumption" | "ai_suggestion" | "open_question";
+export type Provenance = "confirmed" | "assumption" | "ai_suggestion" | "open_question" | "system_draft";
 
 export interface KindFieldDto { name: string; type: "text" | "enum" | "list" | "int" | "json"; required: boolean; choices: string[] }
 export interface KindDto { key: string; department: string; prefix: string; label: string; fields: KindFieldDto[] }
 
 export interface VersionDto {
   id: string; number: number; title: string; body: Record<string, unknown>; provenance: Provenance; sha256: string;
-  author_type: "human" | "ai"; author: string | null; reason: string; sources: unknown[]; created_at: string;
+  author_type: "human" | "ai" | "system"; author: string | null; reason: string; sources: unknown[]; created_at: string;
 }
 export interface LinkDto {
   id: string; type: string; direction: "in" | "out";
@@ -74,10 +74,10 @@ export const workApi = {
   },
   item: (p: string, itemId: string) => request<ItemDto>("GET", `${base(p)}/items/${id(itemId)}`),
   create: (p: string, department: string, body: { kind: string; title: string; body: Record<string, unknown>;
-    provenance: Exclude<Provenance, "ai_suggestion">; reason?: string }) =>
+    provenance: Exclude<Provenance, "ai_suggestion" | "system_draft">; reason?: string }) =>
     request<ItemDto>("POST", `${base(p)}/${id(department)}/items`, body),
   edit: (p: string, itemId: string, body: { expected_version: number; title?: string; body?: Record<string, unknown>;
-    provenance?: Exclude<Provenance, "ai_suggestion">; reason?: string }) =>
+    provenance?: Exclude<Provenance, "ai_suggestion" | "system_draft">; reason?: string }) =>
     request<ItemDto>("PUT", `${base(p)}/items/${id(itemId)}`, body),
   archive: (p: string, itemId: string, archived: boolean, reason = "") =>
     request<ItemDto>("POST", `${base(p)}/items/${id(itemId)}/archive`, { archived, reason }),

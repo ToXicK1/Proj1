@@ -104,7 +104,7 @@ def test_the_ba_department_runs_from_intake_to_the_owners_input_and_final_approv
         assert _status(env, step) == "APPROVED"
     kinds = {i["kind"] for i in env.analyst.get(_w(env, f"/{BA}/items")).json()["items"]}
     assert kinds == {"discovery_question", "assumption", "stakeholder", "requirement", "user_story", "risk",
-                     "review_finding"}
+                     "review_finding", "document"}  # document: the BRD and SRS drafts of the review step
     req = next(i for i in env.analyst.get(_w(env, f"/{BA}/items?kind=requirement")).json()["items"])
     assert req["body"]["type"] == "functional" and req["body"]["priority"] == "must"  # normalized
     assert req["body"]["acceptance_criteria"] == ["Booking confirmed", "Email sent"]

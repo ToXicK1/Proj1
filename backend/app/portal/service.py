@@ -162,7 +162,7 @@ def _intake_out(row: IntakeRevision | None, started: bool) -> dict[str, Any]:
         "still_needed": sorted(blockers),
         "can_confirm": not blockers and not started and bool(row) and row.status == "draft",
         "scopes": [{"key": k, "label": SCOPE_LABELS[k],
-                    "stages": len(DEPARTMENT_STAGES[DEPARTMENT_SCOPES[k]]) if k in DEPARTMENT_SCOPES
+                    "stages": sum(len(DEPARTMENT_STAGES[d]) for d in DEPARTMENT_SCOPES[k]) if k in DEPARTMENT_SCOPES
                     else sum(1 for st in STAGES if st.in_scope(k))} for k in SCOPES],
         "default_scope": DEFAULT_SCOPE,
     }

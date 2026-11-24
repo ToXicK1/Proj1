@@ -27,7 +27,10 @@ class Kind:
 
 
 PRIORITY = ("must", "should", "could", "wont")
+LEVEL = ("high", "medium", "low")
 BA = "business_analyst"
+SA = "solution_architect"
+UX = "ui_ux_designer"
 
 KINDS: dict[str, Kind] = {k.key: k for k in (
     Kind("requirement", BA, "REQ", "Requirement", (
@@ -73,6 +76,118 @@ KINDS: dict[str, Kind] = {k.key: k for k in (
         Field("severity", "enum", required=True, choices=("blocking", "major", "minor")),
         Field("affects", "text"),  # the record keys or step concerned
         Field("recommendation", "text"),
+    )),
+    # Solution Architect ------------------------------------------------------------------------------------------
+    Kind("architecture_driver", SA, "AD", "Architecture driver", (
+        Field("description", "text", required=True),
+        Field("type", "enum", required=True, choices=("quality_attribute", "constraint", "functional")),
+        Field("source", "text"),
+        Field("related_requirements", "text"),
+    )),
+    Kind("component", SA, "CMP", "Component", (
+        Field("responsibility", "text", required=True),
+        Field("type", "enum", required=True, choices=("service", "frontend", "database", "queue", "external",
+                                                      "library")),
+        Field("interfaces", "text"),
+        Field("related_requirements", "text"),
+    )),
+    Kind("architecture_diagram", SA, "AR", "Architecture diagram", (
+        Field("diagram_type", "enum", required=True, choices=("system_context", "high_level", "component",
+                                                              "deployment", "data_flow", "integration",
+                                                              "service_interaction")),
+        Field("diagram", "json", required=True),
+        Field("notes", "text"),
+    )),
+    Kind("data_entity", SA, "ENT", "Data entity", (
+        Field("description", "text", required=True),
+        Field("attributes", "json", required=True),  # [{"name", "type", "key": pk/fk/none, "nullable", "references"}]
+        Field("relationships", "text"),
+        Field("indexes", "list"),
+        Field("rationale", "text"),
+    )),
+    Kind("api_endpoint", SA, "API", "API endpoint", (
+        Field("method", "enum", required=True, choices=("GET", "POST", "PUT", "PATCH", "DELETE")),
+        Field("path", "text", required=True),
+        Field("purpose", "text", required=True),
+        Field("request_schema", "json"),
+        Field("response_schema", "json"),
+        Field("auth", "text"),
+        Field("errors", "list"),
+        Field("rate_limit", "text"),
+        Field("related_requirements", "text"),
+    )),
+    Kind("adr", SA, "ADR", "Architecture decision", (
+        Field("context", "text", required=True),
+        Field("decision", "text", required=True),
+        Field("alternatives", "list"),
+        Field("consequences", "text"),
+        Field("status", "enum", choices=("proposed", "accepted", "superseded")),
+    )),
+    Kind("security_control", SA, "SEC", "Security control", (
+        Field("area", "enum", required=True, choices=("authentication", "authorization", "trust_boundary",
+                                                      "data_classification", "encryption", "network", "secrets",
+                                                      "audit")),
+        Field("description", "text", required=True),
+        Field("related_requirements", "text"),
+    )),
+    Kind("infra_resource", SA, "INF", "Infrastructure resource (proposed)", (
+        Field("type", "enum", required=True, choices=("compute", "database", "storage", "network", "container",
+                                                      "load_balancer", "monitoring", "external")),
+        Field("purpose", "text", required=True),
+        Field("environment", "text"),
+    )),
+    Kind("tech_risk", SA, "TR", "Technical risk", (
+        Field("description", "text", required=True),
+        Field("likelihood", "enum", choices=LEVEL), Field("impact", "enum", choices=LEVEL),
+        Field("mitigation", "text"),
+    )),
+    Kind("architecture_document", SA, "SAD", "Architecture document", (
+        Field("sections", "json", required=True),
+    )),
+    Kind("architecture_finding", SA, "AF", "Architecture review finding", (
+        Field("finding", "text", required=True),
+        Field("severity", "enum", required=True, choices=("blocking", "major", "minor")),
+        Field("affects", "text"), Field("recommendation", "text"),
+    )),
+    # UI/UX Designer ----------------------------------------------------------------------------------------------
+    Kind("persona", UX, "PER", "Persona", (
+        Field("description", "text", required=True), Field("goals", "list"), Field("pain_points", "list"),
+    )),
+    Kind("research_note", UX, "RN", "Research note", (
+        Field("finding", "text", required=True), Field("source", "text"),
+    )),
+    Kind("ia_node", UX, "IA", "Site map entry", (
+        Field("purpose", "text", required=True), Field("parent", "text"), Field("audience", "text"),
+    )),
+    Kind("user_journey", UX, "UJ", "User journey", (
+        Field("persona", "text", required=True), Field("steps", "list", required=True),
+        Field("pain_points", "list"), Field("related_requirements", "text"),
+    )),
+    Kind("screen", UX, "SCR", "Screen", (
+        Field("purpose", "text", required=True),
+        Field("user_role", "text"), Field("journey", "text"), Field("related_requirements", "text"),
+        Field("sections", "list"),  # what the screen shows, top to bottom (wireframe level)
+        Field("states", "list"),  # loading, empty, error and the like
+        Field("layout", "json"),  # the design canvas's element tree (step 7.2c)
+        Field("responsive", "text"),
+    )),
+    Kind("design_token", UX, "TOK", "Design token", (
+        Field("category", "enum", required=True, choices=("color", "typography", "spacing", "radius", "shadow",
+                                                          "grid")),
+        Field("value", "text", required=True), Field("usage", "text"),
+    )),
+    Kind("ui_component", UX, "UIC", "UI component", (
+        Field("purpose", "text", required=True), Field("variants", "list"), Field("states", "list"),
+        Field("accessibility", "text"),
+    )),
+    Kind("prototype_flow", UX, "PRO", "Prototype interaction", (
+        Field("from_screen", "text", required=True), Field("to_screen", "text", required=True),
+        Field("trigger", "text", required=True), Field("notes", "text"),
+    )),
+    Kind("design_finding", UX, "DF", "Design review finding", (
+        Field("finding", "text", required=True),
+        Field("severity", "enum", required=True, choices=("blocking", "major", "minor")),
+        Field("affects", "text"), Field("recommendation", "text"),
     )),
     Kind("process_flow", BA, "PF", "Process flow", (
         Field("flow_type", "enum", required=True, choices=("as_is", "to_be", "user_workflow", "decision")),
@@ -130,7 +245,19 @@ def example(kind: Kind) -> dict[str, Any]:
             out[f.name] = 1
         elif f.type == "text":
             out[f.name] = f"<{f.name.replace('_', ' ')}>"
+        elif f.type == "json" and f.name in JSON_EXAMPLES:
+            out[f.name] = JSON_EXAMPLES[f.name]
     return out
+
+
+# The shape of each structured field, for the AI's instructions (only fields the AI is expected to write).
+JSON_EXAMPLES: dict[str, Any] = {
+    "attributes": [{"name": "<attribute>", "type": "<text/number/date/boolean>", "key": "<pk/fk/none>",
+                    "nullable": False, "references": "<entity, for a foreign key>"}],
+    "sections": [{"heading": "<section heading>", "content": "<section text>"}],
+    "request_schema": {"<field>": "<type>"},
+    "response_schema": {"<field>": "<type>"},
+}
 
 
 def describe() -> list[dict[str, Any]]:

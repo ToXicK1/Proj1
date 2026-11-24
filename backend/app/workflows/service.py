@@ -565,6 +565,12 @@ def _finish_run(db: Session, *, execution_id: uuid.UUID, stage_key: str, spec: d
         _note_result(spec, result)
         db.commit()
         return result
+    if spec.get("assemble"):  # BRD and SRS drafts from the approved records become part of what is reviewed
+        from app.work import documents
+
+        output = {**output, "documents": documents.assemble(
+            db, project=db.get(Project, execution.project_id), stage_execution_id=stage.id,
+            execution_id=execution.id, doc_types=list(spec["assemble"]))}
     transition_stage(db, execution_id=execution_id, stage_key=stage_key, to_status=StageStatus.AI_COMPLETED,
                      actor=ActorType.SYSTEM, output=output, commit=False)
     if lead_sink:

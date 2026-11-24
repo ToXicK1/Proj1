@@ -310,3 +310,35 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - Steps now name the lists that may not be empty: requirements, user stories and stakeholders (`records_min`, checked by the compiler). A reply without enough usable items gets the standard repair request saying exactly what is needed. If the model still does not comply, the step stops; it is never approved empty.
   - The same model still returned empty lists when told only the field names. Every record list's instructions, and the repair request, now carry one example entry with placeholders. With it, the model wrote real requirements. Entries that copy the placeholders instead of writing content are never turned into records.
 - Lists that may honestly be empty (open questions, assumptions, risks, review findings) stay optional. In the passing run Intake Review and Requirements Review produced none.
+
+## 2026-11-23 — Step 7.2a: Solution Architect and UI/UX Designer departments
+
+- **Record kinds** (29 in all now, each with its own key prefix and field checks):
+  - *Architect:* architecture drivers, components, architecture diagrams, data entities (attributes with keys and references), API endpoints (method, path, request and response shapes, auth, errors, rate limit), architecture decisions (ADRs), security controls, proposed infrastructure resources, technical risks, architecture documents, review findings.
+  - *Designer:* personas, research notes, site map entries, user journeys, screens (purpose, sections, states, responsive notes, and a layout for the canvas in 7.2c), design tokens, UI components, prototype interactions, review findings.
+- **Lifecycles:**
+  - *Architect (10 steps):* Requirements Analysis, System Decomposition, Technology Selection, Data Architecture, API and Integration, Security and Infrastructure, Architecture Documentation, Independent Review, Human Review, User Review.
+  - *Designer (9):* Design Discovery, Information Architecture, User Journey Mapping, Wireframes, Visual Design, Prototype and UI Specs, Independent Review, Human Review, User Design Review and Approval. The listed "User Design Review" and "Design Approval" are one owner-input step, as for the BA.
+  - Every AI step names the lists that may not be empty. The Visual Design brief keeps the platform's colours (RD-11).
+- **New preview scope** *"the department lifecycle so far"* (27 steps, parallel execution):
+  - the BA department first;
+  - the Architect and Designer then both start from the BA's approved User Review, run side by side, and each read the BA's approved requirements, stories and scope (RD-13);
+  - the BA-only preview is unchanged.
+- **Workspaces:** 19 Architect and Designer modules now open their record screens (search, edit, versions, links, comments, packages). Architecture diagrams use the diagram editor and documents use the section editor; entity attributes and API shapes are edited as JSON until their own editors arrive (7.2b). The design canvas, design versions and Figma stay labelled for 7.2c and 7.2d.
+- **AI instructions** now give example shapes for structured fields (entity attributes, document sections, request and response shapes).
+- **Fix:** allowed values are matched case-insensitively, so `post` becomes `POST` as well as `Functional` becoming `functional`.
+
+## 2026-11-23 — BRD and SRS drafts for the BA department
+
+- **Why:** the BA workspace had a "BRD / SRS Documents" module, but the BA lifecycle never produced a BRD or SRS. It turned the AI's work into separate requirements, stories, stakeholders and risks, and nothing assembled them into documents.
+- **What now happens:** when Human Professional Review gathers the department's work, the platform assembles both documents from the department's *approved* records. No AI is involved, so the content is exactly what was approved (`app/work/documents.py`).
+  - **BRD:** purpose and business problem (the approved intake summary), stakeholders, business requirements, scope (in and out of scope, first release, success measures), assumptions, risks, and open questions with their answers.
+  - **SRS:** introduction, functional requirements with priority and acceptance criteria, non-functional requirements, constraints, user stories with acceptance criteria, and traceability (each requirement and the records linked to it).
+  - Every line names its record and version (`REQ-003 v2`).
+- **Governance:**
+  - The drafts' exact versions are part of the review step's content, so the professional's approval of the review covers them.
+  - They are a new kind of record version, a *platform draft* (`system_draft`, author "Platform"). A person confirms or edits one before it can go into a package, as for AI suggestions, and nobody can create a platform draft through the API.
+- **After a send-back** the drafts are re-assembled from the newly approved records. A draft the professional has edited is never overwritten: it is kept, the activity log says so, and the review lists it as "your edited version, kept".
+- **In the workspace:** the drafts appear in *BRD / SRS Documents* as documents with sections, Markdown export and a "Confirm draft" button. The Human Professional Review step lists them.
+- Migration `0025_system_drafts` (check constraints for the new provenance and the platform author).
+- **Your main stack was out of date:** it was still the 20 November build, before any workspace work. It has been rebuilt from the current code, keeping its data. Projects created before the department lifecycle use the older lifecycles, so their BA workspaces start empty. New projects choose the department preview at intake.

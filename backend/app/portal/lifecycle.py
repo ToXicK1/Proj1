@@ -20,9 +20,14 @@ from app.organizations.service import require_org_admin
 from app.providers.models import ModelRoute
 
 SCOPES = ("enterprise", "feature", "mvp", "poc", "bugfix", "refactor", "infra", "security-patch", "classic",
-          "workshop", "express", "ba-department")
+          "workshop", "express", "ba-department", "departments")
 # Department lifecycles (RD-1, Phase 7). Previews until all six are built (RD-14): never the default.
-DEPARTMENT_SCOPES = {"ba-department": "business_analyst"}
+# Each scope lists departments in order; a department after the first starts from the first department's approved
+# package, so the Solution Architect and UI/UX Designer run in parallel (RD-13).
+DEPARTMENT_SCOPES: dict[str, tuple[str, ...]] = {
+    "ba-department": ("business_analyst",),
+    "departments": ("business_analyst", "solution_architect", "ui_ux_designer"),
+}
 SCOPE_LABELS = {
     "enterprise": "Enterprise: everything, with the most detail", "feature": "New product or feature: full lifecycle",
     "mvp": "Minimum viable product: no operations phase", "poc": "Proof of concept: fastest route to code",
@@ -30,6 +35,8 @@ SCOPE_LABELS = {
     "security-patch": "Security patch", "classic": "Requirements to tested code",
     "workshop": "Workshop: full walkthrough", "express": "Express: small change, then ship",
     "ba-department": "Preview: the Business Analyst department lifecycle only (the other departments follow)",
+    "departments": "Preview: the department lifecycle so far (Business Analyst, then Solution Architect and UI/UX "
+                   "Designer in parallel)",
 }
 DEFAULT_SCOPE = "feature"
 PHASES = ("Initialization", "Ideation", "Inception", "Construction", "Operation", "Business Analysis")
@@ -67,6 +74,7 @@ class Stage:
     records_min: tuple[tuple[str, int], ...] = ()  # record lists that may not come back empty
     owner_visible: bool | None = None  # default: the owner sees AI steps
     owner_input: bool = False  # the owner gives input before the professional's final approval (RD-2)
+    assemble: tuple[str, ...] = ()  # documents the platform drafts from approved records at this review step
 
     @property
     def gated(self) -> bool:
@@ -189,12 +197,86 @@ BA_STAGES: tuple[Stage, ...] = (
           "You advise; you never approve.",
           ("verdict", "findings"), NONE, records=(("findings", "review_finding"),), owner_visible=False),
     Stage("ba_professional_review", "B.7", _BA, "Human Professional Review", BA, "", ("package",), NONE,
-          work="department_review", owner_visible=False),
+          work="department_review", owner_visible=False, assemble=("brd", "srs")),
     Stage("ba_user_review", "B.8", _BA, "User Review and Approval", BA, "", ("package",), NONE,
           work="owner_review", owner_visible=True, owner_input=True),
 )
-DEPARTMENT_STAGES: dict[str, tuple[Stage, ...]] = {"business_analyst": BA_STAGES}
-STAGES = STAGES + BA_STAGES
+_SA, _UX = "Solution Architecture", "UI/UX Design"
+SA_STAGES: tuple[Stage, ...] = (
+    Stage("sa_requirements_analysis", "S.1", _SA, "Requirements Analysis", SA,
+          "Read the approved Business Analyst package. List the architecture drivers: the quality attributes, "
+          "constraints and key functions that shape the design, each traced to a requirement.",
+          ("summary", "drivers"), NONE, records=(("drivers", "architecture_driver"),), records_min=(("drivers", 1),)),
+    Stage("sa_decomposition", "S.2", _SA, "System Decomposition", SA,
+          "Split the system into components with clear responsibilities and interfaces.",
+          ("components", "notes"), NONE, records=(("components", "component"),), records_min=(("components", 1),)),
+    Stage("sa_technology", "S.3", _SA, "Technology Selection", SA,
+          "Choose the technologies, each as an architecture decision with its context, the alternatives considered "
+          "and the consequences.", ("decisions",), NONE, records=(("decisions", "adr"),),
+          records_min=(("decisions", 1),)),
+    Stage("sa_data", "S.4", _SA, "Data Architecture", SA,
+          "Design the data model: entities with their attributes, keys and relationships, and why.",
+          ("entities",), NONE, records=(("entities", "data_entity"),), records_min=(("entities", 1),)),
+    Stage("sa_api", "S.5", _SA, "API and Integration", SA,
+          "Define the API endpoints and external integrations, with request and response shapes, authentication "
+          "and errors.", ("endpoints",), NONE, records=(("endpoints", "api_endpoint"),),
+          records_min=(("endpoints", 1),)),
+    Stage("sa_security_infra", "S.6", _SA, "Security and Infrastructure", SA,
+          "Set out the security controls (authentication, authorization, trust boundaries, data protection) and the "
+          "proposed infrastructure, and the technical risks. Nothing is provisioned: this is a design.",
+          ("controls", "resources", "risks"), NONE,
+          records=(("controls", "security_control"), ("resources", "infra_resource"), ("risks", "tech_risk")),
+          records_min=(("controls", 1),)),
+    Stage("sa_documentation", "S.7", _SA, "Architecture Documentation", SA,
+          "Write the architecture document from the approved work: overview, components, data, interfaces, "
+          "security, infrastructure and decisions.", ("documents",), NONE,
+          records=(("documents", "architecture_document"),), records_min=(("documents", 1),)),
+    Stage("sa_review", "S.8", _SA, "Independent Review", SA,
+          "Independently review the architecture as a whole against the requirements: coverage, scalability, "
+          "security, maintainability and operational feasibility. Report findings with severity. You advise; you "
+          "never approve.", ("verdict", "findings"), NONE, records=(("findings", "architecture_finding"),),
+          owner_visible=False),
+    Stage("sa_professional_review", "S.9", _SA, "Human Review", SA, "", ("package",), NONE,
+          work="department_review", owner_visible=False),
+    Stage("sa_user_review", "S.10", _SA, "User Review", SA, "", ("package",), NONE,
+          work="owner_review", owner_visible=True, owner_input=True),
+)
+UX_STAGES: tuple[Stage, ...] = (
+    Stage("ux_discovery", "U.1", _UX, "Design Discovery", UX,
+          "From the approved Business Analyst package, describe the personas and what is known about how they "
+          "work. Mark anything not stated as unconfirmed.", ("personas", "research"), NONE,
+          records=(("personas", "persona"), ("research", "research_note")), records_min=(("personas", 1),)),
+    Stage("ux_ia", "U.2", _UX, "Information Architecture", UX,
+          "Lay out the site map: the screens and sections, what each is for and how they nest.",
+          ("site_map",), NONE, records=(("site_map", "ia_node"),), records_min=(("site_map", 1),)),
+    Stage("ux_journeys", "U.3", _UX, "User Journey Mapping", UX,
+          "Map the main journeys step by step for each persona, with their pain points.",
+          ("journeys",), NONE, records=(("journeys", "user_journey"),), records_min=(("journeys", 1),)),
+    Stage("ux_wireframes", "U.4", _UX, "Wireframes", UX,
+          "Describe each screen as a wireframe: its purpose, its sections from top to bottom, and its loading, empty "
+          "and error states.", ("screens",), NONE, records=(("screens", "screen"),), records_min=(("screens", 1),)),
+    Stage("ux_visual", "U.5", _UX, "Visual Design", UX,
+          "Propose the design tokens and the reusable components. Keep the platform's colours: forest green as the "
+          "identity, beige surfaces, electric purple only for AI features; keep contrast accessible.",
+          ("tokens", "components"), NONE, records=(("tokens", "design_token"), ("components", "ui_component")),
+          records_min=(("components", 1),)),
+    Stage("ux_prototype", "U.6", _UX, "Prototype and UI Specs", UX,
+          "Define how the screens connect: for each interaction, the screen it starts on, what triggers it and "
+          "where it leads.", ("flows",), NONE, records=(("flows", "prototype_flow"),), records_min=(("flows", 1),)),
+    Stage("ux_review", "U.7", _UX, "Independent Review", UX,
+          "Independently review the design as a whole: unnecessary steps, missing states, accessibility, "
+          "consistency with the requirements. Report findings with severity. You advise; you never approve.",
+          ("verdict", "findings"), NONE, records=(("findings", "design_finding"),), owner_visible=False),
+    Stage("ux_professional_review", "U.8", _UX, "Human Review", UX, "", ("package",), NONE,
+          work="department_review", owner_visible=False),
+    Stage("ux_user_review", "U.9", _UX, "User Design Review and Approval", UX, "", ("package",), NONE,
+          work="owner_review", owner_visible=True, owner_input=True),
+)
+DEPARTMENT_STAGES: dict[str, tuple[Stage, ...]] = {"business_analyst": BA_STAGES, "solution_architect": SA_STAGES,
+                                                   "ui_ux_designer": UX_STAGES}
+# What a later department reads from the first one's approved work, most important first.
+CROSS_READS = ("ba_requirements", "ba_user_stories", "ba_scope", "ba_discovery", "ba_intake_review")
+STAGES = STAGES + BA_STAGES + SA_STAGES + UX_STAGES
 BY_STAGE = {s.id: s for s in STAGES}
 
 # The approved earlier work each step needs, most important first. Steps not listed get their nearest earlier work.
@@ -255,7 +337,8 @@ def _record_format(stage: Stage) -> str:
         kind = KINDS[kind_key]
         fields = ", ".join(f"{f.name}{' (required)' if f.required else ''}"
                            + (f" one of {'/'.join(f.choices)}" if f.choices else "")
-                           + (" as a list of texts" if f.type == "list" else "") for f in kind.fields)
+                           + (" as a list of texts" if f.type == "list" else "")
+                           + (" as JSON" if f.type == "json" else "") for f in kind.fields)
         need = dict(stage.records_min).get(key)
         import json
 
@@ -268,13 +351,27 @@ def _record_format(stage: Stage) -> str:
     return " ".join(parts)
 
 
-def department_spec(department: str) -> dict[str, Any]:
-    """A department's own lifecycle (Phase 7): its steps in order, each reading the department's earlier work."""
-    chosen = list(DEPARTMENT_STAGES[department])
+def department_spec(scope: str) -> dict[str, Any]:
+    """The department lifecycle (Phase 7): each department's steps in order, each reading that department's earlier
+    work. Departments after the first start from the first one's approved package and run in parallel (RD-13)."""
+    departments = DEPARTMENT_SCOPES[scope]
+    out: list[dict[str, Any]] = []
+    first = DEPARTMENT_STAGES[departments[0]]
+    for department in departments:
+        out += _department_steps(DEPARTMENT_STAGES[department],
+                                 after=None if department == departments[0] else first[-1].id,
+                                 cross=() if department == departments[0] else CROSS_READS)
+    titles = ", ".join(BY_PROFILE[d].title for d in departments)
+    return {"key": template_key(scope), "name": f"AI-DLC departments (preview): {titles}",
+            "execution": "parallel" if len(departments) > 1 else "sequential", "stages": out}
+
+
+def _department_steps(chosen: tuple[Stage, ...], *, after: str | None, cross: tuple[str, ...]) -> list[dict[str, Any]]:
     out = []
     for index, stage in enumerate(chosen):
         item: dict[str, Any] = {
-            "id": stage.id, "name": stage.name, "depends_on": [chosen[index - 1].id] if index else [],
+            "id": stage.id, "name": stage.name,
+            "depends_on": [chosen[index - 1].id] if index else ([after] if after else []),
             "work": stage.work, "output_required_keys": list(stage.keys), "profile": stage.profile,
             "human_gate": stage.human_gate, "protected": True, "mandatory": not stage.gated,
             "owner_visible": stage.gated if stage.owner_visible is None else stage.owner_visible,
@@ -282,27 +379,27 @@ def department_spec(department: str) -> dict[str, Any]:
             "sensors": [{"key": "secret_detection", "mandatory": True, "config": {}}],
         }
         earlier = [c.id for c in chosen[:index]]
-        if earlier:
-            item["reads"] = list(reversed(earlier))[:20]
+        if earlier or cross:
+            item["reads"] = (list(reversed(earlier)) + list(cross))[:20]
         if stage.records:
             item["records"] = dict(stage.records)
         if stage.records_min:
             item["records_min"] = dict(stage.records_min)
         if stage.owner_input:
             item["owner_input"] = True
+        if stage.assemble:
+            item["assemble"] = list(stage.assemble)
         if stage.gated:
             item |= {"agent": lead_key(stage), "reviewer": reviewer_key(stage.profile)}
-            if stage.id == "ba_requirements_review":
+            if "review" in stage.id:
                 item.pop("reviewer")  # it is the review; nobody reviews the reviewer's advice but the professional
         out.append(item)
-    return {"key": template_key(next(k for k, v in DEPARTMENT_SCOPES.items() if v == department)),
-            "name": f"AI-DLC: {BY_PROFILE[department].title} department (preview)", "execution": "sequential",
-            "stages": out}
+    return out
 
 
 def workflow_spec(scope: str) -> dict[str, Any]:
     if scope in DEPARTMENT_SCOPES:
-        return department_spec(DEPARTMENT_SCOPES[scope])
+        return department_spec(scope)
     chosen = [s for s in STAGES if s.in_scope(scope)]
     out = []
     for index, stage in enumerate(chosen):

@@ -191,3 +191,31 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
     - no open questions, assumptions or review findings.
   - The spec now fails if Requirements Analysis has no records.
 - **Backend:** full suite 511 tests: 506 passed, 5 skipped, before the example change. After it, the 32 tests in the affected files passed (`test_ba_lifecycle.py`, including new tests for empty lists and copied placeholders, `test_stage_records.py`, `test_assistant.py` and `test_portal.py`).
+
+## 2026-11-23 — Step 7.2a
+
+- **`tests/test_departments.py` (2), both passed:**
+  - A project runs the BA's 8 steps; both the Architect's and the Designer's first steps then wait at the same time.
+  - The two departments are decided step by step, interleaved: 19 steps, with records of 17 kinds confirmed and approved through packages, both owner-input steps answered, and the workflow completed.
+  - The Designer reads the BA's work and not the Architect's.
+  - Another department cannot see or submit a department's steps.
+- **Bug found and fixed:** HTTP methods from the AI were lower-cased and then rejected, because the normalizer only knew lower-case values.
+- **The lifecycle registry test** now counts 33 standard steps plus 8 BA, 10 Architect and 9 Designer steps.
+
+## 2026-11-23 — BRD and SRS drafts
+
+- **`tests/test_ba_documents.py` (3), all passed:**
+  - Both drafts are assembled from the approved records, and each line names its record and version, with acceptance criteria, stakeholders and risks.
+  - Versions are authored by the platform; the exact draft versions are inside the review step's content.
+  - A draft must be confirmed before packaging, and a person cannot create a platform draft.
+  - After a send-back the BRD is refreshed and the analyst's edited SRS is kept and flagged.
+- **Bugs found and fixed:**
+  - A version was read back before it was flushed, which left the review step stuck.
+  - Two places read the oldest version of a deliverable as if it were the newest (one in the Steps screen).
+- **Migration 0025:** no drift; downgrade and re-upgrade succeed. Frontend typecheck, build and 17 unit tests passed.
+- **Backend full suite** (7.2a plus the BRD and SRS drafts): 517 tests: 511 passed, 5 skipped, 1 error. The error was in one test's setup: a session timed out while the machine slept overnight. That file passed when rerun (3 of 3).
+- **Frontend:** a new unit test for the Lifecycle steps polling (it refreshes while the AI works and shows the step when it is the professional's turn); 18 unit tests passed.
+- **Browser (isolated stack, mock model), each on a fresh stack:**
+  - `ba-department.spec.ts` is extended: the analyst works all six AI steps through the UI, the Human Professional Review lists the BRD and SRS, and the BRD opens in BRD / SRS Documents with its sections, Markdown export and "Confirm draft". It passed.
+  - Shared `collab.spec.ts` and `lifecycle.spec.ts` passed; personal 19 passed.
+  - One earlier attempt failed because the operating system suspended networking mid-run (`ERR_NETWORK_IO_SUSPENDED` in the trace); the rerun passed.

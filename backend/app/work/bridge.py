@@ -28,7 +28,8 @@ MAX_PER_STEP = 60
 def _normal(field: Any, value: Any) -> Any:
     if field.type == "enum" and isinstance(value, str):
         candidate = value.strip().lower().replace("-", "_").replace(" ", "_")
-        return candidate if candidate in field.choices else value
+        match = next((c for c in field.choices if c.lower() == candidate), None)  # GET as well as functional
+        return match if match is not None else value
     if field.type == "list" and isinstance(value, str):
         return [line.strip("-• ").strip() for line in value.splitlines() if line.strip()]
     return value

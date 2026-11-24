@@ -220,3 +220,15 @@ The Figma and GitHub connections are built in the Designer (7.2) and Developer (
 | 7.1b | The 8-stage BA department lifecycle template with the new step kinds: `ai_review` (independent review of the whole department's work), `review_aggregate` (Human Professional Review of the package) and `owner_input` (User Review and Approval, RD-2) |
 | 7.1c | Workspace UI: step reviews inside the workspace, the document section editor, the process-flow diagram editor, Scope & Priorities, Change Requests, and the AI assistant panel |
 | 7.1d | Live run of the BA department on the real model (the Phase 7 exit check) |
+
+## 11. Step 7.2 in slices (2026-11-23)
+
+| Slice | Content |
+|---|---|
+| 7.2a | Record kinds for the Solution Architect and UI/UX Designer. Their lifecycles (Architect 10 steps, Designer 9). A preview template with all built departments: BA first, then Architect and Designer in parallel from the approved BA package (RD-13). Every Architect and Designer workspace module that a record kind can serve becomes real |
+| 7.2b | Architect studio: typed diagram shapes (service, database, queue, external system, trust boundary), the database designer (entities, keys, relationships, ER view, SQL export), the API workspace (OpenAPI 3.1 import and export) |
+| 7.2c | Design canvas: frames, element tree, device viewports, layers, properties and tokens, rendered as real HTML. Prototypes linking screens. Feedback pinned to a position on an exact screen version |
+| 7.2d | Figma: link and version Figma files (needs your Figma account and an OAuth app you create, connected with your authorization) |
+| 7.2e | Live run of the Architect and Designer departments on the real model |
+
+The Designer's last two listed steps ("User Design Review", "Design Approval") become one owner-input step, as for the BA: the owner gives input, then the professional gives the final approval. The owner never approves (RD-2).

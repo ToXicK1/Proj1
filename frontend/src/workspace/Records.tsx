@@ -209,14 +209,15 @@ function JsonField({ label, value, onChange }: { label: string; value: unknown; 
 function RecordForm({ kinds, initial, onSave, onCancel }: {
   kinds: KindDto[];
   initial?: { kind: string; title: string; body: Record<string, unknown>; provenance: Provenance };
-  onSave: (kind: string, title: string, body: Record<string, unknown>, provenance: Exclude<Provenance, "ai_suggestion">) => Promise<void>;
+  onSave: (kind: string, title: string, body: Record<string, unknown>, provenance: Exclude<Provenance, "ai_suggestion" | "system_draft">) => Promise<void>;
   onCancel: () => void;
 }) {
   const [kind, setKind] = useState(initial?.kind ?? kinds[0]?.key ?? "");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [body, setBody] = useState<Record<string, unknown>>(initial?.body ?? {});
-  const [provenance, setProvenance] = useState<Exclude<Provenance, "ai_suggestion">>(
-    initial?.provenance && initial.provenance !== "ai_suggestion" ? initial.provenance : "confirmed");
+  const [provenance, setProvenance] = useState<Exclude<Provenance, "ai_suggestion" | "system_draft">>(
+    initial?.provenance && initial.provenance !== "ai_suggestion" && initial.provenance !== "system_draft"
+      ? initial.provenance : "confirmed");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const def = kinds.find((k) => k.key === kind);
@@ -326,10 +327,10 @@ export function RecordDetail({ projectId, itemId, kinds, onChange }: {
       {item.can_edit && !editing && (
         <div className="actions">
           <button type="button" onClick={() => setEditing(true)} disabled={item.status === "archived"}>Edit</button>
-          {item.provenance === "ai_suggestion" && (
+          {(item.provenance === "ai_suggestion" || item.provenance === "system_draft") && (
             <button type="button" onClick={() => act(() => workApi.edit(projectId, item.id, {
               expected_version: item.latest_version, provenance: "confirmed", reason: "confirmed by a professional" }))}>
-              Confirm suggestion</button>
+              {item.provenance === "system_draft" ? "Confirm draft" : "Confirm suggestion"}</button>
           )}
           {item.kind === "document" && (
             <button type="button" className="secondary" onClick={() => {
@@ -373,6 +374,7 @@ export function RecordDetail({ projectId, itemId, kinds, onChange }: {
             {[...item.versions].reverse().map((v) => (
               <li key={v.id} className="row">
                 <span>v{v.number} · {v.author_type === "ai" ? <IdentityTag kind="ai">{v.author ?? "AI"}</IdentityTag>
+                  : v.author_type === "system" ? <IdentityTag kind="system">Platform</IdentityTag>
                   : <IdentityTag kind="human">{v.author ?? "Someone"}</IdentityTag>} · {v.reason}
                   <span className="muted small"> · {new Date(v.created_at).toLocaleString()}</span></span>
                 {v.number !== item.version && (

@@ -168,10 +168,11 @@ def env(client, engine, settings, box):
 
 
 def test_every_scope_is_a_valid_workflow_matching_the_lifecycle():
-    from app.portal.lifecycle import BA_STAGES, DEPARTMENT_SCOPES
+    from app.portal.lifecycle import BA_STAGES, DEPARTMENT_SCOPES, DEPARTMENT_STAGES
 
-    aws = [s for s in STAGES if s not in BA_STAGES]
-    assert len(aws) == 33 and len({s.id for s in STAGES}) == 33 + len(BA_STAGES) == 41
+    departmental = [st for steps in DEPARTMENT_STAGES.values() for st in steps]
+    aws = [s for s in STAGES if s not in departmental]
+    assert len(aws) == 33 and len({s.id for s in STAGES}) == 33 + len(departmental) == 33 + 8 + 10 + 9
     counts = {}
     for scope in [s for s in SCOPES if s not in DEPARTMENT_SCOPES]:
         compiled = compile_workflow(workflow_spec(scope), known_work=set(KNOWN_WORK))

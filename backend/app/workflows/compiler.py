@@ -57,6 +57,8 @@ class StageSpec(_Strict):
     records: dict[str, str] = Field(default_factory=dict, max_length=10)
     # Record lists that may not be empty: the AI is asked again until it gives at least this many usable items.
     records_min: dict[str, int] = Field(default_factory=dict, max_length=10)
+    # Documents the platform assembles from the department's approved records when this review step runs.
+    assemble: list[Literal["brd", "srs"]] = Field(default_factory=list, max_length=2)
     # The owner gives input on the stage's work before the professional decides (RD-2). The owner never approves.
     owner_input: bool = False
     # Support specialists that contribute advisory notes before the lead works (each recorded on its own)
@@ -170,6 +172,8 @@ def compile_workflow(raw: dict[str, Any], known_work: set[str]) -> CompiledWorkf
             if stage.sandbox:
                 problems.append(f"stages[{i}].condition: a stage whose code is built and tested cannot be skipped")
             problems += conditions.problems(stage.condition, _upstream(stage.id, graph), f"stages[{i}].condition")
+        if stage.assemble and stage.work != "department_review":
+            problems.append(f"stages[{i}].assemble: only a department review step assembles documents")
         if stage.owner_input and not (stage.human_gate and stage.owner_visible):
             problems.append(f"stages[{i}].owner_input: needs a human gate and must be visible to the owner")
         if stage.records:

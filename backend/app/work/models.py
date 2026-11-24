@@ -23,7 +23,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 
-PROVENANCE = ("confirmed", "assumption", "ai_suggestion", "open_question")
+# system_draft: assembled by the platform from approved records (a BRD or SRS draft), never by the AI.
+PROVENANCE = ("confirmed", "assumption", "ai_suggestion", "open_question", "system_draft")
 ITEM_STATUS = ("draft", "in_review", "approved", "changes_requested", "archived")
 
 
@@ -60,7 +61,7 @@ class WorkItemVersion(Base):
     __tablename__ = "work_item_versions"
     __table_args__ = (
         UniqueConstraint("item_id", "number", name="uq_work_item_version"),
-        CheckConstraint("author_type in ('human','ai')", name="author_type_valid"),
+        CheckConstraint("author_type in ('human','ai','system')", name="author_type_valid"),
         CheckConstraint(f"provenance in {PROVENANCE}", name="provenance_valid"),
     )
 

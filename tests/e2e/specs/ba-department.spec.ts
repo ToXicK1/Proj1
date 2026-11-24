@@ -84,4 +84,41 @@ test("the analyst works the BA department's first step in the workspace", async 
   await expect(analyst.getByRole("table", { name: "Records" })).toContainText("Example open questions");
   await owner.goto(`${projectUrl}/work/ba?m=discovery`);
   await expect(owner.getByRole("alert")).toContainText("professional team", LONG);
+
+  // The rest of the BA steps, the same way, then the review with the platform's BRD and SRS drafts.
+  let packages = 1;
+  for (const name of ["Discovery", "Requirements Analysis", "User Story Development", "Scope Definition",
+    "Requirements Review"]) {
+    await analyst.goto(`${projectUrl}/work/ba?m=steps`);
+    const step = analyst.getByRole("listitem", { name, exact: true });
+    await expect(step).toContainText("Awaiting approval", LONG);
+    const confirm = step.getByRole("button", { name: /^Confirm \d+ suggestions? as written$/ });
+    if (await confirm.count()) {
+      await confirm.click();
+      await expect(analyst.getByRole("status")).toContainText("confirmed as written");
+    }
+    await step.getByRole("button", { name: "Submit step package" }).click();
+    await expect(analyst.getByRole("status")).toContainText("Package submitted");
+    packages += 1;
+    await analyst.goto(`${projectUrl}/work/ba?m=reviews`);
+    const decision = analyst.getByRole("region", { name: `Package ${packages}`, exact: true });
+    await decision.getByRole("button", { name: "Approve" }).click();
+    await expect(decision).toContainText("Approved");
+  }
+  await analyst.goto(`${projectUrl}/work/ba?m=steps`);
+  const review = analyst.getByRole("listitem", { name: "Human Professional Review", exact: true });
+  await expect(review).toContainText("Awaiting approval", LONG);
+  await expect(review).toContainText("Business Requirements Document (BRD)");
+  await expect(review).toContainText("Software Requirements Specification (SRS)");
+
+  // The BRD is a real, readable document built from the approved records.
+  await analyst.goto(`${projectUrl}/work/ba?m=documents`);
+  const documents = analyst.getByRole("table", { name: "Records" });
+  await expect(documents).toContainText("Platform draft");
+  await documents.getByRole("button", { name: /^DOC-/ }).first().click();
+  const doc = analyst.getByRole("complementary", { name: /^Record DOC-/ });
+  await expect(doc).toContainText("Purpose and business problem");
+  await expect(doc).toContainText("Stakeholders");
+  await expect(doc.getByRole("button", { name: "Export as Markdown" })).toBeVisible();
+  await expect(doc.getByRole("button", { name: "Confirm draft" })).toBeVisible();
 });

@@ -39,6 +39,8 @@ from app.work.models import (
 )
 
 ELEVATED = ("admin", "manager")
+PLATFORM = "platform"  # the author of assembled drafts: deterministic, from approved records, not the AI
+NEEDS_CONFIRMING = ("ai_suggestion", "open_question", "system_draft")
 
 
 # Access ------------------------------------------------------------------------------------------------------------
@@ -109,7 +111,7 @@ def _add_version(db: Session, item: WorkItem, *, title: str, body: dict, provena
                  agent: str | None, reason: str, sources: list) -> WorkItemVersion:
     version = WorkItemVersion(id=uuid7(), item_id=item.id, number=item.current_version + 1, title=title, body=body,
                               provenance=provenance, sha256=_sha(title, body, provenance),
-                              author_type="human" if author else "ai",
+                              author_type="human" if author else "system" if agent == PLATFORM else "ai",
                               author_user_id=author.id if author else None, author_agent=agent,
                               reason=reason[:500], sources=sources)
     db.add(version)
@@ -137,8 +139,8 @@ def create(db: Session, user: User, project_id: uuid.UUID, department: str, *, k
     project, _ = _scope(db, user, project_id)
     _require_editor(db, user, project, _department(department))
     clean = _checked(kind, department, title, body, provenance)
-    if provenance == "ai_suggestion":
-        raise AppError(422, "invalid_provenance", "Only the AI proposes suggestions")
+    if provenance in ("ai_suggestion", "system_draft"):
+        raise AppError(422, "invalid_provenance", "Only the AI proposes suggestions and only the platform drafts")
     item = WorkItem(id=uuid7(), organization_id=project.organization_id, project_id=project.id,
                     department=department, kind=kind, key=_next_key(db, project.id, KINDS[kind].prefix),
                     title=title.strip(), status="draft", provenance=provenance, owner_user_id=user.id)
@@ -188,9 +190,10 @@ def update(db: Session, user: User, project_id: uuid.UUID, item_id: uuid.UUID, *
     if item.current_version != expected_version:
         raise AppError(409, "version_conflict", f"Someone saved version {item.current_version} first; reload it")
     current = db.get(WorkItemVersion, item.current_version_id)
-    new_provenance = provenance or ("confirmed" if current.provenance == "ai_suggestion" else current.provenance)
-    if new_provenance == "ai_suggestion":
-        raise AppError(422, "invalid_provenance", "Only the AI proposes suggestions")
+    new_provenance = provenance or ("confirmed" if current.provenance in ("ai_suggestion", "system_draft")
+                                    else current.provenance)
+    if new_provenance in ("ai_suggestion", "system_draft"):
+        raise AppError(422, "invalid_provenance", "Only the AI proposes suggestions and only the platform drafts")
     new_title = (title if title is not None else current.title).strip()
     clean = _checked(item.kind, item.department, new_title, body if body is not None else current.body,
                      new_provenance)
@@ -494,7 +497,7 @@ def submit_package(db: Session, user: User, project_id: uuid.UUID, department: s
             problems.append(f"{item.key} belongs to another department")
         elif item.status == "archived":
             problems.append(f"{item.key} is archived")
-        elif item.provenance in ("ai_suggestion", "open_question"):
+        elif item.provenance in NEEDS_CONFIRMING:
             problems.append(f"{item.key} is still {item.provenance.replace('_', ' ')}: confirm it first")
     if problems:
         raise AppError(422, "package_not_ready", "Some records cannot be submitted yet", problems=problems)
@@ -673,7 +676,7 @@ def counts(db: Session, project_id: uuid.UUID, department: str) -> dict[str, int
         WorkItem.status != "archived").group_by(WorkItem.status)).all())
     suggestions = db.execute(select(func.count()).select_from(WorkItem).where(
         WorkItem.project_id == project_id, WorkItem.department == department, WorkItem.status != "archived",
-        WorkItem.provenance.in_(("ai_suggestion", "open_question")))).scalar_one()
+        WorkItem.provenance.in_(NEEDS_CONFIRMING))).scalar_one()
     open_handoffs = db.execute(select(func.count()).select_from(Handoff).where(
         Handoff.project_id == project_id, Handoff.to_department == department, Handoff.status == "sent")).scalar_one()
     pending_packages = db.execute(select(func.count()).select_from(WorkPackage).where(

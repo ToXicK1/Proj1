@@ -101,11 +101,26 @@ export function Steps({ projectId, department }: { projectId: string; department
                 </>
               )}
 
+              {step.kind === "review" && deliverable && (() => {
+                const current = deliverable.versions.find((v) => v.id === deliverable.current_version_id) ?? deliverable.versions[0];
+                const docs = ((current?.content ?? {}) as { documents?: { key: string; title: string; version: number;
+                  kept_professional_edits: boolean }[] }).documents ?? [];
+                return docs.length > 0 && (
+                  <div className="stack-sm">
+                    <p className="small"><strong>Documents in this review</strong> (assembled by the platform from the approved
+                      records; open them in BRD / SRS Documents to read, edit or confirm):</p>
+                    <ul className="list small">{docs.map((d) => (
+                      <li key={d.key}><strong>{d.key}</strong> v{d.version} {d.title}
+                        {d.kept_professional_edits ? " · your edited version, kept" : ""}</li>
+                    ))}</ul>
+                  </div>
+                );
+              })()}
               {(step.kind === "review" || step.kind === "owner_input") && deliverable && (
                 <details>
                   <summary>What is in this step ({deliverable.versions.length} version{deliverable.versions.length === 1 ? "" : "s"})</summary>
                   <ul className="list small">
-                    {(((deliverable.versions.at(-1)?.content ?? {}) as { package?: { name: string; content: string }[] })
+                    {((((deliverable.versions.find((v) => v.id === deliverable.current_version_id) ?? deliverable.versions[0])?.content ?? {}) as { package?: { name: string; content: string }[] })
                       .package ?? []).map((p, i) => <li key={i}><strong>{p.name}</strong>: {String(p.content).slice(0, 400)}</li>)}
                   </ul>
                 </details>
