@@ -426,3 +426,15 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
 - **Workspace:**
   - **Project Brief:** assemble or re-assemble the brief, read or edit it, confirm it, submit it, approve it, and download it as Markdown.
   - **BA Handoff:** choose the approved brief and the kind of work, add a note for the BA, start, and see the handoffs and their replies.
+
+## 2026-11-25 — The PM's Tasks page
+
+- **A Tasks module in the PM workspace** (`GET /work/pm/tasks`). It is read-only and computed from what already exists. Each to-do opens the module where it is done.
+- **My to-dos:**
+  - The next step on the path to delivery: create the intake, validate it, assemble the brief, confirm it, submit it, approve it, hand it to the BA.
+  - PM packages waiting for a decision, marked when they need a second PM.
+  - AI suggestions to confirm.
+  - BA clarification requests, marked urgent.
+  - Handoffs sent to the PM, and open client feedback addressed to the PM.
+- **Department work:** every step of the current lifecycle with its department, status and approvers. "Needs attention" lists stopped steps and steps nobody is assigned to approve. The PM oversees; departments approve their own steps.
+- **Assigned tasks:** arrives with P6 (Task Allocation).

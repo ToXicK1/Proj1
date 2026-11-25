@@ -75,6 +75,14 @@ export interface BriefStatusDto {
   scopes: { key: string; label: string }[]; default_scope: string;
 }
 
+/** The PM's Tasks page. */
+export interface PmTasksDto {
+  todos: { kind: string; text: string; module: string; urgent: boolean }[];
+  departments: { started: boolean; attention: string[]; steps: { stage: string; number: string; name: string;
+    department: string; department_title: string; status: string; raw_status: string; people: string[]; note: string | null }[] };
+  assigned: { available: boolean; arrives_in: string };
+}
+
 export const workApi = {
   kinds: (p: string) => request<{ items: KindDto[] }>("GET", `${base(p)}/kinds`),
   team: (p: string) => request<{ departments: TeamCardDto[]; kind: string }>("GET", `${base(p)}/team`),
@@ -127,6 +135,7 @@ export const workApi = {
   clientForm: (p: string) =>
     request<{ answers: { field: string; label: string; value: string; tag: string | null }[]; status: string | null }>(
       "GET", `${base(p)}/client-form`),
+  pmTasks: (p: string) => request<PmTasksDto>("GET", `${base(p)}/pm/tasks`),
   brief: (p: string) => request<BriefStatusDto>("GET", `${base(p)}/brief`),
   assembleBrief: (p: string) => request<{ item: ItemDto; kept_pm_edits: boolean }>("POST", `${base(p)}/brief/assemble`),
   startFromBrief: (p: string, packageId: string, scope: string, note: string) =>

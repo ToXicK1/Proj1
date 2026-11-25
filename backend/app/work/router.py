@@ -317,6 +317,14 @@ def meeting_analyses(project_id: uuid.UUID, item_id: uuid.UUID, caller: CurrentC
     return {"items": pm_analysis.history(db, caller.user, project_id, item_id)}
 
 
+@router.get("/pm/tasks")
+def pm_tasks(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    """The PM's Tasks page: to-dos, every department's lifecycle work, and (P6) assigned tasks. Read-only."""
+    from app.work import pm_tasks as tasks
+
+    return tasks.overview(db, caller.user, project_id)
+
+
 @router.get("/brief")
 def brief_status(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
     from app.work import brief

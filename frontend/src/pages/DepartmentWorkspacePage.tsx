@@ -10,6 +10,7 @@ import { Handoffs, Later, Packages, Traceability } from "../workspace/Screens";
 import { Steps } from "../workspace/Steps";
 import { Intake } from "../workspace/Intake";
 import { MeetingAnalysis } from "../workspace/MeetingAnalysis";
+import { PmTasks } from "../workspace/PmTasks";
 import { BaHandoff, ProjectBrief } from "../workspace/ProjectBrief";
 import { ChangeRequests, ScopeBoard } from "../workspace/Scope";
 import { Assistant, SelectedRecord } from "../workspace/Assistant";
@@ -77,6 +78,7 @@ export function DepartmentWorkspacePage() {
           {current.screen === "steps" && <Steps projectId={projectId} department={department} />}
           {current.screen === "intake" && <Intake projectId={projectId} all={kinds} />}
           {current.screen === "analysis" && <MeetingAnalysis projectId={projectId} all={kinds} />}
+          {current.screen === "pm_tasks" && <PmTasks projectId={projectId} onOpen={(m) => setParams({ m })} />}
           {current.screen === "brief" && <ProjectBrief projectId={projectId} all={kinds} />}
           {current.screen === "ba_handoff" && <BaHandoff projectId={projectId} />}
           {current.screen === "scope" && <ScopeBoard projectId={projectId} department={department} />}

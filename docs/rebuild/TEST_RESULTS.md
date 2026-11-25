@@ -287,3 +287,13 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - The Approval list did not refresh after submitting, a real bug. It now reloads.
   - A case-sensitive check in the test.
 - **Frontend:** typecheck clean; 18 unit tests passed. Lint clean.
+
+## 2026-11-25 — The PM's Tasks page
+
+- **`tests/test_pm_tasks.py` (2), passed:**
+  - The to-dos follow the path from intake to handoff.
+  - Department work lists the BA's steps with the BA as approver.
+  - A clarification request appears as an urgent to-do.
+  - The client cannot read the page.
+- **The browser demo** on the managed test stack showed the three tabs working. It also found that the new module shared the key `tasks` with the Task Allocation placeholder, so both were highlighted; the new module is now `pm_tasks`.
+- Typecheck clean; 18 unit tests passed; lint clean.
