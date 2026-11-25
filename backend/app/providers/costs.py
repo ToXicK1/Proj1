@@ -149,7 +149,9 @@ def pause_for(kind: str, retry_after: float | None, now: datetime | None = None)
 
 
 def usd(micro: int | None) -> float | None:
-    return None if micro is None else round(micro / MICRO, 4)
+    """Micro-dollars to dollars, always a JSON number. SQL SUM() over integers returns a Decimal, which JSON would
+    send as text (and the Spend panel then failed to format it)."""
+    return None if micro is None else round(int(micro) / MICRO, 4)
 
 
 def describe_budget(state: BudgetState) -> dict[str, Any]:

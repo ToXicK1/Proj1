@@ -226,6 +226,11 @@ def test_out_of_credit_pauses_the_provider_and_later_runs_skip_it(client, engine
     listed = client.get(f"/api/v1/orgs/{org_id}/spend").json()
     paused = next(p for p in listed["providers"] if p["id"] == anth["id"])
     assert paused["paused"] and "credit" in paused["paused_reason"]
+    # Every amount is a JSON number: SQL sums are Decimals, which once arrived as text and broke the Spend panel.
+    assert listed["by_model"] and listed["by_project"]
+    amounts = [listed["spent_usd"], *(m["spent_usd"] for m in listed["by_model"]),
+               *(p["spent_usd"] for p in listed["by_project"])]
+    assert all(isinstance(a, (int, float)) and not isinstance(a, bool) for a in amounts), amounts
 
     r = client.post(f"/api/v1/orgs/{org_id}/providers/{anth['id']}/resume", headers={"X-CSRF-Token": csrf})
     assert r.status_code == 200 and r.json()["paused"] is False

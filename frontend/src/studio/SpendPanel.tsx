@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, type BudgetDto, type ModelRouteDto, type ProjectDto, type SpendDto } from "../api";
 import { Skeleton } from "../components/ui";
 
-const money = (usd: number) => `$${usd.toFixed(usd < 1 ? 4 : 2)}`;
+// Number(): amounts are numbers, but a text amount must never break the whole panel.
+const money = (usd: number | string) => { const n = Number(usd) || 0; return `$${n.toFixed(n < 1 ? 4 : 2)}`; };
 const ON_LIMIT: [BudgetDto["on_limit"], string][] = [
   ["pause", "Pause AI work until the limit is raised or the month ends"],
   ["free_only", "Keep going on free providers only (for example a local model)"],
