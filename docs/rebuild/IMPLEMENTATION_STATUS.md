@@ -484,3 +484,59 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - The PM starts it. An administrator may start it when the PM is not available, giving a reason: the start is audited as `started_by_administrator` with that reason, and the PM is notified.
 - **To-dos:** hold the kickoff (first), then the brief steps. "The brief is with the client" appears while waiting; the client's change note appears as an urgent to-do; the handoff appears only after the client approves.
 - **Self-service projects:** unchanged.
+
+## 2026-11-25 — Professional workspaces, Phase 1a: the executor (RD-30)
+
+- **Approved programme:** professional workspaces, Phases 1–9 (Developer IDE, QA, Architect, Designer, BA, DevOps, PM, then end-to-end). The old P6–P8 are on hold and fold into Phase 8. **Kept for Phase 6:** the client always sees the rendered BRD at the BRD baseline (found earlier; not built yet).
+- **`execution_jobs`** (migration `0031_execution_jobs`): one record per isolated execution, covering the kind, the inputs, who asked (person or agent run), the image, the limits actually applied, the exit code, the output (truncated), the result and the failure.
+  - It is deliberately separate from the worker's `jobs` queue: only the executor claims these, generated code is never retried automatically, and the row is the evidence.
+  - It will feed the existing `sensor_evidence` gates rather than replace them.
+- **The executor service** (`python -m app.execution.executor`; compose service `executor`): the only process with the Docker socket.
+  - It gets the database URL and nothing else, with no `.env`: no signing, encryption or provider keys. It publishes no ports.
+  - It re-validates every job, and an unknown kind is rejected without starting anything.
+  - The job kind alone decides the image and command (`checks` → `aidlc-runner` running the sandbox's vetted build and tests).
+  - Each job gets a fresh container: no network, read-only root, all capabilities dropped except CHOWN, SETUID and SETGID (to switch to the unprivileged user), no new privileges, 768 MB, 1 CPU, 128 processes, a 180 s timeout, temporary `/work` and `/tmp`, and no host mounts.
+  - The job arrives as a read-only file on a throwaway volume, and the result after a marker on standard output.
+  - The container and its volume are always removed.
+  - A timed-out job keeps no result, and a missing result is an error, never a pass.
+  - It waits out database errors instead of crashing.
+- **`aidlc-runner` image:** Python 3.12 with pytest, Node.js, git, and the sandbox runner with a one-job entry point (`sandbox/job.py`).
+- **API:** `POST /api/v1/projects/{id}/executions` (kind and payload), `GET …/executions`, `GET …/executions/{job}`. Only engineering professionals and administrators may use it; the client, the PM, managers and members are refused. Requests are audited (`execution.requested`).
+
+## 2026-11-25 — Phase 1b–1d: repositories, the tool registry, live events, the workspace shell
+
+- **Project git repositories and change sets** (migration `0032_repositories`; `app/repos`):
+  - Each project gets one real git repository, stored on a volume only the executor mounts.
+  - Every operation is an executor job in a fresh container: init, commit, read, diff, log, merge (`sandbox/gitjob.py` in the runner image). The job starts as root with CHOWN, SETUID and SETGID only, hands `/repo` and `/work` to uid 2000, and drops to it before any git command.
+  - Hooks are disabled, system and global git configuration is ignored, and `protocol.allow=never` means nothing is ever fetched or pushed.
+  - Refs and paths are validated, and files are written as blobs (never checked out).
+  - The executor copies the repository back only after a successful write, through Python's safe `data` extraction filter, under a per-project advisory lock.
+  - **Rules:**
+    - Commits go to work branches only; `main` changes only by merge.
+    - A change set records its branch, base and head commits, and file stats.
+    - It is approved by an engineering professional **who is not its author**, at the exact commit they reviewed (`reviewed_sha`; an older one gets `stale_review`).
+    - New commits after approval send it back to review.
+    - Merge passes the approved commit to git, which refuses if the branch moved.
+    - Commit authors are recorded as `user-<id>@aidlc.local`; real emails never enter git history.
+  - **API:** `/api/v1/projects/{id}/repository`: `GET`/`POST` (status, create); `GET /tree`, `/log`, `/diff`; `POST /commits`; `GET`/`POST /change-sets`; `POST /change-sets/{cs}/decision`; `POST /change-sets/{cs}/merge`. All are audited (`repository.*`, `change_set.*`).
+  - **Who:** engineering professionals and administrators; the client and the PM are refused.
+  - **The public executions API runs only `checks`**, so git operations, and merges above all, go only through the repository service and its approvals.
+- **Tool registry** (migration `0033_tool_registry`; `app/tools`):
+  - Reviewed definitions in code (`definitions.py`) list each tool's key, version, class, departments, actions, environment, adapter, executor kind, schemas, timeout, limits, risk, approval rule, audit rule and pinned source.
+  - The **`tool_registry` table** mirrors them at API start-up and adds `enabled` and health. `tool_registry_versions` keeps every definition version. A definition that changes without a new version stops the API from starting.
+  - The old catalogue is now derived from these definitions, so there is one source.
+  - Grants gain **department authorisation** and the registry's **enabled** flag. Tools that run through the executor (`repo_read`, `repo_diff`, `repo_commit`, `run_checks`) are defined but **not grantable to agents until their agent runtime exists (Phase 2)**. `merge_change_set`, `publish_release` and `edit_rules` are for people only.
+  - At run time a **disabled tool is refused even to an agent version that already holds it**.
+  - Executor tools show healthy while the executor reports in (every 15 s), and unavailable after 2 minutes of silence.
+  - **API:** `GET /api/v1/orgs/{org}/tool-registry` (members); `PUT …/{key}` `{enabled}` (administrators; audited `tool_registry.changed`). Tools cannot be added through the API.
+- **Live workspace events** (migration `0034_workspace_events`; `app/events`):
+  - An append-only `workspace_events` table, written in the same transaction as the change: `execution.queued`, `execution.started`, `execution.finished` (with status and test summary), and every `repository.*` and `change_set.*` action. Events carry identifiers and summaries only.
+  - `GET /api/v1/projects/{id}/events?after=` for catching up, and a **WebSocket** at `/api/v1/projects/{id}/events/ws?after=`:
+    - authenticated with the session cookie like every request;
+    - other origins are refused, and only the project's internal team may follow;
+    - the session is re-checked on every poll (about 1 s), so a sign-out or reset ends the stream.
+- **Workspace shell (frontend):**
+  - `useWorkspaceEvents`: REST catch-up, then the socket from the last event seen; reconnects with backoff; no retries after a policy refusal.
+  - A **Live** connection indicator in every profile's workspace header, and a **Live activity** panel in the context column.
+  - The Vite dev proxy forwards WebSockets.
+  - Each profile's professional central area arrives in its own phase (2–8).

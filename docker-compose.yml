@@ -80,6 +80,37 @@ services:
       - sandbox_jobs:/sandbox-jobs
     restart: unless-stopped
 
+  # The executor (Phase 1, RD-30): the only service with access to Docker. It runs each execution job in a fresh,
+  # locked-down container from the runner image. It gets the database URL and nothing else from .env: no signing
+  # key, no encryption key, no provider keys. It publishes no ports.
+  executor:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    environment:
+      AIDLC_DATABASE_URL: postgresql+pg8000://aidlc:aidlc@db:5432/aidlc
+      AIDLC_RUNNER_IMAGE: aidlc-runner:latest
+    depends_on:
+      api:
+        condition: service_started  # the API applies migrations first
+      runner:
+        condition: service_completed_successfully  # the job image exists before any job runs
+    command: ["python", "-m", "app.execution.executor"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - repos:/repos  # project git repositories (Phase 1b); no other service mounts them
+    restart: unless-stopped
+
+  # Builds the image execution jobs run in, then exits. The executor starts containers from it; nothing else does.
+  runner:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/runner.Dockerfile
+    image: aidlc-runner:latest
+    network_mode: none
+    entrypoint: ["true"]
+    restart: "no"
+
   # S3-compatible object storage (RD-5). SeaweedFS, because MinIO no longer publishes public images.
   # The only identity is built at start-up from the keys in .env; anonymous requests are refused.
   objectstore:
@@ -136,5 +167,6 @@ services:
 
 volumes:
   pgdata:
+  repos:
   objects:
   sandbox_jobs:

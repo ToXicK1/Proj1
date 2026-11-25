@@ -8,6 +8,8 @@ from app.audit.models import AuditChain, AuditEvent  # noqa: F401
 from app.auth.models import EmailToken, User, UserSession  # noqa: F401
 from app.collab.models import TeamMessage, Ticket, TicketComment  # noqa: F401
 from app.core.db import Base
+from app.events.service import WorkspaceEvent  # noqa: F401
+from app.execution.models import ExecutionJob  # noqa: F401
 from app.hooks.models import HookDefinition, HookExecution, HookVersion  # noqa: F401
 from app.jobs.models import Job  # noqa: F401
 from app.notifications.models import EmailOutbox, Notification  # noqa: F401
@@ -30,11 +32,13 @@ from app.providers.models import (  # noqa: F401
     TokenUsage,
     ToolExecution,
 )
+from app.repos.models import ChangeSet, Repository  # noqa: F401
 from app.rules.models import ChangeProposal, ProjectTeam, Rule, RuleVersion, Team  # noqa: F401
 from app.sensors.models import RiskAcceptance, SensorEvidence, SensorExecution  # noqa: F401
 from app.skills.models import Skill, SkillVersion  # noqa: F401
 from app.storage.models import StoredObject  # noqa: F401
 from app.studio.models import WorkflowDraft  # noqa: F401
+from app.tools.registry import ToolRegistryEntry, ToolRegistryVersion  # noqa: F401
 from app.work.assistant import AssistantExchange  # noqa: F401
 from app.work.models import (  # noqa: F401
     Handoff,

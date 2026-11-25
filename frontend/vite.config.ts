@@ -11,7 +11,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": apiTarget,
+      "/api": { target: apiTarget, ws: true },  // ws: live workspace events (Phase 1d)
     },
   },
   test: {

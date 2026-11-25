@@ -63,6 +63,15 @@ def _check_version_fields(kind: str, instructions: str, required_keys: list[str]
         raise AppError(422, "invalid_tools", "; ".join(problems))
 
 
+def _check_registry(db: Session, tools: list[str], profile_key: str) -> None:
+    """The tool registry's say: each tool authorised for this department, and not disabled (Phase 1c)."""
+    from app.tools.registry import disabled
+
+    problems = grant_problems(tools, profile_key, disabled(db))
+    if problems:
+        raise AppError(422, "invalid_tools", "; ".join(problems))
+
+
 def _digest(payload: dict) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -111,6 +120,7 @@ def create_agent(
         raise AppError(422, "invalid_key", "Agent key must be lowercase, letters, digits, '-' or '_'")
     _check_version_fields(kind, instructions, required_keys, context_sources, tools)
     profile = _profile(db, organization_id, profile_key)
+    _check_registry(db, tools, profile.key)
     if db.execute(select(AgentConfiguration.id).where(AgentConfiguration.organization_id == organization_id,
                                                       AgentConfiguration.key == key)).first():
         raise AppError(409, "agent_exists", "An agent with this key already exists")
@@ -175,6 +185,7 @@ def add_version(db: Session, user: User, *, organization_id: uuid.UUID, key: str
     agent = _agent(db, organization_id, key)
     _check_version_fields(agent.kind, instructions, required_keys, context_sources, tools)
     profile = db.get(Profile, agent.profile_id)
+    _check_registry(db, tools, profile.key)
     pins = _pins(db, organization_id, skills or [], profile.key, tools)
     version = _new_version(db, agent, instructions, required_keys, model_route, context_sources, tools,
                            skills=pins, allow_fallback=allow_fallback)

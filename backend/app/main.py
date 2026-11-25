@@ -15,6 +15,8 @@ from app.core.correlation import CorrelationMiddleware
 from app.core.db import make_engine, make_session_factory
 from app.core.errors import register_error_handlers
 from app.core.ratelimit import SlidingWindowLimiter
+from app.events.router import router as events_router
+from app.execution.router import router as execution_router
 from app.governance.router import router as governance_router
 from app.organizations.members_router import router as members_router
 from app.organizations.router import router as orgs_router
@@ -22,11 +24,32 @@ from app.portal.router import router as portal_router
 from app.projects.router import router as projects_router
 from app.providers.router import router as providers_router
 from app.providers.spend import router as spend_router
+from app.repos.router import router as repos_router
 from app.skills.router import router as skills_router
 from app.storage import service as storage
 from app.studio.router import router as studio_router
+from app.tools.router import router as tools_router
 from app.work.router import router as work_router
 from app.workflows.router import router as workflows_router
+
+
+def _sync_tool_registry(app: FastAPI) -> None:
+    """Brings the tool registry up to the reviewed definitions (Phase 1c). Migrations run before the API starts; on a
+    database that is not migrated yet this is skipped, never fatal."""
+    import logging
+
+    from app.tools.registry import sync
+
+    try:
+        with app.state.session_factory() as db:
+            changed = sync(db)
+            db.commit()
+        if changed:
+            logging.getLogger("aidlc.tools").info("tool registry synced: %s", ", ".join(changed))
+    except RuntimeError:
+        raise  # a definition changed without a new version: refuse to start
+    except Exception:  # noqa: BLE001
+        logging.getLogger("aidlc.tools").warning("tool registry not synced (database not ready)")
 
 
 def create_app(settings: Settings | None = None, engine: Engine | None = None) -> FastAPI:
@@ -52,6 +75,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID"],
         expose_headers=["X-Request-ID"],
     )
+    _sync_tool_registry(app)
     register_error_handlers(app)
     app.add_middleware(CorrelationMiddleware)  # outermost, so every response and log line carries the ID
 
@@ -91,5 +115,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(collab_router)
     app.include_router(team_router)
     app.include_router(oversight_router)
+    app.include_router(execution_router)
+    app.include_router(repos_router)
+    app.include_router(tools_router)
+    app.include_router(events_router)
     return app
 

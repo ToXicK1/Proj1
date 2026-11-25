@@ -11,6 +11,7 @@ import { Steps } from "../workspace/Steps";
 import { Intake } from "../workspace/Intake";
 import { MeetingAnalysis } from "../workspace/MeetingAnalysis";
 import { Kickoff } from "../workspace/Kickoff";
+import { ConnectionStatus, LiveActivity, useWorkspaceEvents } from "../workspace/liveEvents";
 import { PmTasks } from "../workspace/PmTasks";
 import { BaHandoff, ProjectBrief } from "../workspace/ProjectBrief";
 import { ChangeRequests, ScopeBoard } from "../workspace/Scope";
@@ -42,6 +43,8 @@ export function DepartmentWorkspacePage() {
       .catch((e: unknown) => setError(e instanceof ApiError ? e.message : "Could not open this workspace."));
   }, [projectId, department]);
   const chat = useMemo(() => (scope ? projectChat(projectId, scope) : null), [projectId, scope]);
+  const team = Boolean(scope && ["admin", "manager", "professional"].includes(scope.kind));
+  const live = useWorkspaceEvents(projectId, team);  // the shared shell: live events for every profile (Phase 1d)
 
   const title = PROFILES.find(([k]) => k === department)?.[1] ?? "Department";
   if (!department) return <section className="page"><h1>No such department</h1></section>;
@@ -55,6 +58,7 @@ export function DepartmentWorkspacePage() {
         meta={card.people.length ? `Assigned: ${card.people.join(", ")}${canEdit ? "" : " · you can read but not change this work"}`
           : "Nobody is assigned to this department yet"}
         actions={<span className="actions">
+          {team && <ConnectionStatus connection={live.connection} />}
           <Link to={`/projects/${encodeURIComponent(projectId)}/team`} className="button secondary">Professional team</Link>
           <button type="button" className="secondary" aria-pressed={panel} onClick={() => setPanel(!panel)}>
             {panel ? "Hide context" : "Show context"}</button>
@@ -99,6 +103,7 @@ export function DepartmentWorkspacePage() {
               ? <Assistant projectId={projectId} department={department} canEdit={canEdit} />
               : <p className="muted small">This department's assistant is for its own team.</p>}
             {card.visible && <DepartmentStatus projectId={projectId} profile={department} tick={0} />}
+            {team && <LiveActivity events={live.events} />}
           </aside>
         )}
       </div>

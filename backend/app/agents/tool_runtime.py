@@ -123,6 +123,11 @@ def _execute(scope: ToolScope, name: str, raw_arguments: str) -> ToolResult:
     if name not in scope.grants:
         return ToolResult("refused", _bounded({"error": f"You are not allowed to use {name}."}),
                           f"refused: {name} is not granted to this agent")
+    from app.tools.registry import disabled
+
+    if name in disabled(scope.db):  # an administrator switched it off; grants on older versions do not override
+        return ToolResult("refused", _bounded({"error": f"{name} is not available right now."}),
+                          f"refused: {name} is disabled in the tool registry")
     try:
         args = json.loads(raw_arguments or "{}")
     except ValueError:

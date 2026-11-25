@@ -331,3 +331,61 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
 - **Full backend suite:** 544 passed, 5 skipped, 0 failed, 0 errors.
 - **Managed browser spec:** passed (2.0 min), through kind of work at creation, kickoff, the client approving the brief, the handoff, and the client's P5 steps. The first attempt did not run: a line break inside a string broke the spec file.
 - **Frontend:** typecheck clean; 18 unit tests passed. Lint clean.
+
+## 2026-11-25 — Phase 1a: the executor
+
+- **`tests/test_executor.py` (5)**, using a fake Docker client:
+  - Each container gets the locked-down settings: no network, read-only root, capabilities, limits, an empty environment, no host mounts, only the throwaway `/job` volume. The container and volume are always removed.
+  - An unknown kind is rejected with nothing started.
+  - A silent container is an error, and a hung one is killed and `timed_out`; neither keeps a result. This test found a real bug: a timed-out job kept whatever result it had printed. Fixed.
+  - Only known kinds are queued.
+  - Only engineering professionals and administrators queue executions (the client and the PM are refused), and requests are audited.
+- **Migration 0031:** no drift; downgrade and re-upgrade succeed.
+- **Real Docker, on the isolated test stack:**
+  - The first attempt **timed out and was recorded as `timed_out` with no result**. Docker's attach stream never delivered the end of the input, and the Docker SDK cannot close standard input after one write. The job now arrives as a read-only file on a throwaway volume.
+  - The executor's first start also crashed on an unloaded model registry: foreign keys to `organizations` could not resolve. Fixed; it now loads every model and waits out database errors.
+  - **The demonstration job succeeded in 1 s:** `Python files compile`, `Tests: 5 passed`. Its tests prove, from inside the container, that the network is unreachable, `/etc` cannot be written, the code runs as uid 2000, and no `AIDLC`, `KEY` or `SECRET` variables exist. The recorded limits are `{"network": "none", "memory": "768m", "cpus": 1.0, "pids": 128, "read_only_root": true, "timeout_seconds": 180}`.
+  - Afterwards, 0 job containers remained and no job volume was left (the 4 unattached volumes on the machine date from 20 November and June).
+- **Regression subset** (executor, permissions, portal, start flow, jobs, sandbox): 65 passed.
+
+## 2026-11-25 — Phase 1b–1d and Phase 1 as a whole
+
+- **`tests/test_repositories.py` (3)**, with simulated git results; the real git path is below:
+  - Only engineers create the repository, once, and the client is refused.
+  - A commit to `main` is refused.
+  - A change set is approved at its exact commit; the author cannot approve; merging before approval is refused.
+  - A new commit makes the approval stale, and reviewing the old commit is refused.
+  - The merge passes the approved commit, and the audit trail is in order.
+  - Asking for changes needs a note, and the public executions API refuses `git.merge`.
+- **`tests/test_tool_registry.py` (3):**
+  - The registry mirrors all 13 definitions; a second sync writes nothing; a change without a new version is refused; new versions are kept.
+  - Executor heartbeat health.
+  - Administrators disable tools (audited, tied to the request's correlation ID), and members cannot.
+  - Executor tools are not grantable yet.
+  - A disabled tool is refused both for new grants and at run time to an agent version that already holds it.
+  - Department authorisation.
+- **`tests/test_events.py` (2):**
+  - A WebSocket follows an execution live (queued, then started and finished), and REST catches up.
+  - The client, another origin and an unauthenticated visitor are refused.
+  - Run three times after a fix: the test had assumed started and finished always arrive in one batch, but they are separate commits.
+- **Frontend `liveEvents.test.tsx` (2):** REST catch-up, then the socket from the last event seen; a policy refusal stops retries.
+- **Migrations 0032, 0033, 0034:** no drift; downgrade and re-upgrade succeed.
+- **Real Docker, on the test stack:**
+  - **Git:** create, log, commit, change set, real diff, read at a branch. Refused: commit to `main`, approving one's own change set, merging before approval, approving a stale commit. A second engineer approved at `b7da0cc` and merged; `main` is now `b7da0cc`.
+  - **Bugs found and fixed on the way:**
+    - init did not reuse the folder the executor provides;
+    - Docker's archive upload ignores ownership, so git jobs now hand `/repo` to uid 2000 and drop privileges themselves;
+    - `/work` was not writable by the git user;
+    - a new branch's ref update expected the base commit instead of "must not exist".
+  - **Live events in the browser:** with a Software Developer workspace open, a real execution and a commit made through the API appeared in its Live activity panel within about a second, with no reload (six events).
+  - The registry shows executor tools healthy from the executor's heartbeat.
+- **Full backend suite:** 557 passed, 5 skipped, 0 failed, 0 errors (544 before, plus the 13 new Phase 1 tests).
+- **Managed browser spec:**
+  - The first run failed on **a regression from Phase 1**: the Live indicator used the `status` role, so pages had two status regions and the spec's status check became ambiguous (seven specs rely on one). The indicator is now a labelled note.
+  - The next run timed out at the first sign-in while Vite re-optimised its dependencies after the WebSocket proxy change, a one-time rebuild on a fresh container. The rerun passed (56.6 s).
+- **Frontend:** typecheck clean; 20 unit tests passed. Lint clean (backend).
+- **Self-service browser specs (open item, not resolved):**
+  - On the Phase 1 tree, `ba-department.spec.ts` failed at the sign-up step "Your email is verified" (the page showed "Something went wrong"), and `lifecycle.spec.ts` failed waiting for the Studio link.
+  - Run on the commit **before** Phase 1 (67383e4, in a separate worktree), `lifecycle.spec.ts` failed on the **same** email-verification step, while `ba-department.spec.ts` passed.
+  - The email-verification step therefore fails intermittently with and without Phase 1. It is recorded as a pre-existing flake to investigate, not as passing.
+  - The run's `--grep-invert live` filter also excluded tests whose names merely contain "live" (such as "deliverables"), so only 3 tests ran.
