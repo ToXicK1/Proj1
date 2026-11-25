@@ -42,6 +42,9 @@ class StageSpec(_Strict):
     sandbox: bool = False  # build and test generated files in the sandbox before the gate
     sandbox_source: str | None = None  # test the files from this earlier stage instead of this stage's own
     approval_policy: dict[str, Any] | None = None
+    # D1: after the professional, the client (project owner) must also approve the same version. Only in executions
+    # whose facts enable client approvals (projects the PM started from an approved brief); see approvals._slots.
+    client_approval: bool = False
     work: str = Field(min_length=1, max_length=64)
     output_required_keys: list[str] = Field(default_factory=list)
     condition: dict[str, Any] | None = None  # see app/workflows/conditions.py; false means the stage is skipped

@@ -194,7 +194,7 @@ def start(db: Session, user: User, project_id: uuid.UUID, package_id: uuid.UUID,
         "handoff": str(handoff.id), "package": str(package.id), "sha256": package.sha256, "brief": entry["key"],
         "brief_version": entry["version_id"], "scope": scope})
     db.flush()
-    facts = {"scope": scope, "brief": {"key": entry["key"], "version_id": entry["version_id"],
+    facts = {"scope": scope, "client_approvals": True, "brief": {"key": entry["key"], "version_id": entry["version_id"],
                                        "number": entry["number"], "package_id": str(package.id),
                                        "package_sha256": package.sha256, "handoff_id": str(handoff.id)}}
     execution = engine.start_execution(db, user, project_id=project.id, workflow_version_id=workflow_version.id,

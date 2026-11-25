@@ -43,6 +43,7 @@ from app.portal.classifier import (
 from app.portal.lifecycle import (
     BY_PROFILE,
     BY_STAGE,
+    CLIENT_SIGN_OFF,
     DEFAULT_SCOPE,
     DEPARTMENT_SCOPES,
     DEPARTMENT_STAGES,
@@ -75,7 +76,8 @@ S = StageStatus
 _MESSAGE_NAMES: ContextVar[dict | None] = ContextVar("_message_names", default=None)
 # The departments the client's portal shows as cards and AI representatives. The Project Manager is a person the
 # client talks to directly (Messages now; a project PM chat and one client assistant in P5), not an AI stand-in.
-CLIENT_TEAM = tuple(m for m in TEAM if m.profile != "project_manager")
+PM_PROFILE = "project_manager"
+CLIENT_TEAM = tuple(m for m in TEAM if m.profile != PM_PROFILE)
 QUESTIONS: tuple[tuple[str, str, bool], ...] = (
     ("problem", "What problem should this project solve?", True),
     ("users", "Who will use it?", True),
@@ -328,6 +330,10 @@ def _announce(db: Session, execution: WorkflowExecution) -> None:
             kind = f"review_ready:{current[1].id}"
             _notify_users(db, project, _holders(db, project, step.profile), kind, f"{name} is ready for your approval.")
             _notify(db, project, {"project_owner"}, kind, f"{name} is ready. You can read it and send feedback.")
+            if approvals.waiting_for_client(db, execution, spec["id"]):
+                _notify(db, project, {"project_owner"}, f"sign_off:{current[1].id}",
+                        f"{CLIENT_SIGN_OFF.get(spec['id'], name)}: the {BY_PROFILE[step.profile].title} approved it. "
+                        "It now needs your approval.")
         elif stage.status in (S.FAILED.value, S.BLOCKED.value):
             kind = f"needs_attention:{stage.id}:{stage.version}"
             if not db.execute(select(Notification.id).where(Notification.kind == kind)).first() and step:
@@ -509,7 +515,7 @@ ACTIVITY = {S.AWAITING_HUMAN_REVIEW.value: "{} is ready for approval", S.APPROVE
             S.RUNNING.value: "Work started on {}"}
 
 
-def workspace(db: Session, user: User, project_id: uuid.UUID) -> dict[str, Any]:
+def workspace(db: Session, user: User, project_id: uuid.UUID, managed: bool = False) -> dict[str, Any]:
     from app.collab.service import scope_for
 
     project, role = _access(db, user, project_id)
@@ -573,6 +579,9 @@ def workspace(db: Session, user: User, project_id: uuid.UUID) -> dict[str, Any]:
         "progress": progress([stage.status for _, stage in steps if stage]),
         "current_step": current_step,
         "scope": scope.kind,
+        # RD-23: with managed accounts the client has one conversation, with their Project Manager and assistant.
+        "pm_led": managed,
+        "conversation_with": [{"profile": PM_PROFILE, "representative": "Your Project Manager"}] if managed else None,
         "my_profiles": sorted(scope.profiles) if scope.kind == "professional" else [],
         "team": [c for c in _stage_cards(db, project, _in_workflow(db, execution),
                                          bool(intake and intake.status == "confirmed"))
@@ -695,6 +704,8 @@ def deliverables(db: Session, user: User, project_id: uuid.UUID) -> list[dict[st
             "status": DISPLAY[S(stage.status)],
             "current_version_id": str(current[1].id),
             "can_decide": review["can_decide"],
+            "sign_off": CLIENT_SIGN_OFF.get(spec["id"]) if approvals.client_sign_off(execution, spec) else None,
+            "waiting_for_client": approvals.waiting_for_client(db, execution, spec["id"]),
             "checks_blocking": any(s["blocking"] for s in review["sensors"]),
             "can_view_code": may_see_code,
             "versions": [{"id": str(v.id), "number": v.version_number, "created_at": v.created_at.isoformat(),
@@ -716,7 +727,9 @@ def decide(db: Session, user: User, project_id: uuid.UUID, stage_key: str, *, ve
     if step is None:
         raise not_found()
     holds = step.profile in engine.held_profiles(db, user.id, project.organization_id)
-    if not holds and not (role == "project_owner" and decision == "REQUEST_CHANGES"):
+    # The client may request changes; it approves only where a client sign-off slot is open (D1), which the approval
+    # service checks against the step's policy.
+    if not holds and not (role == "project_owner" and decision in ("REQUEST_CHANGES", "APPROVE")):
         raise AppError(403, "approval_not_permitted", DECISION_ERRORS["approval_not_permitted"])
     execution = _lifecycle_execution(db, project_id)
     try:
@@ -749,6 +762,8 @@ def _owner_visible_version(db: Session, project_id: uuid.UUID, version_id: uuid.
 def _message_out(m: PortalMessage) -> dict[str, Any]:
     member = BY_PROFILE[m.profile_key]
     sender = "you" if m.author_type == "owner" else member.title
+    if m.author_type == "representative" and m.profile_key == PM_PROFILE:
+        sender = "Project assistant (AI)"  # never presented as the Project Manager (RD-23)
     if m.author_type == "professional":
         author = db_names.get(m.author_user_id, "") if (db_names := _MESSAGE_NAMES.get()) else ""
         sender = f"{author} ({member.title})" if author else member.title
@@ -794,7 +809,8 @@ def _reply_text(result: Classification, member_title: str, kind_recorded: bool) 
     if result.feedback_kind == "security_concern":
         return "Thank you for raising this. It has been recorded for security review and stays open until resolved."
     if kind_recorded:
-        return f"Thank you. I have recorded this for the {member_title} to handle."
+        who = "your Project Manager" if member_title == "Project Manager" else f"the {member_title}"
+        return f"Thank you. I have recorded this for {who} to handle."
     if result.intent in ("ask_question", "request_explanation"):
         return "Thank you for your question. I am looking into it."
     return "Thank you. I have added this to the project conversation."
@@ -811,14 +827,17 @@ def _store(db: Session, project: Project, profile: str, author_type: str, user_i
 
 
 def post_message(db: Session, user: User, project_id: uuid.UUID, *, body: str, profile: str | None,
-                 artifact_version_id: uuid.UUID | None) -> tuple[list[dict[str, Any]], uuid.UUID | None]:
-    """Stores the message, classifies it, and returns what to show. Text can never trigger an action."""
+                 artifact_version_id: uuid.UUID | None, managed: bool = False
+                 ) -> tuple[list[dict[str, Any]], uuid.UUID | None]:
+    """Stores the message, classifies it, and returns what to show. Text can never trigger an action. With managed
+    accounts every message goes to the client's Project Manager, and the client assistant answers questions (RD-23)."""
     project = _owner(db, user, project_id)
-    if profile is not None and profile not in {m.profile for m in CLIENT_TEAM}:
+    allowed = {PM_PROFILE} if managed else {m.profile for m in CLIENT_TEAM}
+    if profile is not None and profile not in allowed:
         raise AppError(422, "unknown_representative", "Choose someone from your project team")
     version = _owner_visible_version(db, project_id, artifact_version_id)
     result = classify(body)
-    target = result.profile or profile or CLIENT_TEAM[0].profile
+    target = PM_PROFILE if managed else (result.profile or profile or CLIENT_TEAM[0].profile)
     owner_row = _store(db, project, target, "owner", user.id, body, result.intent, version.id if version else None)
     if result.feedback_kind:
         db.add(OwnerFeedback(id=uuid7(), organization_id=project.organization_id, project_id=project.id,
@@ -837,7 +856,7 @@ def post_message(db: Session, user: User, project_id: uuid.UUID, *, body: str, p
             "classifier": CLASSIFIER_VERSION, "feedback": result.feedback_kind})
     db.commit()
     answer = owner_row.id if result.intent in ("ask_question", "request_explanation") \
-        and _execution(db, project_id) else None
+        and (managed or _execution(db, project_id)) else None
     return [_message_out(owner_row), _message_out(reply)], answer
 
 
@@ -849,6 +868,14 @@ def answer_question(factory: sessionmaker[Session], settings: Settings, transpor
     """A plain-language answer from the representative's lead. It has no tools and cannot change anything."""
     with factory() as db:
         message = db.get(PortalMessage, message_id)
+        if message.profile_key == PM_PROFILE:
+            from app.portal import client_assistant
+
+            client_assistant.answer(db, settings, transport, message)
+            if finish:
+                finish(db)
+            db.commit()
+            return
         project = db.get(Project, message.project_id)
         execution = _execution(db, project.id)
         member = BY_PROFILE[message.profile_key]
@@ -904,6 +931,66 @@ def feedback(db: Session, user: User, project_id: uuid.UUID) -> list[dict[str, A
     rows = db.execute(select(OwnerFeedback).where(OwnerFeedback.project_id == project_id)
                       .order_by(OwnerFeedback.id.desc())).scalars()
     return [_feedback_out(r) for r in rows]
+
+
+def request_change(db: Session, user: User, project_id: uuid.UUID, *, summary: str, details: str,
+                   artifact_version_id: uuid.UUID | None) -> dict[str, Any]:
+    """The client asks for a change (P5). It goes to their Project Manager as a scope change, stays in the
+    conversation, and changes nothing by itself; the change-request workflow with each department's impact is P7."""
+    project = _owner(db, user, project_id)
+    if project.project_manager_id is None:
+        raise AppError(409, "no_project_manager", "Your project has no Project Manager yet")
+    version = _owner_visible_version(db, project_id, artifact_version_id)
+    message = _store(db, project, PM_PROFILE, "owner", user.id, f"Change request: {summary}", "request_change",
+                     version.id if version else None)
+    row = OwnerFeedback(id=uuid7(), organization_id=project.organization_id, project_id=project.id,
+                        message_id=message.id, artifact_version_id=version.id if version else None,
+                        kind="scope_change", profile_key=PM_PROFILE, summary=summary[:300],
+                        classifier_version="change-request", classification_reason="submitted as a change request",
+                        details={"details": details[:4000]})
+    db.add(row)
+    _store(db, project, PM_PROFILE, "representative", None,
+           "Thank you. Your change request is with your Project Manager, who will tell you its impact.")
+    _notify_users(db, project, {project.project_manager_id}, f"change_request:{row.id}",
+                  f"The client asked for a change: {summary[:200]}")
+    _audit(db, project, "portal.change_requested", "human", user.id, {"feedback": str(row.id)})
+    db.commit()
+    return _feedback_out(row)
+
+
+def client_progress(db: Session, user: User, project_id: uuid.UUID) -> dict[str, Any]:
+    """Where the project stands for the client, from the workflow records only (P5). Sprints and milestones: P6."""
+    from app.workflows.models import StageTransition
+
+    _access(db, user, project_id)
+    execution = _execution(db, project_id)
+    if execution is None:
+        return {"phase": "Discovery", "steps_done": 0, "steps_total": 0, "approved": [], "awaiting_you": [],
+                "sprints": [], "milestones": [], "arrive_in": "P6"}
+    version = db.get(WorkflowVersion, execution.workflow_version_id)
+    specs = {s["id"]: s for s in version.spec_json["stages"]}
+    steps = _in_workflow(db, execution)
+    done = [(step, stage) for step, stage in steps if stage and stage.status in (S.APPROVED.value, S.COMPLETED.value,
+                                                                                S.SKIPPED.value)]
+    approved, waiting = [], []
+    for step, stage in steps:
+        spec = specs.get(step.id, {})
+        if stage is None or not spec.get("owner_visible"):
+            continue
+        current = current_version(db, stage.id)
+        if stage.status in (S.APPROVED.value, S.COMPLETED.value) and current:
+            when = db.execute(select(func.max(StageTransition.created_at)).where(
+                StageTransition.stage_execution_id == stage.id,
+                StageTransition.to_status == S.APPROVED.value)).scalar_one_or_none()
+            approved.append({"stage": step.id, "name": step.name, "version": current[1].version_number,
+                             "approved_at": when.isoformat() if when else None,
+                             "sign_off": CLIENT_SIGN_OFF.get(step.id) if approvals.client_sign_off(execution, spec)
+                             else None})
+        if approvals.waiting_for_client(db, execution, step.id):
+            waiting.append({"stage": step.id, "name": step.name, "sign_off": CLIENT_SIGN_OFF.get(step.id)})
+    return {"phase": "Completed" if execution.status == "COMPLETED" else "Delivery", "steps_done": len(done),
+            "steps_total": len(steps), "approved": approved, "awaiting_you": waiting, "sprints": [],
+            "milestones": [], "arrive_in": "P6"}
 
 
 def report_test_result(db: Session, user: User, project_id: uuid.UUID, *, steps: str, expected: str, actual: str,

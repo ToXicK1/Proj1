@@ -438,3 +438,28 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - Handoffs sent to the PM, and open client feedback addressed to the PM.
 - **Department work:** every step of the current lifecycle with its department, status and approvers. "Needs attention" lists stopped steps and steps nobody is assigned to approve. The PM oversees; departments approve their own steps.
 - **Assigned tasks:** arrives with P6 (Task Allocation).
+
+## 2026-11-25 — P5: the client portal on the PM model
+
+- **Client approvals (D1, RD-2 amended).**
+  - The BA's "User Review and Approval" step is the **BRD baseline**; the Designer's "User Design Review and Approval" step is **design sign-off**.
+  - On those two steps the client approves *after* the professional, on the same version. This uses the approval engine's existing sequential policy (professional slot, then client slot), so the order and the version binding are enforced on the server.
+  - It applies only to executions whose facts enable client approvals, which the PM's start from an approved brief records. Self-service projects keep one approval by the professional, and the owner still never approves there.
+  - The client may approve when their slot is open, or request changes. A client can never reject.
+  - When the professional approves, the client is notified ("It now needs your approval"), and the deliverable shows the sign-off name and whose turn it is.
+  - UAT and milestones join when those phases exist.
+- **One conversation, with the PM (RD-23)** (managed accounts):
+  - Every client message goes to the client's Project Manager, who is notified and replies from the portal's Conversations.
+  - Feedback the classifier recognises is recorded for the PM.
+  - The client can no longer write to individual departments.
+- **The client assistant** (`client-assistant`, one per organization, created with the team).
+  - It answers the client's questions in plain language, at project level, with no step and no tools.
+  - Its context holds only client-safe material: the project name, each step's status, the approved deliverables the client may see (as the client sees them), and the recent conversation. It sees no internal records, meeting notes, prompts, reviews or code.
+  - A reply that mentions how the platform works inside is replaced by a holding reply. Its messages are labelled "Project assistant (AI)", never as the PM. Each answer is a recorded run (`client_answer`) through the normal routing and budgets.
+- **Change requests** (`POST /portal/projects/{id}/change-requests`):
+  - The client describes a change. It is recorded as a scope change for the PM, appears in the conversation and in the PM's to-dos, and the PM is notified.
+  - It changes nothing by itself. The workflow with each department's impact is P7.
+- **Progress** (`GET /portal/projects/{id}/progress`, a new Progress tab):
+  - The phase (Discovery, Delivery, Completed), the steps done out of the total, and the approved deliverables with their versions and dates.
+  - "Waiting for your approval" lists open sign-offs, each linking to the deliverable.
+  - Built from the workflow records only. Sprints and milestones arrive in P6.

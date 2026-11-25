@@ -13,13 +13,13 @@ export const PROFILES = [
 /** The six engineering departments: what an administrator ticks for a department professional. */
 export const ENGINEERING = PROFILES.filter(([key]) => key !== "project_manager");
 
-export const TABS = ["Overview", "Workspace", "Lifecycle", "Project brief", "Deliverables", "Tickets",
+export const TABS = ["Overview", "Workspace", "Lifecycle", "Progress", "Project brief", "Deliverables", "Tickets",
   "Conversations", "Testing"] as const;
 export type PortalTab = (typeof TABS)[number];
 
 /** The backend enforces the same limits; this only decides what to show. */
 export const TABS_FOR: Record<string, readonly PortalTab[]> = {
-  owner: ["Overview", "Lifecycle", "Project brief", "Deliverables", "Tickets", "Conversations", "Testing"],
+  owner: ["Overview", "Lifecycle", "Progress", "Project brief", "Deliverables", "Tickets", "Conversations", "Testing"],
   professional: ["Workspace", "Tickets", "Conversations"],
   admin: TABS,
   manager: TABS,

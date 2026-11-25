@@ -279,7 +279,7 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - Only an approved brief starts delivery, and only the project's PM can start it. The execution records the exact brief version and starts with the brief as its project input; the BA's first AI step receives it. Starting twice, or re-assembling after the start, is refused. The BA's clarification request notifies the PM.
   - RD-19: a brief with the PM's own edits cannot be approved by that PM.
   - The client's form, with managed accounts, is refused as a start (`pm_led`) and is sent to the PM instead, with no execution.
-- **Full backend suite:** 603 passed, 5 skipped, 0 failed, 1 error.
+- **Full backend suite:** 532 passed, 5 skipped, 0 failed, 1 error. (This entry first said 603 passed. That number was wrong, and it was corrected on 2026-11-25 by counting the run's own result marks.)
   - The error was in the setup of `test_permissions.py::test_nobody_reads_the_job_queue_or_storage_records_through_the_api[manager]`: right after sign-up, the fixture's first request got 401. The whole file passed when rerun (15 with the Tasks tests). This is recorded as a flake, not hidden.
   - Two earlier runs did not count. One was cut off at about 87% with no summary. In the next, the test database would not start because a Postgres left from that run still held its folder; it was stopped cleanly.
 - **Managed browser spec (`accounts.spec.ts`, extended with P4):** passed on the fourth run (1.7 min). It validates the intake, assembles, reads, confirms, submits and approves the brief, then hands it to the BA and sees delivery start. The first three runs found:
@@ -297,3 +297,20 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - The client cannot read the page.
 - **The browser demo** on the managed test stack showed the three tabs working. It also found that the new module shared the key `tasks` with the Task Allocation placeholder, so both were highlighted; the new module is now `pm_tasks`.
 - Typecheck clean; 18 unit tests passed; lint clean.
+
+## 2026-11-25 — P5
+
+- **`tests/test_client_sign_off.py` (2):**
+  - The client approves the BRD baseline only after the BA, on the same version. Slots are filled `s1`, then `s2`; the BA cannot fill the client's slot; the client cannot reject; the client is notified once, and the execution completes.
+  - A client's request for changes at sign-off is recorded, and the BA's earlier approval stops counting.
+- **`tests/test_client_portal.py` (4):**
+  - The client's question goes to the PM's thread; the PM is notified and replies.
+  - The client assistant's answer is labelled "Project assistant (AI)" and recorded as a project-level run with no tools. A canary in internal meeting notes never reaches its prompt.
+  - A reply that names how the platform works inside is replaced by a holding reply.
+  - A change request reaches the PM's to-dos and notifications and starts nothing.
+  - Progress is "Discovery", then "Delivery" with 0 of 8 steps done.
+- **`tests/test_brief.py`** now also checks that the PM's start turns client approvals on.
+- **Expected-count tests** were updated for the client assistant (one more agent, with no tools).
+- **Full backend suite:** 539 passed, 5 skipped, 0 failed, 0 errors. Counted from the run's result marks (`-q` printed no summary line).
+- **Managed browser spec** (with P5: Progress, a change request, and a question answered by the assistant in the PM thread): passed on the first run (45.6s).
+- **Frontend:** typecheck clean; 18 unit tests passed. Lint clean.

@@ -122,6 +122,7 @@ def test_only_an_approved_brief_starts_delivery_and_the_ba_works_from_it(managed
             "select config_snapshot, created_by from workflow_executions where project_id = :p"), {"p": project}).one()
         events = set(conn.execute(text("select event_type from audit_events")).scalars())
     assert snapshot["facts"]["brief"]["version_id"] == package["items"][0]["version_id"]  # the exact version
+    assert snapshot["facts"]["client_approvals"] is True  # D1: the client signs off chosen steps (P5)
     assert "Business problem: Patients can only book by phone (INT-001 v2)" in snapshot["intake"]
     assert str(created_by) == people["pm"]["user"]["id"]
     assert {"work.brief_handed_off", "work.delivery_started_from_brief"} <= events

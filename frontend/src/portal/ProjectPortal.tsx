@@ -4,7 +4,7 @@ import { PROFILES, TABS_FOR, type PortalTab } from "./roles";
 import { Avatar, EmptyState, IdentityTag, LiveIndicator, PageHeader, Panel, Skeleton, StatusPill, When } from "../components/ui";
 import { ActivityMenu } from "./ActivityMenu";
 import { DepartmentStatus, TeamChat, Tickets, projectChat } from "./Collaboration";
-import { ApiError, api, type ScopeDto, type DeliverableDto, type FeedbackDto, type IntakeDto, type PortalMessageDto, type WorkspaceDto } from "../api";
+import { ApiError, api, type ClientProgressDto, type ScopeDto, type DeliverableDto, type FeedbackDto, type IntakeDto, type PortalMessageDto, type WorkspaceDto } from "../api";
 
 
 function problem(err: unknown): string {
@@ -485,19 +485,27 @@ function Deliverables({ projectId, tick, role, wanted, profile, onChange }: {
       {item.checks_blocking && <p className="error">A required quality or security check has not passed, so this cannot be approved yet.</p>}
       {item.can_decide && isCurrent && (
         <div className="stack-sm">
+          {item.waiting_for_client && role === "project_owner" && (
+            <p className="notice small">{item.sign_off}: your {item.representative} has approved this version. It now needs
+              your approval.</p>
+          )}
           <label>Your comments<textarea rows={3} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} /></label>
           <div className="actions">
             <button type="button" onClick={() => void decide("APPROVE", `Version ${version.number} approved.`)}>Approve version {version.number}</button>
             <button type="button" className="secondary" disabled={!comment.trim()}
               onClick={() => void decide("REQUEST_CHANGES", "Your changes were sent to the team.")}>Request changes</button>
-            <button type="button" className="secondary" disabled={!comment.trim()}
-              onClick={() => void decide("REJECT", "This deliverable was rejected.")}>Reject</button>
+            {role !== "project_owner" && (
+              <button type="button" className="secondary" disabled={!comment.trim()}
+                onClick={() => void decide("REJECT", "This deliverable was rejected.")}>Reject</button>
+            )}
           </div>
         </div>
       )}
       {!item.can_decide && role === "project_owner" && item.status === "Awaiting Review" && isCurrent && (
         <div className="stack-sm">
-          <p className="muted">Your {item.representative} approves this step. You can read it and ask for changes.</p>
+          <p className="muted">{item.sign_off
+            ? `${item.sign_off}: your ${item.representative} approves this first, then you give your approval.`
+            : `Your ${item.representative} approves this step. You can read it and ask for changes.`}</p>
           <label>Your feedback<textarea rows={3} maxLength={2000} value={comment} onChange={(e) => setComment(e.target.value)} /></label>
           <button type="button" className="secondary" disabled={!comment.trim()}
             onClick={() => void decide("REQUEST_CHANGES", "Your changes were sent to the team.")}>Request changes</button>
@@ -514,9 +522,67 @@ function Deliverables({ projectId, tick, role, wanted, profile, onChange }: {
   );
 }
 
+/** P5: progress from records, what waits for the client's approval, and a change request to the PM. */
+function Progress({ projectId, data, tick, onReview }: {
+  projectId: string; data: WorkspaceDto; tick: number; onReview: (stage: string) => void;
+}) {
+  const [progress, setProgress] = useState<ClientProgressDto | null>(null);
+  const [summary, setSummary] = useState("");
+  const [details, setDetails] = useState("");
+  const [sent, setSent] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { api.portalProgress(projectId).then(setProgress).catch((e: unknown) => setError(problem(e))); }, [projectId, tick]);
+  if (!progress) return error ? <p role="alert" className="error">{error}</p> : <Skeleton title={false} />;
+  return (
+    <div className="stack">
+      <section className="panel stack-sm" aria-label="Where the project stands">
+        <h3>{progress.phase}</h3>
+        {progress.phase === "Discovery"
+          ? <p className="muted">Your Project Manager is preparing the project brief with you. Delivery starts once it is approved.</p>
+          : <p>{progress.steps_done} of {progress.steps_total} steps done.</p>}
+      </section>
+      {progress.awaiting_you.length > 0 && (
+        <section className="notice stack-sm" aria-label="Waiting for your approval">
+          <strong>Waiting for your approval</strong>
+          <ul className="list">{progress.awaiting_you.map((a) => (
+            <li key={a.stage} className="row"><span>{a.sign_off ?? a.name}</span>
+              <button type="button" className="secondary" onClick={() => onReview(a.stage)}>Review</button></li>
+          ))}</ul>
+        </section>
+      )}
+      <section className="stack-sm" aria-label="Approved deliverables">
+        <h3>Approved deliverables</h3>
+        {progress.approved.length === 0 ? <p className="muted">Nothing approved yet.</p> : (
+          <ul className="list">{progress.approved.map((a) => (
+            <li key={a.stage}>{a.sign_off ? `${a.sign_off} (${a.name})` : a.name}, version {a.version}
+              {a.approved_at && <span className="muted small"> · {new Date(a.approved_at).toLocaleDateString()}</span>}</li>
+          ))}</ul>
+        )}
+        <p className="muted small">Sprints and milestones appear here from step {progress.arrive_in}.</p>
+      </section>
+      {data.pm_led && data.role === "project_owner" && (
+        <form className="panel stack-sm" aria-label="Request a change" onSubmit={async (e) => {
+          e.preventDefault(); setError(null); setSent(null);
+          try { await api.portalRequestChange(projectId, summary.trim(), details); setSent(summary.trim()); setSummary(""); setDetails(""); }
+          catch (err) { setError(problem(err)); }
+        }}>
+          <h3>Request a change</h3>
+          <p className="muted small">Your Project Manager gets it and tells you what it would change before anything is decided.</p>
+          <label>What should change?<input required minLength={3} maxLength={300} value={summary} onChange={(e) => setSummary(e.target.value)} /></label>
+          <label>Details<textarea rows={3} maxLength={4000} value={details} onChange={(e) => setDetails(e.target.value)} /></label>
+          {error && <p role="alert" className="error">{error}</p>}
+          {sent && <p role="status" className="small">Sent to your Project Manager: {sent}</p>}
+          <button type="submit" disabled={summary.trim().length < 3}>Send change request</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function Conversations({ projectId, data, tick }: { projectId: string; data: WorkspaceDto; tick: number }) {
   const [items, setItems] = useState<PortalMessageDto[]>([]);
-  const [profile, setProfile] = useState(data.team[0]?.profile ?? "");
+  const people = data.conversation_with ?? data.team.map((m) => ({ profile: m.profile, representative: m.representative }));
+  const [profile, setProfile] = useState(people[0]?.profile ?? "");
   const professional = data.scope === "professional" || data.scope === "admin";
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -557,7 +623,7 @@ function Conversations({ projectId, data, tick }: { projectId: string; data: Wor
           <label>
             {data.role === "project_owner" ? "Send to" : "Reply as"}
             <select value={profile} onChange={(e) => setProfile(e.target.value)}>
-              {data.team.map((m) => <option key={m.profile} value={m.profile}>{m.representative}</option>)}
+              {people.map((m) => <option key={m.profile} value={m.profile}>{m.representative}</option>)}
             </select>
           </label>
           <label>Your message<textarea required rows={3} maxLength={4000} value={body} onChange={(e) => setBody(e.target.value)} /></label>
@@ -702,6 +768,8 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
       </div>
       <div role="tabpanel" aria-label={tab} className="tabpanel-enter" key={tab}>
         {tab === "Lifecycle" && <Lifecycle data={data} />}
+        {tab === "Progress" && <Progress projectId={projectId} data={data} tick={tick}
+          onReview={(stage) => { setWanted(stage); setTab("Deliverables"); }} />}
         {tab === "Workspace" && department && (
           <div className="stack">
             <h2 className="section-title">{departmentName} workspace</h2>

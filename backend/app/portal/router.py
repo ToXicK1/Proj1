@@ -73,8 +73,8 @@ def my_reviews(caller: CurrentCaller, db: DbSession) -> dict:
 
 
 @router.get("/projects/{project_id}")
-def workspace(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
-    return service.workspace(db, caller.user, project_id)
+def workspace(project_id: uuid.UUID, request: Request, caller: CurrentCaller, db: DbSession) -> dict:
+    return service.workspace(db, caller.user, project_id, managed=_managed(request))
 
 
 @router.get("/projects/{project_id}/activity")
@@ -207,7 +207,8 @@ def messages(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dic
 def post_message(project_id: uuid.UUID, body: MessageIn, request: Request, tasks: BackgroundTasks, caller: CsrfCaller,
                  db: DbSession) -> dict:
     items, answer_for = service.post_message(db, caller.user, project_id, body=body.body, profile=body.profile,
-                                             artifact_version_id=body.artifact_version_id)
+                                             artifact_version_id=body.artifact_version_id,
+                                             managed=_managed(request))
     if answer_for:
         queue(request, tasks, db, "portal.answer", {"message_id": str(answer_for)},
               dedupe_key=f"answer:{answer_for}", project_id=project_id)
@@ -222,6 +223,23 @@ class ReplyIn(_Strict):
 @router.post("/projects/{project_id}/messages/replies", status_code=201)
 def reply(project_id: uuid.UUID, body: ReplyIn, caller: CsrfCaller, db: DbSession) -> dict:
     return service.reply_as_professional(db, caller.user, project_id, profile=body.profile, body=body.body)
+
+
+class ChangeIn(_Strict):
+    summary: str = Field(min_length=3, max_length=300)
+    details: str = Field(default="", max_length=4000)
+    artifact_version_id: uuid.UUID | None = None
+
+
+@router.post("/projects/{project_id}/change-requests", status_code=201)
+def request_change(project_id: uuid.UUID, body: ChangeIn, caller: CsrfCaller, db: DbSession) -> dict:
+    return service.request_change(db, caller.user, project_id, summary=body.summary.strip(), details=body.details,
+                                  artifact_version_id=body.artifact_version_id)
+
+
+@router.get("/projects/{project_id}/progress")
+def client_progress(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    return service.client_progress(db, caller.user, project_id)
 
 
 @router.get("/projects/{project_id}/feedback")

@@ -161,6 +161,23 @@ test("the administrator creates the people and the project; everyone chooses the
   await expect(client.getByRole("link", { name: "Clinic booking" }).first()).toBeVisible();
   await expect(client.getByRole("button", { name: "Create project" })).toHaveCount(0);  // only administrators
 
+  // P5: the client sees progress from records, asks for a change, and talks to their Project Manager; the client
+  // assistant answers, labelled as AI.
+  await client.getByRole("link", { name: "Clinic booking" }).first().click();
+  await client.getByRole("tab", { name: "Progress" }).click();
+  await expect(client.getByRole("region", { name: "Where the project stands" })).toContainText("Delivery");
+  const change = client.getByRole("form", { name: "Request a change" });
+  await change.getByLabel("What should change?").fill("Add booking for a child");
+  await change.getByRole("button", { name: "Send change request" }).click();
+  await expect(change.getByRole("status")).toContainText("Sent to your Project Manager");
+  await client.getByRole("tab", { name: "Conversations" }).click();
+  await expect(client.getByLabel("Send to")).toContainText("Your Project Manager");
+  await client.getByLabel("Your message").fill("When do we review the requirements?");
+  await client.getByRole("button", { name: "Send message" }).click();
+  // The change request's acknowledgement, the holding reply, then the assistant's answer.
+  await expect(client.getByRole("list", { name: "Messages" }).getByRole("listitem")
+    .filter({ hasText: "Project assistant (AI)" })).toHaveCount(3, { timeout: 60_000 });
+
   // The analyst does the same; a reset signs them out and issues a new temporary password.
   const analyst = await signIn(browser, `bea-${tag}@example.com`, analystTemp);
   await chooseOwnPassword(analyst, analystTemp);

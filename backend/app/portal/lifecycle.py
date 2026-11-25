@@ -275,6 +275,9 @@ UX_STAGES: tuple[Stage, ...] = (
     Stage("ux_user_review", "U.9", _UX, "User Design Review and Approval", UX, "", ("package",), NONE,
           work="owner_review", owner_visible=True, owner_input=True),
 )
+# D1 (RD-2 amended): the steps the client signs off after the professional, on the same version. UAT and milestones
+# join when those phases exist.
+CLIENT_SIGN_OFF: dict[str, str] = {"ba_user_review": "BRD baseline", "ux_user_review": "Design sign-off"}
 DEPARTMENT_STAGES: dict[str, tuple[Stage, ...]] = {"business_analyst": BA_STAGES, "solution_architect": SA_STAGES,
                                                    "ui_ux_designer": UX_STAGES}
 # What a later department reads from the first one's approved work, most important first.
@@ -330,6 +333,17 @@ PM_PERSONA = (
     "You only use the material you are given. You never invent facts, progress, dates or approvals, and you never "
     "make business decisions: everything you produce is a provisional suggestion the Project Manager reviews. "
     "Keep what the client stated apart from your own assumptions.")
+
+
+CLIENT_ASSISTANT = "client-assistant"
+# RD-23: one assistant for the client, in place of the per-department representatives. It works only from what the
+# client may see; questions and changes go to the client's Project Manager.
+CLIENT_PERSONA = (
+    "You are the client's project assistant on a software project. You explain, in plain and friendly language, "
+    "where the project stands and what the approved deliverables say, using only the material you are given. You "
+    "never promise dates, scope, prices or approvals, never decide anything, and never describe how the delivery "
+    "team or its tools work inside. When the client asks for a change or something you cannot answer from the "
+    "material, say that their Project Manager will follow up.")
 
 
 def lead_key(stage: Stage) -> str:
@@ -388,6 +402,7 @@ def _department_steps(chosen: tuple[Stage, ...], *, after: str | None, cross: tu
             "human_gate": stage.human_gate, "protected": True, "mandatory": not stage.gated,
             "owner_visible": stage.gated if stage.owner_visible is None else stage.owner_visible,
             "approval_policy": {"type": "single", "role": f"profile:{stage.profile}"},
+            "client_approval": stage.id in CLIENT_SIGN_OFF,
             "sensors": [{"key": "secret_detection", "mandatory": True, "config": {}}],
         }
         earlier = [c.id for c in chosen[:index]]
@@ -461,6 +476,11 @@ def provision(db: Session, user: User, organization_id: uuid.UUID, model_route: 
         agents.create_agent(
             db, user, organization_id=organization_id, profile_key=PM, key=PM_ASSISTANT, kind="lead",
             instructions=PM_PERSONA, required_keys=["answer"], model_route=model_route,
+            context_sources=["project_input"], tools=[])
+    if CLIENT_ASSISTANT not in existing:
+        agents.create_agent(
+            db, user, organization_id=organization_id, profile_key=PM, key=CLIENT_ASSISTANT, kind="lead",
+            instructions=CLIENT_PERSONA, required_keys=["reply"], model_route=model_route,
             context_sources=["project_input"], tools=[])
     for stage in STAGES:
         if not stage.gated:

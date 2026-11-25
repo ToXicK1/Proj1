@@ -50,9 +50,33 @@ from app.workflows.state_machine import ActorType, StageStatus
 MAX_COMMENT = 2000
 
 
+def client_sign_off(execution: WorkflowExecution, spec: dict) -> bool:
+    """D1: this step also needs the client's approval, after the professional's, in this execution."""
+    return bool(spec.get("client_approval") and ((execution.config_snapshot or {}).get("facts") or {})
+                .get("client_approvals"))
+
+
+def waiting_for_client(db: Session, execution: WorkflowExecution, stage_key: str) -> bool:
+    """D1: the professional has approved the current version and the client's sign-off is the open slot."""
+    stage = stage_rows(db, execution.id).get(stage_key)
+    if stage is None or stage.status != StageStatus.AWAITING_HUMAN_REVIEW.value:
+        return False
+    if not client_sign_off(execution, stage_spec(db.get(WorkflowVersion, execution.workflow_version_id), stage_key)):
+        return False
+    current = _current(db, stage)
+    if current is None:
+        return False
+    slots = _slots(db, execution, stage_key)
+    done = satisfied_slots(slots, _approvals_by_slot(db, current[1].id, stage.approval_epoch))
+    return slots[0].id in done and slots[-1].id not in done
+
+
 def _slots(db: Session, execution: WorkflowExecution, stage_key: str) -> list[Slot]:
     version = db.get(WorkflowVersion, execution.workflow_version_id)
-    raw = stage_spec(version, stage_key).get("approval_policy") or DEFAULT_POLICY
+    spec = stage_spec(version, stage_key)
+    raw = spec.get("approval_policy") or DEFAULT_POLICY
+    if client_sign_off(execution, spec) and raw.get("type") == "single" and raw.get("role") != "project_owner":
+        raw = {"type": "sequential", "steps": [{"role": raw["role"]}, {"role": "project_owner"}]}
     return slots_for(parse_policy(raw))
 
 

@@ -204,9 +204,19 @@ export interface AgentVersionBody {
   tools: string[];
 }
 
+/** P5: where the project stands for the client, from records only. Sprints and milestones arrive in P6. */
+export interface ClientProgressDto {
+  phase: string; steps_done: number; steps_total: number; arrive_in: string;
+  approved: { stage: string; name: string; version: number; approved_at: string | null; sign_off: string | null }[];
+  awaiting_you: { stage: string; name: string; sign_off: string | null }[];
+}
+
 export interface WorkspaceDto {
   project: { id: string; name: string; description: string; type: string; status: string };
   role: string;
+  /** RD-23: with managed accounts the client talks only to their Project Manager (and the client assistant). */
+  pm_led?: boolean;
+  conversation_with?: { profile: string; representative: string }[] | null;
   scope: "owner" | "admin" | "professional" | "member";
   my_profiles: string[];
   can_triage: boolean;
@@ -253,6 +263,9 @@ export interface DeliverableDto {
   status: string;
   current_version_id: string;
   can_decide: boolean;
+  /** D1: the client's sign-off on this step ("BRD baseline", "Design sign-off"), and whether it is the client's turn. */
+  sign_off?: string | null;
+  waiting_for_client?: boolean;
   checks_blocking: boolean;
   can_view_code: boolean;
   versions: {
@@ -762,6 +775,9 @@ export const api = {
     request<TicketDto>("POST", `${portalPath(id)}/tickets/${encodeURIComponent(ticketId)}/actions`, { action, note }),
   replyToOwner: (id: string, profile: string, body: string) =>
     request("POST", `${portalPath(id)}/messages/replies`, { profile, body }),
+  portalProgress: (id: string) => request<ClientProgressDto>("GET", `${portalPath(id)}/progress`),
+  portalRequestChange: (id: string, summary: string, details: string) =>
+    request("POST", `${portalPath(id)}/change-requests`, { summary, details }),
   portalSendMessage: (id: string, body: string, profile: string) =>
     request("POST", `${portalPath(id)}/messages`, { body, profile }),
   portalFeedback: (id: string) => request<{ items: FeedbackDto[] }>("GET", `${portalPath(id)}/feedback`),
