@@ -27,7 +27,8 @@ export function ProjectBrief({ projectId, all }: { projectId: string; all: KindD
   const [note, setNote] = useState<string | null>(null);
   if (error && !status) return <p role="alert" className="error">{error}</p>;
   if (!status) return <Skeleton />;
-  const canAssemble = status.is_project_manager && status.intake_validated && !status.started;
+  const canAssemble = status.is_project_manager && status.kickoff_held && status.intake_validated && !status.started;
+  const withClient = status.approved_packages[0];
   return (
     <div className="stack">
       <p className="muted">The brief is assembled by the platform from your validated intake and the confirmed client
@@ -35,7 +36,15 @@ export function ProjectBrief({ projectId, all }: { projectId: string; all: KindD
         approval. Only an approved brief can be handed to the Business Analyst.</p>
       {error && <p role="alert" className="error">{error}</p>}
       {note && <p role="status" className="notice small">{note}</p>}
+      {!status.kickoff_held && <p className="muted">Hold the project kickoff first (Kickoff).</p>}
       {!status.intake_validated && <p className="muted">Validate the project intake first (Project Intake).</p>}
+      {withClient?.client_status === "awaiting" && <p className="notice small">Package {withClient.number} is with the client for approval.</p>}
+      {withClient?.client_status === "changes_requested" && (
+        <p className="notice small">The client asked for changes: “{withClient.client_note}”. Revise the brief (or update the
+          intake and re-assemble it), then submit and approve it again.</p>
+      )}
+      {withClient?.client_status === "approved" && <p className="small">The client approved package {withClient.number}. Hand it to the
+        Business Analyst in BA Handoff.</p>}
       {status.started
         ? <p className="small">Delivery has started from the approved brief. Changes now go through change requests.</p>
         : status.is_project_manager && (
@@ -63,48 +72,67 @@ export function ProjectBrief({ projectId, all }: { projectId: string; all: KindD
   );
 }
 
-/** P4: the PM hands the approved brief to the Business Analyst department; that starts delivery. The BA asks for
- * clarification on the handoff, and the PM answers through the PM's handoffs. */
+const CLIENT_STATUS: Record<string, string> = {
+  awaiting: "with the client for approval", approved: "approved by the client",
+  changes_requested: "the client asked for changes", withdrawn: "withdrawn (the kind of work changed)",
+};
+
+/** The PM (or an administrator, with a reason, when the PM is not available) hands the client-approved brief to the
+ * Business Analyst department; that starts delivery with the project's kind of work. The BA asks for clarification
+ * on the handoff, and the PM answers through the PM's handoffs. */
 export function BaHandoff({ projectId }: { projectId: string }) {
   const { status, error, setError, load } = useBrief(projectId);
   const [packageId, setPackageId] = useState("");
-  const [scope, setScope] = useState("");
   const [note, setNote] = useState("");
+  const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   if (error && !status) return <p role="alert" className="error">{error}</p>;
   if (!status) return <Skeleton />;
-  const chosen = packageId || status.approved_packages[0]?.id || "";
+  const ready = status.approved_packages.filter((p) => p.client_status === "approved");
+  const chosen = packageId || ready[0]?.id || "";
+  const forPm = !status.is_project_manager && status.is_admin;
+  const canStart = status.is_project_manager || status.is_admin;
   return (
     <div className="stack">
-      <p className="muted">Handing the approved brief to the Business Analyst starts delivery. The BA's AI steps work
-        from the exact approved version of the brief.</p>
+      <p className="muted">Handing the client-approved brief to the Business Analyst starts delivery, with the project's
+        kind of work. The BA's AI steps work from the exact approved version of the brief.</p>
+      <p><strong>Kind of work:</strong> {status.kind_of_work ?? "not chosen"}</p>
       {error && <p role="alert" className="error">{error}</p>}
+      {status.approved_packages.length > 0 && (
+        <ul className="list" aria-label="Approved briefs">
+          {status.approved_packages.map((p) => (
+            <li key={p.id}>Package {p.number}: {p.brief.key} v{p.brief.number} · {CLIENT_STATUS[p.client_status ?? ""] ?? "approved by you"}
+              {p.client_status === "changes_requested" && p.client_note && <span className="muted"> · “{p.client_note}”</span>}</li>
+          ))}
+        </ul>
+      )}
+      {status.team_gaps.length > 0 && !status.started && (
+        <p className="notice small">Before delivery can start: {status.team_gaps.join("; ")}.</p>
+      )}
       {status.started
         ? <p role="status" className="small"><strong>Delivery has started</strong> from the approved brief.</p>
-        : status.approved_packages.length === 0
-          ? <EmptyState title="No approved brief yet.">Assemble, confirm, submit and approve the brief in Project Brief.</EmptyState>
-          : status.is_project_manager && (
+        : ready.length === 0
+          ? <EmptyState title="No client-approved brief yet.">Approve the brief in Project Brief; the client then approves it in their portal.</EmptyState>
+          : canStart && (
             <form className="stack-sm" aria-label="Hand the brief to the Business Analyst" onSubmit={async (e) => {
               e.preventDefault();
               setError(null); setBusy(true);
-              try { await workApi.startFromBrief(projectId, chosen, scope || status.default_scope, note); load(); }
+              try { await workApi.startFromBrief(projectId, chosen, note, reason); load(); }
               catch (err) { setError(problem(err)); }
               finally { setBusy(false); }
             }}>
-              <label>Approved brief
+              <label>Client-approved brief
                 <select value={chosen} onChange={(e) => setPackageId(e.target.value)}>
-                  {status.approved_packages.map((p) => (
-                    <option key={p.id} value={p.id}>Package {p.number}: {p.brief.key} v{p.brief.number}</option>
-                  ))}
-                </select>
-              </label>
-              <label>What kind of work is this?
-                <select value={scope || status.default_scope} onChange={(e) => setScope(e.target.value)}>
-                  {status.scopes.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  {ready.map((p) => <option key={p.id} value={p.id}>Package {p.number}: {p.brief.key} v{p.brief.number}</option>)}
                 </select>
               </label>
               <label>Note for the Business Analyst<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
-              <button type="submit" disabled={busy || !chosen}>Hand to the Business Analyst and start</button>
+              {forPm && (
+                <label>Why you start it instead of the Project Manager (required)
+                  <input value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+              )}
+              <button type="submit" disabled={busy || !chosen || (forPm && !reason.trim()) || status.team_gaps.length > 0}>
+                {forPm ? "Start delivery for the Project Manager" : "Hand to the Business Analyst and start"}</button>
             </form>
           )}
       <h3>Handoffs</h3>

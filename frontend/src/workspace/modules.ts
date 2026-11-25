@@ -4,7 +4,7 @@ import type { Tone } from "../components/ui";
  * shared screens, or not built yet: then it says which step brings it, and nothing pretends to work. */
 
 export type Module =
-  | { key: string; label: string; screen: "overview" | "steps" | "packages" | "handoffs" | "traceability" | "conversations" | "scope" | "changes" | "intake" | "analysis" | "brief" | "ba_handoff" | "pm_tasks" }
+  | { key: string; label: string; screen: "overview" | "steps" | "packages" | "handoffs" | "traceability" | "conversations" | "scope" | "changes" | "intake" | "analysis" | "brief" | "ba_handoff" | "pm_tasks" | "kickoff" }
   | { key: string; label: string; screen: "records"; kinds: string[] }
   | { key: string; label: string; screen: "later"; step: string; what: string };
 
@@ -15,6 +15,7 @@ export const MODULES: Record<string, Module[]> = {
   project_manager: [
     { key: "overview", label: "PM Overview", screen: "overview" },
     { key: "pm_tasks", label: "Tasks", screen: "pm_tasks" },
+    { key: "kickoff", label: "Kickoff", screen: "kickoff" },
     { key: "meetings", label: "Client Meetings", screen: "records", kinds: ["meeting"] },
     { key: "analysis", label: "AI Meeting Analysis", screen: "analysis" },
     { key: "intake", label: "Project Intake", screen: "intake" },

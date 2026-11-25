@@ -225,6 +225,27 @@ def reply(project_id: uuid.UUID, body: ReplyIn, caller: CsrfCaller, db: DbSessio
     return service.reply_as_professional(db, caller.user, project_id, profile=body.profile, body=body.body)
 
 
+class BriefDecisionIn(_Strict):
+    package_id: uuid.UUID
+    decision: Literal["approve", "request_changes"]
+    note: str = Field(default="", max_length=2000)
+
+
+@router.get("/projects/{project_id}/project-brief")
+def client_brief(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    from app.work import brief
+
+    return brief.client_view(db, caller.user, project_id)
+
+
+@router.post("/projects/{project_id}/project-brief/decision")
+def client_brief_decision(project_id: uuid.UUID, body: BriefDecisionIn, caller: CsrfCaller, db: DbSession) -> dict:
+    """The client approves the brief the PM approved, or asks for changes. Delivery starts only after approval."""
+    from app.work import brief
+
+    return brief.client_decide(db, caller.user, project_id, body.package_id, decision=body.decision, note=body.note)
+
+
 class ChangeIn(_Strict):
     summary: str = Field(min_length=3, max_length=300)
     details: str = Field(default="", max_length=4000)

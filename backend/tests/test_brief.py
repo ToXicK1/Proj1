@@ -45,7 +45,23 @@ def _ready(managed, engine):  # noqa: F811
     return c, h, pm, ph, w, project, people, model
 
 
+def _kickoff(pm, ph, w):
+    """The PM holds the kickoff (once); its checklist passes because the BA is assigned."""
+    if pm.get(f"{w}/kickoff").json()["kickoff"] is None:
+        r = pm.post(f"{w}/kickoff", headers=ph, json={"held_at": "2026-11-25 10:00", "attendees": ["Olu", "Pam"]})
+        assert r.status_code == 201, r.text
+
+
+def _client_approves(managed, people, project, package_id):  # noqa: F811
+    client, ch = _signed_in(managed, people["client"])
+    r = client.post(f"/api/v1/portal/projects/{project}/project-brief/decision", headers=ch,
+                    json={"package_id": package_id, "decision": "approve"})
+    assert r.status_code == 200, r.text
+    return client, ch
+
+
 def _validate(pm, ph, w):
+    _kickoff(pm, ph, w)
     intake = pm.post(f"{w}/project_manager/items", headers=ph, json={
         "kind": "project_intake", "title": "Clinic booking intake", "body": INTAKE}).json()
     r = pm.put(f"{w}/items/{intake['id']}", headers=ph, json={
@@ -68,6 +84,8 @@ def _approved_brief(pm, ph, w):
 
 def test_the_brief_is_assembled_from_the_validated_intake_and_cites_its_sources(managed, engine):  # noqa: F811
     _, _, pm, ph, w, _, _, _ = _ready(managed, engine)
+    assert pm.post(f"{w}/brief/assemble", headers=ph).json()["code"] == "kickoff_required"
+    _kickoff(pm, ph, w)
     assert pm.post(f"{w}/brief/assemble", headers=ph).json()["code"] == "intake_not_validated"
     _validate(pm, ph, w)
     out = pm.post(f"{w}/brief/assemble", headers=ph).json()
@@ -101,21 +119,25 @@ def test_only_an_approved_brief_starts_delivery_and_the_ba_works_from_it(managed
                                                          "provenance": "confirmed"})
     package = pm.post(f"{w}/project_manager/packages", headers=ph, json={
         "title": "Project brief", "item_ids": [brief["id"]]}).json()
-    early = pm.post(f"{w}/brief/start", headers=ph, json={"package_id": package["id"], "scope": "ba-department"})
+    early = pm.post(f"{w}/brief/start", headers=ph, json={"package_id": package["id"]})
     assert early.status_code == 409 and early.json()["code"] == "brief_not_approved"
     pm.post(f"{w}/packages/{package['id']}/decision", headers=ph, json={"decision": "approve"})
+    waiting = pm.post(f"{w}/brief/start", headers=ph, json={"package_id": package["id"]})
+    assert waiting.status_code == 409 and waiting.json()["code"] == "client_approval_required"
+    _client_approves(managed, people, project, package["id"])
 
     other, oh = _signed_in(managed, people["other_pm"])
     assert other.post(f"{w}/brief/start", headers=oh, json={
-        "package_id": package["id"], "scope": "ba-department"}).status_code == 403  # not this project's PM
+        "package_id": package["id"]}).status_code == 403  # not this project's PM
     status = pm.get(f"{w}/brief").json()
     assert status["approved_packages"][0]["brief"]["key"] == "PB-001" and not status["started"]
+    assert status["approved_packages"][0]["client_status"] == "approved"
 
-    r = pm.post(f"{w}/brief/start", headers=ph, json={"package_id": package["id"], "scope": "ba-department"})
+    r = pm.post(f"{w}/brief/start", headers=ph, json={"package_id": package["id"]})
     assert r.status_code == 202, r.text
     assert r.json()["handoff"]["to"] == "business_analyst"
     assert pm.post(f"{w}/brief/start", headers=ph, json={
-        "package_id": package["id"], "scope": "ba-department"}).json()["code"] == "already_started"
+        "package_id": package["id"]}).json()["code"] == "already_started"
     assert pm.post(f"{w}/brief/assemble", headers=ph).json()["code"] == "already_started"
     with engine.connect() as conn:
         snapshot, created_by = conn.execute(text(
@@ -124,6 +146,7 @@ def test_only_an_approved_brief_starts_delivery_and_the_ba_works_from_it(managed
     assert snapshot["facts"]["brief"]["version_id"] == package["items"][0]["version_id"]  # the exact version
     assert snapshot["facts"]["client_approvals"] is True  # D1: the client signs off chosen steps (P5)
     assert "Business problem: Patients can only book by phone (INT-001 v2)" in snapshot["intake"]
+    assert snapshot["facts"]["scope"] == "ba-department"  # the project's kind of work, chosen at creation
     assert str(created_by) == people["pm"]["user"]["id"]
     assert {"work.brief_handed_off", "work.delivery_started_from_brief"} <= events
     first = next(b for b in model.sent if "<project_input>" in b["messages"][-1]["content"])

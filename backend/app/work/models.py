@@ -150,6 +150,12 @@ class WorkPackage(Base):
     decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_note: Mapped[str] = mapped_column(String(2000), nullable=False, default="")
+    # The client's decision on an approved project brief (after the PM): None (not asked), awaiting, approved or
+    # changes_requested. Only a client-approved brief starts delivery.
+    client_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    client_decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
+    client_decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    client_note: Mapped[str] = mapped_column(String(2000), nullable=False, default="", server_default="")
 
 
 class WorkAttachment(Base):

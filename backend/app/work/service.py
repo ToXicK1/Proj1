@@ -135,7 +135,7 @@ def _checked(kind_key: str, department: str, title: str, body: dict, provenance:
 
 
 def create(db: Session, user: User, project_id: uuid.UUID, department: str, *, kind: str, title: str, body: dict,
-           provenance: str = "confirmed", reason: str = "") -> dict[str, Any]:
+           provenance: str = "confirmed", reason: str = "", kickoff: bool = False) -> dict[str, Any]:
     project, _ = _scope(db, user, project_id)
     _require_editor(db, user, project, _department(department))
     clean = _checked(kind, department, title, body, provenance)
@@ -143,6 +143,8 @@ def create(db: Session, user: User, project_id: uuid.UUID, department: str, *, k
         raise AppError(422, "invalid_provenance", "Only the AI proposes suggestions and only the platform drafts")
     if kind == "project_brief":
         raise AppError(422, "assemble_brief", "The platform assembles the brief from the validated intake")
+    if kind == "kickoff" and not kickoff:
+        raise AppError(422, "use_kickoff", "Record the kickoff from the Kickoff module, once its checklist passes")
     if kind == "project_intake":
         if db.execute(select(WorkItem.id).where(WorkItem.project_id == project.id, WorkItem.kind == kind,
                                                 WorkItem.status != "archived")).first():
@@ -576,6 +578,10 @@ def decide_package(db: Session, user: User, project_id: uuid.UUID, package_id: u
         if item.current_version_id == uuid.UUID(entry["version_id"]) and item.status == "in_review":
             item.status = "approved" if decision == "approve" else "changes_requested"
     _audit(db, project, f"work.package_{package.status}", user, {"package": str(package.id), "sha256": package.sha256})
+    if package.status == "approved" and any(e["kind"] == "project_brief" for e in package.snapshot):
+        from app.work import brief
+
+        brief.send_to_client(db, project, package, user)  # the client approves the brief after the PM
     if package.stage_execution_id is not None:
         from app.work import bridge
 

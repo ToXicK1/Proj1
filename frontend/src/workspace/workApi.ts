@@ -70,9 +70,17 @@ const id = encodeURIComponent;
 
 /** P4: the Project Brief, its approved packages, and whether delivery has started from it. */
 export interface BriefStatusDto {
-  brief: ItemDto | null; edited_by_pm: boolean; intake_validated: boolean; started: boolean; is_project_manager: boolean;
-  approved_packages: { id: string; number: number; title: string; sha256: string; brief: PackageDto["items"][number] }[];
-  scopes: { key: string; label: string }[]; default_scope: string;
+  brief: ItemDto | null; edited_by_pm: boolean; intake_validated: boolean; kickoff_held: boolean; started: boolean;
+  is_project_manager: boolean; is_admin: boolean; has_project_manager: boolean; kind_of_work: string | null;
+  team_gaps: string[];
+  approved_packages: { id: string; number: number; title: string; sha256: string; brief: PackageDto["items"][number];
+    client_status: string | null; client_note: string }[];
+}
+
+/** The project kickoff: the checklist, the kickoff record, and the kind of work. */
+export interface KickoffDto {
+  checklist: { key: string; label: string; ok: boolean }[]; ready: boolean; kickoff: ItemDto | null;
+  scope: string | null; scope_locked: boolean; scopes: { key: string; label: string }[]; can_edit: boolean;
 }
 
 /** The PM's Tasks page. */
@@ -135,11 +143,16 @@ export const workApi = {
   clientForm: (p: string) =>
     request<{ answers: { field: string; label: string; value: string; tag: string | null }[]; status: string | null }>(
       "GET", `${base(p)}/client-form`),
+  kickoff: (p: string) => request<KickoffDto>("GET", `${base(p)}/kickoff`),
+  holdKickoff: (p: string, body: { held_at: string; attendees: string[]; agenda: string[]; notes: string; communication: string }) =>
+    request<ItemDto>("POST", `${base(p)}/kickoff`, body),
+  changeScope: (p: string, scope: string, reason: string) =>
+    request<KickoffDto>("PUT", `${base(p)}/kickoff/scope`, { scope, reason }),
   pmTasks: (p: string) => request<PmTasksDto>("GET", `${base(p)}/pm/tasks`),
   brief: (p: string) => request<BriefStatusDto>("GET", `${base(p)}/brief`),
   assembleBrief: (p: string) => request<{ item: ItemDto; kept_pm_edits: boolean }>("POST", `${base(p)}/brief/assemble`),
-  startFromBrief: (p: string, packageId: string, scope: string, note: string) =>
-    request<{ started: boolean; handoff: HandoffDto }>("POST", `${base(p)}/brief/start`, { package_id: packageId, scope, note }),
+  startFromBrief: (p: string, packageId: string, note: string, reason = "") =>
+    request<{ started: boolean; handoff: HandoffDto }>("POST", `${base(p)}/brief/start`, { package_id: packageId, note, reason }),
   steps: (p: string, department: string) =>
     request<{ items: StepDto[]; can_edit: boolean }>("GET", `${base(p)}/${id(department)}/steps`),
   sendBack: (p: string, reviewKey: string, step: string, note: string) =>

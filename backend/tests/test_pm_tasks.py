@@ -1,14 +1,14 @@
 """The PM's Tasks page: to-dos follow the PM's path to delivery, and department work lists every step."""
 
-from tests.test_brief import _ready, _validate
+from tests.test_brief import _client_approves, _ready, _validate
 from tests.test_meetings import managed, s3  # noqa: F401  (fixtures)
 from tests.test_pm import _signed_in
 
 
 def test_the_pms_to_dos_follow_the_path_to_delivery_then_show_every_departments_work(managed, engine):  # noqa: F811
-    _, _, pm, ph, w, _, people, _ = _ready(managed, engine)
+    _, _, pm, ph, w, project, people, _ = _ready(managed, engine)
     tasks = pm.get(f"{w}/pm/tasks").json()
-    assert [t["module"] for t in tasks["todos"]] == ["intake"]
+    assert [t["module"] for t in tasks["todos"]] == ["kickoff", "intake"]  # the kickoff comes first
     assert tasks["departments"]["started"] is False and tasks["assigned"]["arrives_in"] == "P6"
 
     _validate(pm, ph, w)
@@ -20,10 +20,12 @@ def test_the_pms_to_dos_follow_the_path_to_delivery_then_show_every_departments_
         "title": "Project brief", "item_ids": [brief["id"]]}).json()
     assert any(t["kind"] == "approval" for t in pm.get(f"{w}/pm/tasks").json()["todos"])
     pm.post(f"{w}/packages/{package['id']}/decision", headers=ph, json={"decision": "approve"})
+    assert pm.get(f"{w}/pm/tasks").json()["todos"][0]["kind"] == "waiting"  # the brief is with the client
+    _client_approves(managed, people, project, package["id"])
     todo = pm.get(f"{w}/pm/tasks").json()["todos"][0]
     assert todo["module"] == "ba_handoff" and todo["urgent"]
 
-    pm.post(f"{w}/brief/start", headers=ph, json={"package_id": package["id"], "scope": "ba-department"})
+    pm.post(f"{w}/brief/start", headers=ph, json={"package_id": package["id"]})
     tasks = pm.get(f"{w}/pm/tasks").json()
     steps = tasks["departments"]["steps"]
     assert tasks["departments"]["started"] and steps[0]["department"] == "business_analyst"

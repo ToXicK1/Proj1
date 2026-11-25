@@ -4,7 +4,7 @@ import { PROFILES, TABS_FOR, type PortalTab } from "./roles";
 import { Avatar, EmptyState, IdentityTag, LiveIndicator, PageHeader, Panel, Skeleton, StatusPill, When } from "../components/ui";
 import { ActivityMenu } from "./ActivityMenu";
 import { DepartmentStatus, TeamChat, Tickets, projectChat } from "./Collaboration";
-import { ApiError, api, type ClientProgressDto, type ScopeDto, type DeliverableDto, type FeedbackDto, type IntakeDto, type PortalMessageDto, type WorkspaceDto } from "../api";
+import { ApiError, api, type ClientBriefDto, type ClientProgressDto, type ScopeDto, type DeliverableDto, type FeedbackDto, type IntakeDto, type PortalMessageDto, type WorkspaceDto } from "../api";
 
 
 function problem(err: unknown): string {
@@ -273,6 +273,49 @@ function Overview({ data, projectId, onReview, onBrief, onChange }: {
 const TAG_NAMES: Record<string, string> = {
   explicit: "You told us", inferred: "Assumption", uncertain: "Unclear", needs_clarification: "Needs your answer",
 };
+
+/** The brief the PM approved, for the client to approve or send back with changes. Delivery starts only after the
+ * client approves it. */
+function ApprovedBrief({ projectId, onChange }: { projectId: string; onChange: () => void }) {
+  const [data, setData] = useState<ClientBriefDto | null>(null);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(() => api.portalProjectBrief(projectId).then(setData).catch((e: unknown) => setError(problem(e))), [projectId]);
+  useEffect(() => { void load(); }, [load]);
+  const brief = data?.brief;
+  if (!brief) return null;
+  const decide = async (decision: "approve" | "request_changes") => {
+    setError(null);
+    try { setData(await api.portalDecideBrief(projectId, brief.package_id, decision, note)); setNote(""); onChange(); }
+    catch (err) { setError(problem(err)); }
+  };
+  const said: Record<string, string> = {
+    awaiting: "Waiting for your approval", approved: "You approved this brief", changes_requested: "You asked for changes",
+    withdrawn: "Withdrawn: your Project Manager is preparing a new version",
+  };
+  return (
+    <section className="panel stack-sm" aria-label="Your project brief">
+      <div className="row"><h3>{brief.key} · {brief.title} (version {brief.version})</h3>
+        <StatusPill label={said[brief.client_status] ?? brief.client_status} /></div>
+      {brief.kind_of_work && <p><strong>Kind of work:</strong> {brief.kind_of_work}</p>}
+      {brief.sections.filter((s) => s.heading !== "Kind of work").map((s) => (
+        <div key={s.heading}><h4>{s.heading}</h4><p className="prewrap">{s.content}</p></div>
+      ))}
+      {brief.client_note && brief.client_status !== "awaiting" && <p className="muted">Your note: {brief.client_note}</p>}
+      {error && <p role="alert" className="error">{error}</p>}
+      {brief.can_decide && (
+        <div className="stack-sm">
+          <label>Your comments<textarea rows={3} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} /></label>
+          <div className="actions">
+            <button type="button" onClick={() => void decide("approve")}>Approve the brief</button>
+            <button type="button" className="secondary" disabled={!note.trim()} onClick={() => void decide("request_changes")}>Ask for changes</button>
+          </div>
+          <p className="muted small">The work starts only after you approve the brief.</p>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function Brief({ projectId, isOwner, onChange }: { projectId: string; isOwner: boolean; onChange: () => void }) {
   const [intake, setIntake] = useState<IntakeDto | null>(null);
@@ -793,7 +836,12 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
         {tab === "Tickets" && <Tickets projectId={projectId} scope={scope} tick={tick} />}
         {tab === "Overview" && <Overview data={data} projectId={projectId} onChange={refresh} onBrief={() => setTab("Project brief")}
           onReview={(stage) => { setWanted(stage); setTab("Deliverables"); }} />}
-        {tab === "Project brief" && <Brief projectId={projectId} isOwner={data.role === "project_owner"} onChange={refresh} />}
+        {tab === "Project brief" && (
+          <div className="stack">
+            {data.pm_led && <ApprovedBrief projectId={projectId} onChange={refresh} />}
+            <Brief projectId={projectId} isOwner={data.role === "project_owner"} onChange={refresh} />
+          </div>
+        )}
         {tab === "Deliverables" && <Deliverables key={`${wanted}-${profile ?? ""}`} projectId={projectId} tick={tick} role={data.role} wanted={wanted}
           profile={profile} onChange={refresh} />}
         {tab === "Conversations" && <Conversations projectId={projectId} data={data} tick={tick} />}

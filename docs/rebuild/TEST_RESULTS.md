@@ -314,3 +314,20 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
 - **Full backend suite:** 539 passed, 5 skipped, 0 failed, 0 errors. Counted from the run's result marks (`-q` printed no summary line).
 - **Managed browser spec** (with P5: Progress, a change request, and a question answered by the assistant in the PM thread): passed on the first run (45.6s).
 - **Frontend:** typecheck clean; 18 unit tests passed. Lint clean.
+
+## 2026-11-25 — The project start flow (RD-26, RD-27)
+
+- **`tests/test_start_flow.py` (5):**
+  - The kickoff checklist follows the kind of work. Changing to the three-department preview needs an Architect and a Designer, so the kickoff is refused with the gaps listed. A kickoff cannot be created through the generic records route, it is recorded once, and every change of the kind of work is audited.
+  - The client approves the brief after the PM. The client is notified, the PM cannot decide for the client, a request for changes needs a note, starting is refused until the client approves, the client's note becomes an urgent PM to-do, and the kind of work locks after approval.
+  - Changing the kind of work withdraws a brief that was waiting for the client.
+  - An administrator starts delivery only with a reason. It is audited as started by an administrator, and the PM is notified. A BA cannot start.
+  - The brief needs the kickoff.
+- **Updated:** `test_brief` (kickoff, client approval, kind of work from the project), `test_pm_tasks` (kickoff first; the brief waits for the client), `test_client_portal`, `test_accounts` (kind of work required at creation).
+- **Found while testing:**
+  - A notification kind longer than its 64-character column.
+  - A misleading `brief_changed` error when the client had asked for changes. The client's decision is now checked first.
+- **Migration 0030:** no drift; downgrade and re-upgrade succeed. Checked on the test stack's database, since the main stack was not running.
+- **Full backend suite:** 544 passed, 5 skipped, 0 failed, 0 errors.
+- **Managed browser spec:** passed (2.0 min), through kind of work at creation, kickoff, the client approving the brief, the handoff, and the client's P5 steps. The first attempt did not run: a line break inside a string broke the spec file.
+- **Frontend:** typecheck clean; 18 unit tests passed. Lint clean.

@@ -32,19 +32,39 @@ def _discovery(db: Session, project_id: uuid.UUID, started: bool) -> list[dict[s
                                                  WorkItem.status != "archived")).scalars().first()
         return item, db.get(WorkItemVersion, item.current_version_id) if item else None
 
+    from app.work import kickoff
+
+    out = []
+    if kickoff.held(db, project_id) is None:
+        out.append(_todo("kickoff", "Hold the project kickoff (its checklist checks the team is assigned)",
+                         "kickoff", urgent=True))
+    return out + _after_kickoff(db, project_id, current, kickoff.held(db, project_id) is not None)
+
+
+def _after_kickoff(db: Session, project_id: uuid.UUID, current, kicked_off: bool) -> list[dict[str, Any]]:
     intake, intake_v = current("project_intake")
     if intake is None:
         return [_todo("intake", "Create the project intake from your client meetings", "intake")]
     if intake_v.body.get("validation") != "validated" or intake_v.provenance in work.NEEDS_CONFIRMING:
         return [_todo("intake", f"Confirm and validate the project intake ({intake.key})", "intake")]
+    if not kicked_off:
+        return []
     brief, brief_v = current("project_brief")
     if brief is None:
         return [_todo("brief", "Assemble the project brief from the validated intake", "brief")]
+    latest = db.execute(select(WorkPackage).where(WorkPackage.project_id == project_id,
+                                                  WorkPackage.client_status.is_not(None))
+                        .order_by(WorkPackage.number.desc())).scalars().first()
+    if latest is not None and latest.client_status == "approved":
+        return [_todo("handoff", f"The client approved the brief: hand it ({brief.key}) to the Business Analyst "
+                      "to start delivery", "ba_handoff", urgent=True)]
+    if latest is not None and latest.client_status == "awaiting":
+        return [_todo("waiting", "The brief is with the client for approval", "brief")]
+    if latest is not None and latest.client_status == "changes_requested" and brief.status == "changes_requested":
+        return [_todo("brief", f"The client asked for changes to the brief: {latest.client_note[:200]}", "brief",
+                      urgent=True)]
     if brief_v.provenance in work.NEEDS_CONFIRMING:
         return [_todo("brief", f"Confirm or edit the assembled brief ({brief.key})", "brief")]
-    if brief.status == "approved":
-        return [_todo("handoff", f"Hand the approved brief ({brief.key}) to the Business Analyst to start delivery",
-                      "ba_handoff", urgent=True)]
     if brief.status != "in_review":
         return [_todo("brief", f"Submit the brief ({brief.key}) for approval", "brief")]
     return []

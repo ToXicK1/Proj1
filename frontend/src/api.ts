@@ -204,6 +204,12 @@ export interface AgentVersionBody {
   tools: string[];
 }
 
+/** The project brief as the PM approved it, and the client's decision (start flow). */
+export interface ClientBriefDto {
+  brief: { package_id: string; key: string; version: number; title: string; sections: { heading: string; content: string }[];
+    kind_of_work: string | null; client_status: string; client_note: string; decided_at: string | null; can_decide: boolean } | null;
+}
+
 /** P5: where the project stands for the client, from records only. Sprints and milestones arrive in P6. */
 export interface ClientProgressDto {
   phase: string; steps_done: number; steps_total: number; arrive_in: string;
@@ -775,6 +781,9 @@ export const api = {
     request<TicketDto>("POST", `${portalPath(id)}/tickets/${encodeURIComponent(ticketId)}/actions`, { action, note }),
   replyToOwner: (id: string, profile: string, body: string) =>
     request("POST", `${portalPath(id)}/messages/replies`, { profile, body }),
+  portalProjectBrief: (id: string) => request<ClientBriefDto>("GET", `${portalPath(id)}/project-brief`),
+  portalDecideBrief: (id: string, packageId: string, decision: "approve" | "request_changes", note: string) =>
+    request<ClientBriefDto>("POST", `${portalPath(id)}/project-brief/decision`, { package_id: packageId, decision, note }),
   portalProgress: (id: string) => request<ClientProgressDto>("GET", `${portalPath(id)}/progress`),
   portalRequestChange: (id: string, summary: string, details: string) =>
     request("POST", `${portalPath(id)}/change-requests`, { summary, details }),
@@ -810,11 +819,14 @@ export const api = {
     request<{ ok: boolean }>("POST", `${orgPath(orgId)}/providers/${encodeURIComponent(providerId)}/health`, { model }),
   setupDeliveryTeam: (orgId: string, modelRoute: string) =>
     request("POST", `${studioPath(orgId)}/default-lifecycle`, { model_route: modelRoute }),
-  createProject: (orgId: string, name: string, description: string, projectType: string, ownerUserId?: string) =>
+  createProject: (orgId: string, name: string, description: string, projectType: string, ownerUserId?: string,
+    deliveryScope?: string) =>
     request<ProjectDto>("POST", `/api/v1/orgs/${encodeURIComponent(orgId)}/projects`, {
       name,
       description,
       project_type: projectType,
       owner_user_id: ownerUserId ?? null,
+      delivery_scope: deliveryScope ?? null,
     }),
+  projectKinds: () => request<{ items: { key: string; label: string }[]; default: string }>("GET", "/api/v1/project-kinds"),
 };

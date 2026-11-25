@@ -39,7 +39,7 @@ def _setup(managed, engine):  # noqa: F811
     analyst = _person(c, h, org, "bea@example.com", "member", [BA])
     project = c.post(f"/api/v1/orgs/{org}/projects", headers=h, json={
         "name": "Clinic booking", "description": "", "project_type": "Web Application",
-        "owner_user_id": client["user"]["id"]}).json()["id"]
+        "owner_user_id": client["user"]["id"], "delivery_scope": "ba-department"}).json()["id"]
     return c, h, org, project, {"client": client, "pm": pm, "other_pm": other_pm, "analyst": analyst}
 
 

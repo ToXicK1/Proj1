@@ -34,6 +34,7 @@ def create_project(
     project_type: str,
     owner_user_id: uuid.UUID | None = None,
     managed: bool = False,
+    delivery_scope: str | None = None,
 ) -> Project:
     # Users who are not members of the organization get not_found, not forbidden.
     membership = membership_for(db, user.id, organization_id)
@@ -62,6 +63,12 @@ def create_project(
         raise AppError(422, "invalid_description", f"Description must be at most {MAX_DESCRIPTION} characters")
     if not project_type or len(project_type) > MAX_TYPE:
         raise AppError(422, "invalid_project_type", f"Project type must be 1-{MAX_TYPE} characters")
+    from app.portal.lifecycle import SCOPES
+
+    if delivery_scope is not None and delivery_scope not in SCOPES:
+        raise AppError(422, "unknown_scope", "Choose one of the listed kinds of work")
+    if managed and delivery_scope is None:  # decided when the project is created; confirmed at the kickoff
+        raise AppError(422, "scope_required", "Choose the kind of work for this project")
 
     project = Project(
         id=uuid7(),
@@ -71,6 +78,7 @@ def create_project(
         project_type=project_type,
         status="active",
         created_by=user.id,
+        delivery_scope=delivery_scope,
     )
     db.add(project)
     db.flush()  # project row first so the membership's foreign key is satisfied

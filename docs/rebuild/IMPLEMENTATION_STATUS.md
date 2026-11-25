@@ -463,3 +463,24 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - The phase (Discovery, Delivery, Completed), the steps done out of the total, and the approved deliverables with their versions and dates.
   - "Waiting for your approval" lists open sign-offs, each linking to the deliverable.
   - Built from the workflow records only. Sprints and milestones arrive in P6.
+
+## 2026-11-25 — The project start flow (RD-26, RD-27)
+
+- **Kind of work at creation.**
+  - With managed accounts, the administrator chooses the kind of work (a lifecycle scope) when creating the project. It is required and stored as `projects.delivery_scope` (migration `0030_kickoff_client_brief`). `GET /project-kinds` lists the choices.
+  - The PM may change it at the kickoff, with a reason that is audited. Changing it withdraws any brief that was waiting for the client.
+  - It locks once the client approves the brief or delivery starts. Delivery always starts with it; nobody chooses it at handoff any more.
+- **Kickoff** (a new Kickoff module in the PM workspace; `GET/POST /work/kickoff`, `PUT /work/kickoff/scope`).
+  - The platform's checklist requires: a PM assigned, the client on the project, the kind of work chosen, and a professional in every department that kind of work needs (`departments_for`). For example, the BA-department preview needs a BA; Feature needs all six departments.
+  - The PM records the kickoff once the checklist passes, as a confirmed `kickoff` record (`KO-…`): date, attendees, agenda, notes, how everyone keeps in touch. It is recorded once per project, and only through this route.
+  - The brief can only be assembled after the kickoff. Meetings may come before it.
+- **The client approves the brief after the PM.**
+  - When the PM approves a brief package, it goes to the client (`work_packages.client_status = awaiting`), and the client is notified.
+  - In the portal's Project brief tab, the client reads the exact approved version, including its kind of work, which is now the brief's first section. The client approves it, or asks for changes with a note.
+  - A change request sends the brief back. The PM is notified and sees the note in to-dos, Project Brief and BA Handoff. The PM revises the brief (or updates the intake and re-assembles), then submits and approves it again.
+  - Only a client-approved brief whose version is unchanged starts delivery.
+- **Starting delivery.**
+  - Before starting, the platform checks again that the kickoff was held and the team is complete.
+  - The PM starts it. An administrator may start it when the PM is not available, giving a reason: the start is audited as `started_by_administrator` with that reason, and the PM is notified.
+- **To-dos:** hold the kickoff (first), then the brief steps. "The brief is with the client" appears while waiting; the client's change note appears as an urgent to-do; the handoff appears only after the client approves.
+- **Self-service projects:** unchanged.

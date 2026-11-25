@@ -280,6 +280,17 @@ UX_STAGES: tuple[Stage, ...] = (
 CLIENT_SIGN_OFF: dict[str, str] = {"ba_user_review": "BRD baseline", "ux_user_review": "Design sign-off"}
 DEPARTMENT_STAGES: dict[str, tuple[Stage, ...]] = {"business_analyst": BA_STAGES, "solution_architect": SA_STAGES,
                                                    "ui_ux_designer": UX_STAGES}
+
+
+def departments_for(scope: str) -> tuple[str, ...]:
+    """The engineering departments a kind of work needs: each must have a professional before delivery starts."""
+    if scope in DEPARTMENT_SCOPES:
+        return DEPARTMENT_SCOPES[scope]
+    special = {x.id for group in DEPARTMENT_STAGES.values() for x in group}
+    found = {s.profile for s in STAGES if s.gated and s.id not in special and s.in_scope(scope)}
+    return tuple(p for p in ENGINEERING if p in found)
+
+
 # What a later department reads from the first one's approved work, most important first.
 CROSS_READS = ("ba_requirements", "ba_user_stories", "ba_scope", "ba_discovery", "ba_intake_review")
 STAGES = STAGES + BA_STAGES + SA_STAGES + UX_STAGES

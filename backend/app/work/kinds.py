@@ -62,6 +62,13 @@ KINDS: dict[str, Kind] = {k.key: k for k in (
         Field("assumptions", "list"), Field("risks", "list"), Field("decisions", "list"),
         Field("open_questions", "list"),
     )),
+    # The project kickoff (start flow): held by the PM once the team the kind of work needs is assigned. One per
+    # project; the brief can only be assembled after it.
+    Kind("kickoff", PM, "KO", "Project kickoff", (
+        Field("held_at", "text", required=True), Field("attendees", "list"), Field("agenda", "list"),
+        Field("notes", "text"), Field("communication", "text"),  # how the client and the team will keep in touch
+        Field("decisions", "list"),
+    )),
     # P4: assembled by the platform from the validated intake and the meetings; the PM approves it before the BA
     # starts. Every line names its record and version (INT-001 v3).
     Kind("project_brief", PM, "PB", "Project brief", (

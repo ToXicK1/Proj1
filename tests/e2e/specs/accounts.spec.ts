@@ -69,6 +69,7 @@ test("the administrator creates the people and the project; everyone chooses the
   await admin.getByRole("link", { name: "My projects" }).click();
   await admin.getByLabel("Project name").fill("Clinic booking");
   await admin.getByLabel("Client (project owner)").selectOption({ label: `Olu Client · olu-${tag}@example.com` });
+  await admin.getByLabel("Kind of work").selectOption("ba-department");  // decided when the project is created
   await admin.getByRole("button", { name: "Create project" }).click();
   await expect(admin.getByRole("heading", { name: "Clinic booking" })).toBeVisible({ timeout: 30_000 });
 
@@ -132,6 +133,15 @@ test("the administrator creates the people and the project; everyone chooses the
   await intake.getByRole("button", { name: "Save new version" }).click();
   await expect(intake).toContainText("version 2");
 
+  // The kickoff: its checklist passes (PM, client, kind of work, a Business Analyst); the brief comes after it.
+  await pmModules.getByRole("button", { name: "Kickoff", exact: true }).click();
+  await expect(pm.getByRole("region", { name: "Kickoff checklist" })).toContainText("A Business Analyst is assigned");
+  const kickoff = pm.getByRole("form", { name: "Hold the kickoff" });
+  await kickoff.getByLabel("When (required)").fill("2026-11-25 10:00");
+  await kickoff.getByLabel("Attendees (one per line)").fill("Olu Client" + String.fromCharCode(10) + "Pam Manager");
+  await kickoff.getByRole("button", { name: "Record the kickoff" }).click();
+  await expect(pm.getByRole("complementary", { name: "Record KO-001" })).toBeVisible();
+
   await pmModules.getByRole("button", { name: "Project Brief" }).click();
   await pm.getByRole("button", { name: "Assemble the brief" }).click();
   await expect(pm.getByRole("status")).toContainText("PB-001 v1 is assembled");
@@ -148,18 +158,25 @@ test("the administrator creates the people and the project; everyone chooses the
   await briefPackage.getByRole("button", { name: "Approve" }).click();
   await expect(briefPackage).toContainText(/approved/i);
 
-  await pmModules.getByRole("button", { name: "BA Handoff" }).click();
-  const handOff = pm.getByRole("form", { name: "Hand the brief to the Business Analyst" });
-  await handOff.getByLabel("What kind of work is this?").selectOption("ba-department");
-  await handOff.getByRole("button", { name: "Hand to the Business Analyst and start" }).click();
-  await expect(pm.getByText("Delivery has started")).toBeVisible({ timeout: 30_000 });
-  await expect(pm.getByText("business analyst", { exact: false }).first()).toBeVisible();
-
-  // The client signs in with the temporary password, chooses their own, and finds the project.
+  // The client signs in with the temporary password, chooses their own, and approves the brief the PM approved.
   const client = await signIn(browser, `olu-${tag}@example.com`, clientTemp);
   await chooseOwnPassword(client, clientTemp);
   await expect(client.getByRole("link", { name: "Clinic booking" }).first()).toBeVisible();
   await expect(client.getByRole("button", { name: "Create project" })).toHaveCount(0);  // only administrators
+  await client.getByRole("link", { name: "Clinic booking" }).first().click();
+  await client.getByRole("tab", { name: "Project brief" }).click();
+  const yourBrief = client.getByRole("region", { name: "Your project brief" });
+  await expect(yourBrief).toContainText("Waiting for your approval");
+  await expect(yourBrief).toContainText("Patients can only book by phone");
+  await yourBrief.getByRole("button", { name: "Approve the brief" }).click();
+  await expect(yourBrief).toContainText("You approved this brief");
+
+  // Only then can the PM hand it to the Business Analyst, with the project's kind of work.
+  await pmModules.getByRole("button", { name: "BA Handoff" }).click();
+  const handOff = pm.getByRole("form", { name: "Hand the brief to the Business Analyst" });
+  await handOff.getByRole("button", { name: "Hand to the Business Analyst and start" }).click();
+  await expect(pm.getByText("Delivery has started")).toBeVisible({ timeout: 30_000 });
+  await expect(pm.getByText("business analyst", { exact: false }).first()).toBeVisible();
 
   // P5: the client sees progress from records, asks for a change, and talks to their Project Manager; the client
   // assistant answers, labelled as AI.

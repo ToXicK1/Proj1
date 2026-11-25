@@ -21,6 +21,8 @@ export const PROJECT_TYPES = [
 export function HomePage() {
   const [clients, setClients] = useState<{ user_id: string; display_name: string; email: string }[]>([]);
   const [ownerId, setOwnerId] = useState("");
+  const [kinds, setKinds] = useState<{ key: string; label: string }[]>([]);
+  const [kind, setKind] = useState("");
   const navigate = useNavigate();
   const { state } = useSession();
   const [orgs, setOrgs] = useState<OrgDto[]>([]);
@@ -58,6 +60,7 @@ export function HomePage() {
     if (!managedAdmin || !org) return;
     api.listMembers(org.id).then((m) => setClients(m.members.filter((x) => x.role === "project_owner" && x.status === "active")))
       .catch(() => setClients([]));
+    api.projectKinds().then((k) => { setKinds(k.items); setKind((v) => v || k.default); }).catch(() => setKinds([]));
   }, [managedAdmin, orgs]);
 
   async function onCreate(e: FormEvent) {
@@ -70,7 +73,8 @@ export function HomePage() {
     }
     setBusy(true);
     try {
-      const project = await api.createProject(org.id, name, description, type, ownerId || undefined);
+      const project = await api.createProject(org.id, name, description, type, ownerId || undefined,
+        managedAdmin ? kind || undefined : undefined);
       navigate(`/projects/${project.id}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Could not create the project.");
@@ -172,9 +176,18 @@ export function HomePage() {
                   {clients.length === 0 && <span className="hint">Add the client in Team first (role: Client).</span>}
                 </label>
               )}
+              {managedAdmin && (
+                <label>
+                  Kind of work
+                  <select value={kind} onChange={(e) => setKind(e.target.value)} required>
+                    {kinds.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+                  </select>
+                  <span className="hint">The Project Manager confirms it with the client at the kickoff.</span>
+                </label>
+              )}
               {formError && <p role="alert" className="error">{formError}</p>}
               <button type="submit" className="block"
-                disabled={busy || !name.trim() || orgs.length === 0 || (Boolean(managedAdmin) && !ownerId)}>
+                disabled={busy || !name.trim() || orgs.length === 0 || (Boolean(managedAdmin) && (!ownerId || !kind))}>
                 {busy ? "Creating…" : "Create project"}
               </button>
               <p className="hint">Your team asks follow-up questions before any work starts.</p>

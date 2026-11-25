@@ -80,8 +80,21 @@ class AskIn(_Strict):
 
 class StartIn(_Strict):
     package_id: uuid.UUID
-    scope: str = Field(default="feature", max_length=32)
     note: str = Field(default="", max_length=2000)
+    reason: str = Field(default="", max_length=500)  # required when an administrator starts for the PM
+
+
+class KickoffIn(_Strict):
+    held_at: str = Field(min_length=1, max_length=100)
+    attendees: list[str] = Field(default_factory=list, max_length=50)
+    agenda: list[str] = Field(default_factory=list, max_length=50)
+    notes: str = Field(default="", max_length=20000)
+    communication: str = Field(default="", max_length=2000)
+
+
+class ScopeIn(_Strict):
+    scope: str = Field(max_length=32)
+    reason: str = Field(min_length=1, max_length=500)
 
 
 class ReplyIn(_Strict):
@@ -325,6 +338,29 @@ def pm_tasks(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dic
     return tasks.overview(db, caller.user, project_id)
 
 
+@router.get("/kickoff")
+def kickoff_status(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    from app.work import kickoff
+
+    return kickoff.status(db, caller.user, project_id)
+
+
+@router.post("/kickoff", status_code=201)
+def hold_kickoff(project_id: uuid.UUID, body: KickoffIn, caller: CsrfCaller, db: DbSession) -> dict:
+    """The PM records the kickoff once the checklist passes (the team the kind of work needs is assigned)."""
+    from app.work import kickoff
+
+    return kickoff.hold(db, caller.user, project_id, held_at=body.held_at, attendees=body.attendees,
+                        agenda=body.agenda, notes=body.notes, communication=body.communication)
+
+
+@router.put("/kickoff/scope")
+def change_scope(project_id: uuid.UUID, body: ScopeIn, caller: CsrfCaller, db: DbSession) -> dict:
+    from app.work import kickoff
+
+    return kickoff.change_scope(db, caller.user, project_id, body.scope, body.reason)
+
+
 @router.get("/brief")
 def brief_status(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
     from app.work import brief
@@ -346,7 +382,7 @@ def start_from_brief(project_id: uuid.UUID, body: StartIn, request: Request, tas
     """The project's PM hands the approved brief to the BA department; that starts the lifecycle (P4)."""
     from app.work import brief
 
-    execution, handoff = brief.start(db, caller.user, project_id, body.package_id, body.scope, body.note)
+    execution, handoff = brief.start(db, caller.user, project_id, body.package_id, body.note, body.reason)
     db.commit()
     queue(request, tasks, db, "portal.drive", {"execution_id": str(execution.id)},
           dedupe_key=f"drive:{execution.id}", project_id=project_id)

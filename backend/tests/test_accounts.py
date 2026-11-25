@@ -144,8 +144,13 @@ def test_administrators_create_projects_for_a_client(managed, engine):
     assert c.post(f"/api/v1/orgs/{org}/projects", headers=h, json=body).status_code == 422  # client required
     wrong = c.post(f"/api/v1/orgs/{org}/projects", headers=h, json={**body, "owner_user_id": pm_made["user"]["id"]})
     assert wrong.status_code == 422  # only a client can own a project
-    made = c.post(f"/api/v1/orgs/{org}/projects", headers=h, json={**body, "owner_user_id": client_made["user"]["id"]})
+    unscoped = c.post(f"/api/v1/orgs/{org}/projects", headers=h,
+                      json={**body, "owner_user_id": client_made["user"]["id"]})
+    assert unscoped.status_code == 422 and unscoped.json()["code"] == "scope_required"  # decided at creation
+    made = c.post(f"/api/v1/orgs/{org}/projects", headers=h, json={**body, "owner_user_id": client_made["user"]["id"],
+                                                                   "delivery_scope": "ba-department"})
     assert made.status_code == 201, made.text
+    assert made.json()["delivery_scope"] == "ba-department"
     with engine.connect() as conn:
         roles = dict(conn.execute(text("select u.email, m.project_role from project_members m join users u "
                                        "on u.id = m.user_id where m.project_id = :p"),

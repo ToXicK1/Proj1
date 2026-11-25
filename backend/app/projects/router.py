@@ -19,6 +19,7 @@ class ProjectCreateIn(_Strict):
     description: str = Field(default="", max_length=2000)
     project_type: str = Field(min_length=1, max_length=64)
     owner_user_id: uuid.UUID | None = None  # the client, chosen by an administrator
+    delivery_scope: str | None = Field(default=None, max_length=32)  # the kind of work (required when managed)
 
 
 class ProjectOut(BaseModel):
@@ -28,6 +29,7 @@ class ProjectOut(BaseModel):
     description: str
     project_type: str
     status: str
+    delivery_scope: str | None = None
 
     @classmethod
     def of(cls, p: Project) -> "ProjectOut":
@@ -38,6 +40,7 @@ class ProjectOut(BaseModel):
             description=p.description,
             project_type=p.project_type,
             status=p.status,
+            delivery_scope=p.delivery_scope,
         )
 
 
@@ -54,6 +57,7 @@ def create_project(
         project_type=body.project_type,
         owner_user_id=body.owner_user_id,
         managed=request.app.state.settings.account_mode == "managed",
+        delivery_scope=body.delivery_scope,
     )
     return ProjectOut.of(project).model_dump()
 
@@ -68,6 +72,14 @@ def assign_manager(project_id: uuid.UUID, body: ManagerIn, caller: CsrfCaller, d
     project = service.assign_manager(db, caller.user, project_id, body.user_id)
     return {"project_id": str(project.id),
             "project_manager_id": str(project.project_manager_id) if project.project_manager_id else None}
+
+
+@router.get("/project-kinds")
+def project_kinds(caller: CurrentCaller) -> dict:
+    """The kinds of work a project can be (lifecycle scopes), for the creation form and the kickoff."""
+    from app.portal.lifecycle import SCOPE_LABELS, SCOPES
+
+    return {"items": [{"key": k, "label": SCOPE_LABELS[k]} for k in SCOPES], "default": "feature"}
 
 
 @router.get("/projects")

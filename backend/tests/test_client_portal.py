@@ -38,11 +38,11 @@ def _client(managed, engine, reply=None):  # noqa: F811
                                                             "body": {"held_at": "2026-11-25 09:00", "status": "held",
                                                                      "raw_notes": f"Budget is tight {CANARY}"}})
     client, ch = _signed_in(managed, people["client"])
-    return client, ch, pm, ph, w, project, model
+    return client, ch, pm, ph, w, project, model, people
 
 
 def test_the_clients_questions_go_to_the_pm_and_the_assistant_answers_from_client_safe_material(managed, engine):  # noqa: F811
-    client, ch, pm, ph, _, project, model = _client(managed, engine)
+    client, ch, pm, ph, _, project, model, _ = _client(managed, engine)
     portal = f"/api/v1/portal/projects/{project}"
     space = client.get(portal).json()
     assert space["pm_led"] and space["conversation_with"][0]["profile"] == "project_manager"
@@ -72,7 +72,7 @@ def test_the_clients_questions_go_to_the_pm_and_the_assistant_answers_from_clien
 
 
 def test_a_reply_that_reveals_the_inside_of_the_platform_is_never_shown(managed, engine):  # noqa: F811
-    client, ch, _, _, _, project, _ = _client(managed, engine, reply="The agent and its prompt say yes.")
+    client, ch, _, _, _, project, _, _ = _client(managed, engine, reply="The agent and its prompt say yes.")
     portal = f"/api/v1/portal/projects/{project}"
     client.post(f"{portal}/messages", headers=ch, json={"body": "Is it going well?"})
     last = client.get(f"{portal}/messages").json()["items"][-1]
@@ -80,7 +80,7 @@ def test_a_reply_that_reveals_the_inside_of_the_platform_is_never_shown(managed,
 
 
 def test_the_client_requests_a_change_and_the_pm_gets_it(managed, engine):  # noqa: F811
-    client, ch, pm, _, w, project, _ = _client(managed, engine)
+    client, ch, pm, _, w, project, _, _ = _client(managed, engine)
     portal = f"/api/v1/portal/projects/{project}"
     r = client.post(f"{portal}/change-requests", headers=ch, json={"summary": "Add booking for a child",
                                                                    "details": "Parents book for their children"})
@@ -94,7 +94,7 @@ def test_the_client_requests_a_change_and_the_pm_gets_it(managed, engine):  # no
 
 
 def test_the_client_sees_progress_from_records(managed, engine):  # noqa: F811
-    client, _, pm, ph, w, project, _ = _client(managed, engine)
+    client, ch, pm, ph, w, project, _, _ = _client(managed, engine)
     portal = f"/api/v1/portal/projects/{project}"
     assert client.get(f"{portal}/progress").json()["phase"] == "Discovery"
     _validate(pm, ph, w)
@@ -104,7 +104,8 @@ def test_the_client_sees_progress_from_records(managed, engine):  # noqa: F811
     package = pm.post(f"{w}/project_manager/packages", headers=ph, json={
         "title": "Project brief", "item_ids": [brief["id"]]}).json()
     pm.post(f"{w}/packages/{package['id']}/decision", headers=ph, json={"decision": "approve"})
-    pm.post(f"{w}/brief/start", headers=ph, json={"package_id": package["id"], "scope": "ba-department"})
+    client.post(f"{portal}/project-brief/decision", headers=ch, json={"package_id": package["id"], "decision": "approve"})
+    pm.post(f"{w}/brief/start", headers=ph, json={"package_id": package["id"]})
     progress = client.get(f"{portal}/progress").json()
     assert progress["phase"] == "Delivery" and progress["steps_total"] == 8 and progress["steps_done"] == 0
     assert progress["approved"] == [] and progress["awaiting_you"] == [] and progress["arrive_in"] == "P6"

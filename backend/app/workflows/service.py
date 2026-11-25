@@ -192,8 +192,13 @@ def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_
                     intake: list[str] | None = None, facts: dict[str, Any] | None = None,
                     as_project_manager: bool = False) -> WorkflowExecution:
     project = db.get(Project, project_id)
-    if as_project_manager:  # P4: the project's PM starts delivery from the approved brief
-        if project is None or project.project_manager_id != user.id:
+    if as_project_manager:  # the project's PM, or an administrator for them, starts delivery from the brief
+        from app.organizations.models import Membership
+
+        admin = project is not None and db.execute(select(Membership.id).where(
+            Membership.organization_id == project.organization_id, Membership.user_id == user.id,
+            Membership.role == "org_admin", Membership.status == "active")).first() is not None
+        if project is None or (project.project_manager_id != user.id and not admin):
             raise AppError(403, "not_permitted", "Only the project's Project Manager can start delivery")
     else:
         role = project_role(db, user, project_id)
