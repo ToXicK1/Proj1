@@ -23,8 +23,8 @@ export function ItemStatus({ value }: { value: string }) {
 }
 
 /** A filterable table of one or more record kinds, with a detail panel and package submission. */
-export function Records({ projectId, department, kinds, all }: {
-  projectId: string; department: string; kinds: string[]; all: KindDto[];
+export function Records({ projectId, department, kinds, all, onSubmitted }: {
+  projectId: string; department: string; kinds: string[]; all: KindDto[]; onSubmitted?: () => void;
 }) {
   const [items, setItems] = useState<ItemDto[] | null>(null);
   const [canEdit, setCanEdit] = useState(false);
@@ -57,6 +57,7 @@ export function Records({ projectId, department, kinds, all }: {
       setNotice(`Package ${p.number} submitted with ${p.items.length} record(s), frozen at their current versions.`);
       setChecked(new Set());
       load();
+      onSubmitted?.();
     } catch (e) { setError(problem(e)); }
   }
 
@@ -144,7 +145,8 @@ export function Records({ projectId, department, kinds, all }: {
         </aside>
       )}
       {selected && !creating && (
-        <RecordDetail key={selected} projectId={projectId} itemId={selected} kinds={all} onChange={load} />
+        <RecordDetail key={selected} projectId={projectId} itemId={selected} kinds={all} onChange={load}
+          onClose={() => setSelected(null)} />
       )}
     </div>
   );
@@ -272,8 +274,8 @@ function Value({ value, field }: { value: unknown; field?: string }) {
   return <span>{human(String(value))}</span>;
 }
 
-export function RecordDetail({ projectId, itemId, kinds, onChange }: {
-  projectId: string; itemId: string; kinds: KindDto[]; onChange: () => void;
+export function RecordDetail({ projectId, itemId, kinds, onChange, onClose }: {
+  projectId: string; itemId: string; kinds: KindDto[]; onChange: () => void; onClose?: () => void;
 }) {
   const [item, setItem] = useState<ItemDto | null>(null);
   const [editing, setEditing] = useState(false);
@@ -304,7 +306,8 @@ export function RecordDetail({ projectId, itemId, kinds, onChange }: {
     <aside className="panel stack record-detail" aria-label={`Record ${item.key}`}>
       <div className="row">
         <h2>{item.key} · {item.title}</h2>
-        <span className="actions"><ProvenanceTag value={item.provenance} /><ItemStatus value={item.status} /></span>
+        <span className="actions"><ProvenanceTag value={item.provenance} /><ItemStatus value={item.status} />
+          {onClose && <button type="button" className="secondary" onClick={onClose}>Close</button>}</span>
       </div>
       <p className="muted small">{def?.label ?? item.kind} · version {item.version}
         {item.view === "approved" ? " (approved version)" : ""}</p>
@@ -332,7 +335,7 @@ export function RecordDetail({ projectId, itemId, kinds, onChange }: {
               expected_version: item.latest_version, provenance: "confirmed", reason: "confirmed by a professional" }))}>
               {item.provenance === "system_draft" ? "Confirm draft" : "Confirm suggestion"}</button>
           )}
-          {item.kind === "document" && (
+          {(item.kind === "document" || item.kind === "project_brief") && (
             <button type="button" className="secondary" onClick={() => {
               const blob = new Blob([toMarkdown(`${item.key} ${item.title} (v${item.version})`, asSections(item.body.sections))],
                 { type: "text/markdown" });

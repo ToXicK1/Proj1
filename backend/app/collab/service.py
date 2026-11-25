@@ -244,7 +244,8 @@ def department_status(db: Session, user: User, project_id: uuid.UUID, profile: s
                            "people": sorted(names.values()), "started": execution is not None, "steps": [],
                            "issues": []}
     if execution is None:
-        out["summary"] = "Work starts when the project owner confirms the brief."
+        out["summary"] = ("Work starts when the Project Manager hands the approved brief to the Business Analyst."
+                          if project.project_manager_id else "Work starts when the project owner confirms the brief.")
         return out
     rows = engine.stage_rows(db, execution.id)
     spec_ids = [s["id"] for s in db.get(WorkflowVersion, execution.workflow_version_id).spec_json["stages"]]

@@ -4,7 +4,7 @@ import type { Tone } from "../components/ui";
  * shared screens, or not built yet: then it says which step brings it, and nothing pretends to work. */
 
 export type Module =
-  | { key: string; label: string; screen: "overview" | "steps" | "packages" | "handoffs" | "traceability" | "conversations" | "scope" | "changes" | "intake" | "analysis" }
+  | { key: string; label: string; screen: "overview" | "steps" | "packages" | "handoffs" | "traceability" | "conversations" | "scope" | "changes" | "intake" | "analysis" | "brief" | "ba_handoff" }
   | { key: string; label: string; screen: "records"; kinds: string[] }
   | { key: string; label: string; screen: "later"; step: string; what: string };
 
@@ -17,8 +17,8 @@ export const MODULES: Record<string, Module[]> = {
     { key: "meetings", label: "Client Meetings", screen: "records", kinds: ["meeting"] },
     { key: "analysis", label: "AI Meeting Analysis", screen: "analysis" },
     { key: "intake", label: "Project Intake", screen: "intake" },
-    later("brief", "Project Brief", "P4", "the versioned Project Brief you approve before the BA starts"),
-    later("ba_handoff", "BA Handoff", "P4", "handing the approved intake package to the Business Analyst"),
+    { key: "brief", label: "Project Brief", screen: "brief" },
+    { key: "ba_handoff", label: "BA Handoff", screen: "ba_handoff" },
     later("sprints", "Sprint Management", "P6", "sprint plans you approve before the engine starts them"),
     later("tasks", "Task Allocation", "P6", "department tasks with owners, priorities and due dates"),
     later("timeline", "Timeline and Dependencies", "P6", "milestones and what blocks what"),

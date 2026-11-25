@@ -68,6 +68,13 @@ export interface StepDto {
 const base = (projectId: string) => `/api/v1/projects/${encodeURIComponent(projectId)}/work`;
 const id = encodeURIComponent;
 
+/** P4: the Project Brief, its approved packages, and whether delivery has started from it. */
+export interface BriefStatusDto {
+  brief: ItemDto | null; edited_by_pm: boolean; intake_validated: boolean; started: boolean; is_project_manager: boolean;
+  approved_packages: { id: string; number: number; title: string; sha256: string; brief: PackageDto["items"][number] }[];
+  scopes: { key: string; label: string }[]; default_scope: string;
+}
+
 export const workApi = {
   kinds: (p: string) => request<{ items: KindDto[] }>("GET", `${base(p)}/kinds`),
   team: (p: string) => request<{ departments: TeamCardDto[]; kind: string }>("GET", `${base(p)}/team`),
@@ -120,6 +127,10 @@ export const workApi = {
   clientForm: (p: string) =>
     request<{ answers: { field: string; label: string; value: string; tag: string | null }[]; status: string | null }>(
       "GET", `${base(p)}/client-form`),
+  brief: (p: string) => request<BriefStatusDto>("GET", `${base(p)}/brief`),
+  assembleBrief: (p: string) => request<{ item: ItemDto; kept_pm_edits: boolean }>("POST", `${base(p)}/brief/assemble`),
+  startFromBrief: (p: string, packageId: string, scope: string, note: string) =>
+    request<{ started: boolean; handoff: HandoffDto }>("POST", `${base(p)}/brief/start`, { package_id: packageId, scope, note }),
   steps: (p: string, department: string) =>
     request<{ items: StepDto[]; can_edit: boolean }>("GET", `${base(p)}/${id(department)}/steps`),
   sendBack: (p: string, reviewKey: string, step: string, note: string) =>

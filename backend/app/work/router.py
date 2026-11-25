@@ -78,6 +78,12 @@ class AskIn(_Strict):
     item_id: uuid.UUID | None = None
 
 
+class StartIn(_Strict):
+    package_id: uuid.UUID
+    scope: str = Field(default="feature", max_length=32)
+    note: str = Field(default="", max_length=2000)
+
+
 class ReplyIn(_Strict):
     action: Literal["acknowledge", "request_clarification"]
     reply: str = Field(default="", max_length=2000)
@@ -309,6 +315,34 @@ def meeting_analyses(project_id: uuid.UUID, item_id: uuid.UUID, caller: CurrentC
     from app.work import pm_analysis
 
     return {"items": pm_analysis.history(db, caller.user, project_id, item_id)}
+
+
+@router.get("/brief")
+def brief_status(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
+    from app.work import brief
+
+    return brief.status(db, caller.user, project_id)
+
+
+@router.post("/brief/assemble")
+def assemble_brief(project_id: uuid.UUID, caller: CsrfCaller, db: DbSession) -> dict:
+    """The platform assembles the brief from the validated intake and the confirmed meetings (P4). No AI."""
+    from app.work import brief
+
+    return brief.assemble(db, caller.user, project_id)
+
+
+@router.post("/brief/start", status_code=202)
+def start_from_brief(project_id: uuid.UUID, body: StartIn, request: Request, tasks: BackgroundTasks,
+                     caller: CsrfCaller, db: DbSession) -> dict:
+    """The project's PM hands the approved brief to the BA department; that starts the lifecycle (P4)."""
+    from app.work import brief
+
+    execution, handoff = brief.start(db, caller.user, project_id, body.package_id, body.scope, body.note)
+    db.commit()
+    queue(request, tasks, db, "portal.drive", {"execution_id": str(execution.id)},
+          dedupe_key=f"drive:{execution.id}", project_id=project_id)
+    return {"started": True, "handoff": work._handoff_out(db, handoff)}
 
 
 @router.get("/client-form")

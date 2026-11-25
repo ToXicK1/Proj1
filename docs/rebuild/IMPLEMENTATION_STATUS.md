@@ -400,3 +400,29 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
 - **The PM's assistant panel** now works: it runs on the persona at project level, since the PM has no lifecycle steps.
 - **Workspace:** the **AI Meeting Analysis** module lists the meetings with "Analyze with AI" and each one's status (refreshing while it works), and shows the analyses as records to read, confirm or edit.
 - The offline mock model returns plain lists for the analysis, so demos and browser tests exercise it.
+
+## 2026-11-24 — P4: the Project Brief and the BA handoff
+
+- **The Project Brief** (`project_brief`, `PB-…`, a PM record with sections).
+  - The platform assembles it (`POST /work/brief/assemble`) from the PM's **validated** intake and the confirmed client meetings. No AI is involved.
+  - Every line names its record and version (`INT-001 v2`, `MTG-001 v1`). The brief links (`derives_from`) to its sources.
+  - It is a `system_draft`: the PM confirms or edits it. A brief the PM has edited is never re-assembled over.
+  - Nobody can create a brief by hand.
+  - This differs from the plan's `document` with `doc_type=project_brief`. A `document` belongs to the BA department, and the brief is the PM's.
+- **Approval:** the PM submits the brief as a package and approves it.
+  - The approval binds to the brief's exact version.
+  - RD-19 applies unchanged. Confirming the draft as written lets the PM approve alone. A brief with the PM's own edits needs a second Project Manager, and the administrators are notified.
+- **Handoff and the start of delivery** (`POST /work/brief/start`).
+  - Only the project's assigned PM can start, and only from an approved package whose brief has not changed since.
+  - In one transaction, the PM chooses the kind of work and the brief goes to the Business Analyst department. That records the handoff with the package fingerprint, notifies the BAs and starts the lifecycle.
+  - The execution's facts record the brief's key, version, package and handoff.
+  - Delivery can start only once. After it starts, the brief cannot be re-assembled; changes go through change requests (P7).
+- **The BA works from the brief:** the lifecycle's project input is the approved brief, one line per brief line under its heading, so the BA's AI steps read the brief instead of the client's form.
+- **Clarification:** the BA asks on the handoff ("request clarification"); the PM is notified and sees it in BA Handoff and Handoffs.
+- **D3, the client's form** (managed accounts only):
+  - The form no longer starts anything. "Confirm and start" is refused (`pm_led`).
+  - The portal offers **Send to your Project Manager** instead. This notifies the project's PM once per revision; the answers stay unconfirmed input.
+  - Self-service stacks keep the old behaviour.
+- **Workspace:**
+  - **Project Brief:** assemble or re-assemble the brief, read or edit it, confirm it, submit it, approve it, and download it as Markdown.
+  - **BA Handoff:** choose the approved brief and the kind of work, add a note for the BA, start, and see the handoffs and their replies.

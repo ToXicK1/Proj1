@@ -171,9 +171,31 @@ def _intake_out(row: IntakeRevision | None, started: bool) -> dict[str, Any]:
     }
 
 
-def get_intake(db: Session, user: User, project_id: uuid.UUID) -> dict[str, Any]:
-    _access(db, user, project_id)
-    return _intake_out(_intake(db, project_id), _execution(db, project_id) is not None)
+def get_intake(db: Session, user: User, project_id: uuid.UUID, managed: bool = False) -> dict[str, Any]:
+    project, _ = _access(db, user, project_id)
+    out = _intake_out(_intake(db, project_id), _execution(db, project_id) is not None)
+    # D3: with managed accounts the form is the client's optional pre-meeting input. The PM validates the intake and
+    # approves the brief, and only the PM starts delivery; the client sends the answers to the PM.
+    sent = bool(managed and out["revision"] and db.execute(select(Notification.id).where(
+        Notification.project_id == project.id, Notification.kind == f"client_form_sent:{out['revision']}")).first())
+    return {**out, "pm_led": managed, "sent_to_pm": sent,
+            "can_send": managed and out["revision"] > 0 and out["status"] == "draft" and not out["started"]
+            and not sent and project.project_manager_id is not None}
+
+
+def send_to_pm(db: Session, user: User, project_id: uuid.UUID, revision: int) -> dict[str, Any]:
+    """The client sends the pre-meeting answers to the project's PM. They stay unconfirmed input (D3)."""
+    project = _owner(db, user, project_id)
+    row = _intake(db, project_id)
+    if row is None or row.revision != revision or row.status != "draft":
+        raise AppError(409, "stale_intake", "This summary changed. Please review it again")
+    if project.project_manager_id is None:
+        raise AppError(409, "no_project_manager", "Your project has no Project Manager yet")
+    _notify_users(db, project, {project.project_manager_id}, f"client_form_sent:{row.revision}",
+                  "The client sent their pre-meeting answers. Read them in Project Intake.")
+    _audit(db, project, "intake.sent_to_pm", "human", user.id, {"revision": row.revision})
+    db.commit()
+    return get_intake(db, user, project_id, managed=True)
 
 
 def answer_intake(db: Session, user: User, project_id: uuid.UUID, field: str, kind: str, answer: str) -> dict[str, Any]:
@@ -214,9 +236,29 @@ def _assumptions(items: dict[str, dict]) -> list[str]:
             if k in items and not items[k]["confirmed"]]
 
 
+def lifecycle_version(db: Session, project: Project, scope: str) -> WorkflowVersion:
+    """The lifecycle template for this kind of work, once the organization's delivery team is provisioned."""
+    if scope not in SCOPES:
+        raise AppError(422, "unknown_scope", "Choose one of the listed kinds of work")
+    version = db.execute(
+        select(WorkflowVersion).join(WorkflowDefinition, WorkflowDefinition.id == WorkflowVersion.definition_id)
+        .where(WorkflowDefinition.organization_id.is_(None), WorkflowDefinition.key == template_key(scope))
+        .order_by(WorkflowVersion.version.desc())).scalars().first()
+    ready = db.execute(select(AgentConfiguration.id).where(
+        AgentConfiguration.organization_id == project.organization_id,
+        AgentConfiguration.key == lead_key(BY_STAGE["requirements_analysis"]))).first()
+    if version is None or ready is None:
+        raise AppError(409, "lifecycle_not_ready", "The delivery team is not connected yet. An administrator "
+                                                   "needs to check AI Settings")
+    return version
+
+
 def confirm_intake(db: Session, user: User, project_id: uuid.UUID, revision: int,
-                   accept: list[str], scope: str = DEFAULT_SCOPE) -> WorkflowExecution:
+                   accept: list[str], scope: str = DEFAULT_SCOPE, managed: bool = False) -> WorkflowExecution:
     project = _owner(db, user, project_id)
+    if managed:  # D3: the client's form never starts delivery; the PM starts it from the approved brief
+        raise AppError(409, "pm_led", "Your Project Manager starts the work from the approved project brief. "
+                                      "Send your answers to your Project Manager instead")
     if scope not in SCOPES:
         raise AppError(422, "unknown_scope", "Choose one of the listed kinds of work")
     try:
@@ -233,16 +275,7 @@ def confirm_intake(db: Session, user: User, project_id: uuid.UUID, revision: int
             if field not in items or items[field]["tag"] != "inferred":
                 raise AppError(422, "not_an_assumption", "Only assumptions can be accepted")
             items[field]["confirmed"] = True
-        version = db.execute(
-            select(WorkflowVersion).join(WorkflowDefinition, WorkflowDefinition.id == WorkflowVersion.definition_id)
-            .where(WorkflowDefinition.organization_id.is_(None), WorkflowDefinition.key == template_key(scope))
-            .order_by(WorkflowVersion.version.desc())).scalars().first()
-        ready = db.execute(select(AgentConfiguration.id).where(
-            AgentConfiguration.organization_id == project.organization_id,
-            AgentConfiguration.key == lead_key(BY_STAGE["requirements_analysis"]))).first()
-        if version is None or ready is None:
-            raise AppError(409, "lifecycle_not_ready", "The delivery team is not connected yet. An administrator "
-                                                       "needs to check AI Settings")
+        version = lifecycle_version(db, project, scope)
         row.items, row.status, row.confirmed_by, row.confirmed_at = items, "confirmed", user.id, datetime.now(UTC)
         _audit(db, project, "intake.confirmed", "human", user.id, {"revision": row.revision})
         db.flush()

@@ -235,6 +235,10 @@ export interface IntakeDto {
   questions: IntakeQuestionDto[];
   still_needed: string[];
   can_confirm: boolean;
+  /** D3: with managed accounts the PM starts delivery; the client sends the answers to the PM instead. */
+  pm_led?: boolean;
+  sent_to_pm?: boolean;
+  can_send?: boolean;
   scopes: { key: string; label: string; stages: number }[];
   default_scope: string;
 }
@@ -709,6 +713,8 @@ export const api = {
     request<IntakeDto>("POST", `${portalPath(id)}/intake/answers`, { field, kind, answer }),
   portalConfirm: (id: string, revision: number, acceptAssumptions: string[], scope: string) =>
     request("POST", `${portalPath(id)}/intake/confirm`, { revision, accept_assumptions: acceptAssumptions, scope }),
+  portalSendToPm: (id: string, revision: number) =>
+    request<IntakeDto>("POST", `${portalPath(id)}/intake/send`, { revision }),
   portalDeliverables: (id: string) => request<{ items: DeliverableDto[] }>("GET", `${portalPath(id)}/deliverables`),
   portalDecide: (id: string, stage: string, versionId: string, decision: string, comment: string, key: string) =>
     request("POST", `${portalPath(id)}/deliverables/${encodeURIComponent(stage)}/decision`, {

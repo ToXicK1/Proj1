@@ -349,7 +349,22 @@ function Brief({ projectId, isOwner, onChange }: { projectId: string; isOwner: b
           ))}
         </ul>
       </section>
-      {open && (
+      {open && intake.pm_led && (
+        <div className="stack-sm">
+          <p className="muted">These answers help your Project Manager prepare. Your Project Manager meets you, writes
+            the project brief and starts the work once it is approved.</p>
+          {intake.sent_to_pm
+            ? <p role="status" className="small">Sent to your Project Manager. You can still change your answers.</p>
+            : (
+              <button type="button" disabled={!intake.can_send} onClick={async () => {
+                setError(null);
+                try { setIntake(await api.portalSendToPm(projectId, intake.revision)); onChange(); }
+                catch (err) { setError(problem(err)); }
+              }}>Send to your Project Manager</button>
+            )}
+        </div>
+      )}
+      {open && !intake.pm_led && (
         <div className="stack-sm">
           {intake.still_needed.length > 0 && <p className="muted">Still needed: {intake.still_needed.join(", ")}.</p>}
           <label>

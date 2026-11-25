@@ -24,6 +24,10 @@ class AnswerIn(_Strict):
     answer: str = Field(default="", max_length=2000)
 
 
+class SendIn(_Strict):
+    revision: int = Field(ge=1)
+
+
 class ConfirmIn(_Strict):
     revision: int = Field(ge=1)
     accept_assumptions: list[str] = Field(default_factory=list, max_length=8)
@@ -80,8 +84,17 @@ def ai_activity(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> 
 
 
 @router.get("/projects/{project_id}/intake")
-def intake(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
-    return service.get_intake(db, caller.user, project_id)
+def intake(project_id: uuid.UUID, request: Request, caller: CurrentCaller, db: DbSession) -> dict:
+    return service.get_intake(db, caller.user, project_id, managed=_managed(request))
+
+
+def _managed(request: Request) -> bool:
+    return request.app.state.settings.account_mode == "managed"
+
+
+@router.post("/projects/{project_id}/intake/send")
+def send_intake(project_id: uuid.UUID, body: SendIn, caller: CsrfCaller, db: DbSession) -> dict:
+    return service.send_to_pm(db, caller.user, project_id, body.revision)
 
 
 @router.post("/projects/{project_id}/intake/answers")
@@ -93,7 +106,7 @@ def answer(project_id: uuid.UUID, body: AnswerIn, caller: CsrfCaller, db: DbSess
 def confirm(project_id: uuid.UUID, body: ConfirmIn, request: Request, tasks: BackgroundTasks, caller: CsrfCaller,
             db: DbSession) -> dict:
     execution = service.confirm_intake(db, caller.user, project_id, body.revision, body.accept_assumptions,
-                                       body.scope)
+                                       body.scope, managed=_managed(request))
     _drive(tasks, request, db, project_id, execution.id)
     return {"started": True}
 

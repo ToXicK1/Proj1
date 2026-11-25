@@ -141,6 +141,8 @@ def create(db: Session, user: User, project_id: uuid.UUID, department: str, *, k
     clean = _checked(kind, department, title, body, provenance)
     if provenance in ("ai_suggestion", "system_draft"):
         raise AppError(422, "invalid_provenance", "Only the AI proposes suggestions and only the platform drafts")
+    if kind == "project_brief":
+        raise AppError(422, "assemble_brief", "The platform assembles the brief from the validated intake")
     if kind == "project_intake":
         if db.execute(select(WorkItem.id).where(WorkItem.project_id == project.id, WorkItem.kind == kind,
                                                 WorkItem.status != "archived")).first():

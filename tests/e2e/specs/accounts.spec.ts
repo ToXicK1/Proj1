@@ -117,6 +117,44 @@ test("the administrator creates the people and the project; everyone chooses the
   await expect(pm.getByRole("table", { name: "Records" })).toContainText("Analysis of MTG-001");
   await expect(pm.getByRole("table", { name: "Records" })).toContainText("AI suggestion");
 
+  // P4: the PM validates the intake; the platform assembles the brief from it and the meeting; the PM confirms,
+  // submits and approves it, then hands it to the Business Analyst, which starts delivery.
+  await pmModules.getByRole("button", { name: "Project Intake" }).click();
+  await pm.getByRole("button", { name: "New" }).click();
+  const intakeForm = pm.getByRole("complementary", { name: "New record" });
+  await intakeForm.getByLabel("Title (required)").fill("Clinic booking intake");
+  await intakeForm.getByLabel("business problem (required)").fill("Patients can only book by phone");
+  await intakeForm.getByLabel("validation (required)").selectOption("draft");
+  await intakeForm.getByRole("button", { name: "Create" }).click();
+  const intake = pm.getByRole("complementary", { name: "Record INT-001" });
+  await intake.getByRole("button", { name: "Edit" }).click();
+  await intake.getByLabel("validation (required)").selectOption("validated");
+  await intake.getByRole("button", { name: "Save new version" }).click();
+  await expect(intake).toContainText("version 2");
+
+  await pmModules.getByRole("button", { name: "Project Brief" }).click();
+  await pm.getByRole("button", { name: "Assemble the brief" }).click();
+  await expect(pm.getByRole("status")).toContainText("PB-001 v1 is assembled");
+  const briefs = pm.getByRole("table", { name: "Records" });
+  await briefs.getByRole("button", { name: "PB-001" }).click();
+  const brief = pm.getByRole("complementary", { name: "Record PB-001" });
+  await expect(brief).toContainText("Patients can only book by phone (INT-001 v2)");  // every line names its source
+  await brief.getByRole("button", { name: "Confirm draft" }).click();
+  await expect(brief).toContainText("version 2");
+  await brief.getByRole("button", { name: "Close" }).click();
+  await briefs.getByLabel("Select PB-001").check();
+  await pm.getByRole("button", { name: "Submit 1 for review" }).click();
+  const briefPackage = pm.getByRole("region", { name: "Package 1" });
+  await briefPackage.getByRole("button", { name: "Approve" }).click();
+  await expect(briefPackage).toContainText(/approved/i);
+
+  await pmModules.getByRole("button", { name: "BA Handoff" }).click();
+  const handOff = pm.getByRole("form", { name: "Hand the brief to the Business Analyst" });
+  await handOff.getByLabel("What kind of work is this?").selectOption("ba-department");
+  await handOff.getByRole("button", { name: "Hand to the Business Analyst and start" }).click();
+  await expect(pm.getByText("Delivery has started")).toBeVisible({ timeout: 30_000 });
+  await expect(pm.getByText("business analyst", { exact: false }).first()).toBeVisible();
+
   // The client signs in with the temporary password, chooses their own, and finds the project.
   const client = await signIn(browser, `olu-${tag}@example.com`, clientTemp);
   await chooseOwnPassword(client, clientTemp);

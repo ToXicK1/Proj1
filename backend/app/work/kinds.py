@@ -62,6 +62,11 @@ KINDS: dict[str, Kind] = {k.key: k for k in (
         Field("assumptions", "list"), Field("risks", "list"), Field("decisions", "list"),
         Field("open_questions", "list"),
     )),
+    # P4: assembled by the platform from the validated intake and the meetings; the PM approves it before the BA
+    # starts. Every line names its record and version (INT-001 v3).
+    Kind("project_brief", PM, "PB", "Project brief", (
+        Field("sections", "json", required=True),  # [{"heading": str, "content": str}]
+    )),
     Kind("requirement", BA, "REQ", "Requirement", (
         Field("description", "text", required=True),
         Field("type", "enum", required=True, choices=("business", "functional", "non_functional", "constraint")),

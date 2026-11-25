@@ -189,13 +189,18 @@ def stage_spec(version: WorkflowVersion, stage_key: str) -> dict[str, Any]:
 
 
 def start_execution(db: Session, user: User, *, project_id: uuid.UUID, workflow_version_id: uuid.UUID,
-                    intake: list[str] | None = None, facts: dict[str, Any] | None = None) -> WorkflowExecution:
-    role = project_role(db, user, project_id)
-    if role is None:
-        raise not_found()
-    if role != "project_owner":
-        raise AppError(403, "not_permitted", "Only the project owner can start a workflow")
+                    intake: list[str] | None = None, facts: dict[str, Any] | None = None,
+                    as_project_manager: bool = False) -> WorkflowExecution:
     project = db.get(Project, project_id)
+    if as_project_manager:  # P4: the project's PM starts delivery from the approved brief
+        if project is None or project.project_manager_id != user.id:
+            raise AppError(403, "not_permitted", "Only the project's Project Manager can start delivery")
+    else:
+        role = project_role(db, user, project_id)
+        if role is None:
+            raise not_found()
+        if role != "project_owner":
+            raise AppError(403, "not_permitted", "Only the project owner can start a workflow")
 
     version = db.get(WorkflowVersion, workflow_version_id)
     owner = db.get(WorkflowDefinition, version.definition_id).organization_id if version else None

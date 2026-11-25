@@ -144,7 +144,7 @@ The stage states stay the same. New step kinds and records:
 | Client meeting | record kind `meeting` | title, time, participants, objectives, raw notes, structured notes, decisions, follow-ups, status; attachments via stored objects |
 | Meeting attachment | `stored_objects` (exists) linked to the record | access by project role; never shown to other clients |
 | Intake item | record kinds (`business_objective`, `feature_discussed`, `constraint`, `integration`, `dependency`, `decision`, `budget_timeline`) plus the existing BA kinds where they fit | PM-owned, validated by the PM |
-| Project brief | record `document` with `doc_type=project_brief` (platform draft) | PM approval binds to its version |
+| Project brief | PM record `project_brief` (`PB-…`, platform draft; built in P4) | PM approval binds to its version |
 | Epic, Definition of Done | record kinds (BA) | links to stories and requirements |
 | Sprint | table `sprints` (number, goal, dates, status, plan record version, workflow execution) | activated only by the engine after the PM's approval |
 | Task | record kind `task` (department, owner, priority, due date, status, blockers) | reassignment is a versioned edit with an audit event |
