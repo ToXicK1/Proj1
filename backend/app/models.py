@@ -6,6 +6,7 @@ from app.approvals.models import ApprovalDecision, ChangeRequest  # noqa: F401
 from app.artifacts.models import Artifact, ArtifactVersion  # noqa: F401
 from app.audit.models import AuditChain, AuditEvent  # noqa: F401
 from app.auth.models import EmailToken, User, UserSession  # noqa: F401
+from app.codebase.models import CodeIndex, FileDependency, RepositoryFile  # noqa: F401
 from app.collab.models import TeamMessage, Ticket, TicketComment  # noqa: F401
 from app.core.db import Base
 from app.devai.models import DeveloperAiRun  # noqa: F401

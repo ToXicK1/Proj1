@@ -3,7 +3,7 @@ import { api, setCsrfToken, type UserDto } from "./api";
 
 type SessionState =
   | { status: "loading" }
-  | { status: "anonymous" }
+  | { status: "anonymous"; signedOut?: boolean }  // signedOut: this browser just signed out (not a visit to a link)
   | { status: "authenticated"; user: UserDto };
 
 interface SessionContextValue {
@@ -47,7 +47,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await api.logout();
     } finally {
       setCsrfToken(null);
-      setState({ status: "anonymous" });
+      setState({ status: "anonymous", signedOut: true });
     }
   }, []);
 

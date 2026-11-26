@@ -494,3 +494,80 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - The Developer AI and terminal events showed as raw names in Live activity; they now have plain labels.
   - The "Live activity" heading was nearly invisible on the dark IDE background (this was already so before these changes).
   - Checked again in the browser after the fix, with the type check and unit tests rerun.
+
+## 2026-11-26 — Profile links and the team overview
+
+- **Frontend:** type check, 24 unit tests and the production build passed.
+- **Browser specs, managed stack, rebuilt from scratch:** accounts and IDE passed (3.5 min).
+- **Checked on the main stack** (rebuilt, at migration 0036) as the demo developer, with screenshots:
+  - under a project the sidebar lists only "Software Developer", with no "Professional team";
+  - that link opens `/projects/{id}/ide`;
+  - Home and Workspace show the developer's own items.
+- **Not run:** `collab.spec.ts` (the shared self-signup stack). It was updated for this change: the analyst's project links are now "Business Analyst" only, and the analyst is pointed to their Workspace from `/team`. It should be run when that stack is next brought up.
+
+## 2026-11-26 — Workspace role overviews
+
+- **Backend:** new test `test_the_workspace_overview_shows_each_role_its_own_side`, which passed:
+  - after a Developer AI run, the developer's card shows the repository ready, 1 change set in review and the AI run "in review";
+  - no build is claimed, because the build ran through the simulated executor;
+  - the analyst's view of the Developer card has no code summary.
+- **Related backend tests:** `test_home`, `test_pm` and `test_devai` all pass (14).
+- **Frontend:** 27 unit tests passed. New: the role lines say nothing is waiting when nothing is, name what waits from the records, and show a failed build or AI run as failed. Type check and build passed.
+- **Browser specs, managed stack, rebuilt:** accounts and IDE passed (7.5 min). The IDE spec reaches the IDE through the Workspace cards.
+- **Main stack, checked as three demo people** (screenshots taken):
+  - the developer sees Code Generation, "not started", and "Repository ready";
+  - the analyst sees Requirements Analysis, "awaiting approval", and 1 step awaiting approval;
+  - the administrator sees all seven departments. The PM, Architect and Designer show "No lifecycle steps in this kind of work". Before a fix found from these screenshots, they had wrongly said "All of its lifecycle steps are done".
+
+## 2026-11-26 — Codebase Explorer; Workspace layers; administrators oversee (RD-31)
+
+- **New backend tests, `tests/test_codebase.py`: 11 passed.** The real parsers (Python `ast`, the TypeScript compiler) and the real resolver run on real file contents; only the hand-off to the executor container is simulated. Covered:
+  - every kind of Python and TS/JS import, including dynamic ones;
+  - exclusions, and secret data files never being read;
+  - confirmed, unresolved, external and dynamic imports; tests matched by name;
+  - cycles, chains and impact; predecessors versus successors;
+  - incremental indexing: nothing is parsed again when nothing changed; one change parses one file;
+  - a rename removes the old file and its relationships, and an added file resolves an import without re-parsing the importer;
+  - a failed analysis and an executor that does not answer are both reported plainly;
+  - paths outside the index (`../`, `/etc/passwd`, `.env`, deleted files) are refused;
+  - **only Software Developers may use it**: the BA, the client and administrators are refused;
+  - a second index of the same branch waits;
+  - **the platform's own `backend/app` (144 files): 0 parse errors, 0 unresolved imports, the correct relationships**;
+  - a large synthetic repository (1,502 files): the graph is capped at 300 nodes and a focused view returns exactly the expected neighbourhood.
+- **Other new or changed backend tests:**
+  - the Workspace overview test;
+  - administrators are refused code execution (`test_executor`), the Developer AI, the repository and department records, while keeping the team summary (`test_devai`);
+  - only the requester may cancel a Developer AI run.
+- **Full backend suite: 585 passed, 5 skipped, 0 failed**, with the administrator restrictions in place.
+- **Frontend:** 35 unit tests passed. New tests cover:
+  - the graph helpers: predecessors and successors, folder collapsing, the hierarchy, the layout direction, automatic collapsing;
+  - where the IDE starts: saved tabs and unsaved edits kept, a link's branch used only when nothing unsaved would be hidden, unsafe branch names refused.
+
+  Type check and production build passed. One run of the whole set had `liveEvents.test.tsx` fail while the backend suite was using the machine. It then passed three times on its own and in the full set (35/35). It is timing-sensitive and noted as such.
+- **Real analysis in the executor on the test stack:**
+  - this platform's own code (144 Python and 71 TypeScript files on a branch): **216 files in 16.9 s, 0 parse errors, 1,062 confirmed dependencies**;
+  - the one unresolved import is real: `main.tsx` imports `./styles.css`, which was not in that branch;
+  - `IdePage.tsx` → its 10 successors and its one predecessor (`App.tsx`, a dynamic import) are exactly right;
+  - impact of `backend/app/core/errors.py`: 46 direct and 27 indirect dependants.
+- **Browser specs, managed stack, rebuilt from scratch: accounts and both IDE specs passed (7.7 min).** They now run as a real developer, whom the administrator adds on the Team page.
+  - **The administrator's view is oversight only:** no Workspace link; under the project only "Professional team"; the team summary without any "Open … workspace"; the IDE shows "The IDE is for the project's engineering professionals" with no "Create the repository".
+  - **The developer:**
+    - sees only their own role in Workspace;
+    - does the whole IDE flow: files, build and test, commit, change set, terminal, Developer AI, and the refused self-approval;
+    - makes an unsaved README edit, opens the Codebase Explorer page (back link to the Development overview checked) and analyses the branch for real;
+    - follows `calc.py` → `test_calc.py`, then **Open in IDE**: the file opens in the existing IDE and **the unsaved README tab is still there** ("1 unsaved change");
+    - a link to a missing file is reported, and a link to another branch with unsaved edits keeps them and says so.
+- **Found and fixed on the way:**
+  - the Explorer graph collapsing to a thin strip;
+  - unreadable buttons and labels;
+  - a duplicate heading that confused the page;
+  - the IDE offering "Create the repository" to someone who is refused;
+  - **the next person to sign in being sent to the previous person's page** (a developer landing on the admin's Oversight);
+  - the overly broad secret-file rule that hid `secrets.py`.
+- **Test infrastructure:** a freshly rebuilt test web server sometimes needed more than the 3-minute warm-up after the new dependency, and one run stopped at the warm-up (nothing was tested). The test script now warms the app up before the tests start.
+- **Checked on the main stack** (rebuilt, migration 0037) as the demo developer, with screenshots:
+  - after the admin signs out from Oversight, the developer lands on Home;
+  - Workspace shows Development overview, IDE and Codebase Explorer;
+  - the sidebar reads "Software Developer · IDE · Codebase Explorer";
+  - the Development overview has the tools in its header.
+- **Not run:** `collab.spec.ts` (the shared self-signup stack), which was updated for the new sidebar.

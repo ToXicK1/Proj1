@@ -38,17 +38,24 @@ from app.work.models import (
     WorkPackage,
 )
 
-ELEVATED = ("admin", "manager")
+# Who reads every department's workspace: the Project Manager, who coordinates them (RD-20). Not administrators: they
+# oversee from the project overview and the Professional team summary, and never use a role's workspace (2026-11-26).
+ELEVATED = ("manager",)
 PLATFORM = "platform"  # the author of assembled drafts: deterministic, from approved records, not the AI
 NEEDS_CONFIRMING = ("ai_suggestion", "open_question", "system_draft")
 
 
 # Access ------------------------------------------------------------------------------------------------------------
 
-def _scope(db: Session, user: User, project_id: uuid.UUID) -> tuple[Project, Scope]:
+def _scope(db: Session, user: User, project_id: uuid.UUID, *, oversight: bool = False) -> tuple[Project, Scope]:
+    """The department workspaces' access. Administrators are refused (no role's workspace is theirs) except where
+    `oversight` is set: the team summary, and the brief's status and start for an absent PM (RD-27)."""
     project, scope = scope_for(db, user, project_id)
     if not scope.internal:
         raise AppError(403, "not_permitted", "Department workspaces are for the project's professional team")
+    if scope.kind == "admin" and not oversight:
+        raise AppError(403, "not_permitted", "Department workspaces are for the project's team; administrators "
+                                             "oversee the project from its overview")
     return project, scope
 
 

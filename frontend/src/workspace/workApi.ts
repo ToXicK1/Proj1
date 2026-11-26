@@ -48,6 +48,10 @@ export interface TeamCardDto {
   started?: boolean; steps?: number; steps_done?: number; awaiting_approval?: number;
   current?: { name: string; status: string; note: string | null } | null;
   issues?: { stage: string; kind: string; text: string }[];
+  /** The Developer's code side (Workspace overview). */
+  code?: { repository: boolean; change_sets_in_review: number; change_sets_approved: number;
+    ai_run: { number: number; status: string; branch: string } | null;
+    last_build: { status: string; passed: boolean; summary: string; at: string | null } | null };
 }
 
 export interface AssistantExchangeDto {

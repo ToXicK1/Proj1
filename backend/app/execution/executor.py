@@ -67,6 +67,8 @@ TEMPLATES: dict[str, Template] = {
     "git.read": Template(RUNNER_IMAGE, _GIT, 60, repo="read"),
     "git.diff": Template(RUNNER_IMAGE, _GIT, 60, repo="read"),
     "git.log": Template(RUNNER_IMAGE, _GIT, 60, repo="read"),
+    # Codebase Explorer: list a commit's files and parse imports, deterministically (Python ast, the TypeScript parser).
+    "git.index": Template(RUNNER_IMAGE, _GIT, 300, work_mb=256, repo="read"),
 }
 
 

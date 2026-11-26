@@ -48,23 +48,22 @@ def session_out(row: TerminalSession, full: bool = False) -> dict[str, Any]:
 
 
 def get(db: Session, user: User, project_id: uuid.UUID, session_id: uuid.UUID) -> TerminalSession:
-    """The record: the person who opened it, or an administrator."""
-    from app.collab.service import scope_for
+    """The record: only the person who opened it (it is part of their workspace). The audit chain keeps the rest."""
+    from app.execution.service import _allowed
 
-    _, scope = scope_for(db, user, project_id)
+    _allowed(db, user, project_id)
     row = db.get(TerminalSession, session_id)
-    if row is None or row.project_id != project_id or (row.user_id != user.id and scope.kind != "admin"):
+    if row is None or row.project_id != project_id or row.user_id != user.id:
         raise not_found()
     return row
 
 
 def recent(db: Session, user: User, project_id: uuid.UUID) -> list[TerminalSession]:
-    from app.collab.service import scope_for
+    from app.execution.service import _allowed
 
-    _, scope = scope_for(db, user, project_id)
-    query = select(TerminalSession).where(TerminalSession.project_id == project_id)
-    if scope.kind != "admin":
-        query = query.where(TerminalSession.user_id == user.id)
+    _allowed(db, user, project_id)
+    query = select(TerminalSession).where(TerminalSession.project_id == project_id,
+                                          TerminalSession.user_id == user.id)
     return list(db.execute(query.order_by(TerminalSession.created_at.desc()).limit(30)).scalars())
 
 

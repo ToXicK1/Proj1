@@ -76,7 +76,14 @@ def _developer_ai(ctx: JobContext) -> None:
     devai.run(ctx.factory, ctx.settings, ctx.transport, uuid.UUID(ctx.payload["run_id"]), finish=ctx.finish_in)
 
 
+def _codebase_index(ctx: JobContext) -> None:
+    from app.codebase import service as codebase
+
+    codebase.run_index(ctx.factory, uuid.UUID(ctx.payload["index_id"]), finish=ctx.finish_in)
+
+
 HANDLERS: dict[str, Handler] = {
+    "codebase.index": _codebase_index,
     "developer_ai.run": _developer_ai,
     "work.meeting_analysis": _meeting_analysis,
     "work.assistant": _assistant,

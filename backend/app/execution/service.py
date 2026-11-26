@@ -18,7 +18,7 @@ from app.core.db import uuid7
 from app.core.errors import AppError, not_found
 from app.execution.models import ExecutionJob
 
-KINDS = ("checks", "git.init", "git.commit", "git.read", "git.diff", "git.log", "git.merge")
+KINDS = ("checks", "git.init", "git.commit", "git.read", "git.diff", "git.log", "git.merge", "git.index")
 DONE = ("succeeded", "failed", "timed_out", "rejected", "error")
 
 
@@ -57,13 +57,14 @@ def job_out(job: ExecutionJob) -> dict[str, Any]:
 
 
 def _allowed(db: Session, user: User, project_id: uuid.UUID):
-    """Engineering professionals and administrators run code; clients, the PM, managers and members do not."""
+    """The project's engineering professionals run code; administrators (oversight only), clients, the PM and members
+    do not."""
     from app.collab.service import scope_for
     from app.portal.lifecycle import ENGINEERING
 
     project, scope = scope_for(db, user, project_id)
     engineer = scope.kind == "professional" and bool(scope.profiles & set(ENGINEERING))
-    if not (engineer or scope.kind == "admin"):
+    if not engineer:
         raise AppError(403, "not_permitted", "Only the project's engineering professionals run code")
     return project
 

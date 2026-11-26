@@ -40,7 +40,7 @@ def _projects(db: Session, user: User) -> list[tuple[Any, Any]]:
 
 
 def _engineer(scope: Any) -> bool:
-    return scope.kind == "admin" or (scope.kind == "professional" and bool(scope.profiles & set(ENGINEERING_PROFILES)))
+    return scope.kind == "professional" and bool(scope.profiles & set(ENGINEERING_PROFILES))
 
 
 def _change_sets(db: Session, user: User, projects: list[tuple[Any, Any]]) -> list[dict[str, Any]]:
@@ -73,7 +73,7 @@ def _packages(db: Session, user: User, projects: list[tuple[Any, Any]]) -> list[
 
     out = []
     for project, scope in projects:
-        if scope.kind not in ("professional", "admin"):
+        if scope.kind != "professional":
             continue
         rows = db.execute(select(WorkPackage).where(WorkPackage.project_id == project.id,
                                                     WorkPackage.status == "submitted")).scalars()
@@ -153,10 +153,11 @@ def _ai_updates(db: Session, projects: list[tuple[Any, Any]]) -> list[dict[str, 
 
 
 def workspaces(projects: list[tuple[Any, Any]]) -> list[dict[str, Any]]:
-    """Which workspaces the person can open: their own departments; administrators and managers see every one."""
+    """Which workspaces the person can open: their own departments; the Project Manager, who coordinates them, every
+    one. Administrators none: they oversee from the project overview (no role's workspace is theirs)."""
     out = []
     for project, scope in projects:
-        if scope.kind in ("admin", "manager"):
+        if scope.kind == "manager":
             profiles = ["project_manager", *ENGINEERING_PROFILES]
         elif scope.kind == "professional":
             profiles = [p for p in ("project_manager", *ENGINEERING_PROFILES) if p in scope.profiles]

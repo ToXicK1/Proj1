@@ -175,7 +175,11 @@ def op_log(job: dict) -> dict:
     limit = max(1, min(int(job.get("limit") or 50), 200))
     if not exists(ref):
         raise JobError(f"{ref} does not exist")
-    raw = git("log", f"--max-count={limit}", "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e", ref)
+    path = job.get("path")
+    if path is not None and (not isinstance(path, str) or not SAFE_PATH.match(path) or ".." in path.split("/")):
+        raise JobError("invalid path")
+    raw = git("log", f"--max-count={limit}", "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e", ref,
+              *(["--", path] if path else []))
     commits = []
     for record in raw.split("\x1e"):
         parts = record.strip().split("\x1f")
@@ -212,7 +216,45 @@ def op_merge(job: dict) -> dict:
     return {"merged": commit, "fast_forward": False, "default_branch": DEFAULT_BRANCH}
 
 
-OPERATIONS = {"git.init": op_init, "git.commit": op_commit, "git.read": op_read, "git.diff": op_diff,
+PATTERN = re.compile(r"^[A-Za-z0-9_.*/\-]{1,100}$")
+
+
+def op_index(job: dict) -> dict:
+    """Codebase Explorer: list the files of a commit and parse the imports of those that changed (codeindex.py)."""
+    import codeindex
+
+    ref = ref_ok(job.get("ref") or DEFAULT_BRANCH)
+    if not exists(ref):
+        raise JobError(f"{ref} does not exist")
+    known = job.get("known") or {}
+    if not isinstance(known, dict) or any(not isinstance(k, str) or not isinstance(v, str) or not SHA.match(v)
+                                          for k, v in known.items()):
+        raise JobError("invalid index state")
+    patterns = job.get("exclude") or list(codeindex.DEFAULT_EXCLUDE)
+    if not isinstance(patterns, list) or len(patterns) > 100 or any(
+            not isinstance(p, str) or not PATTERN.match(p) for p in patterns):
+        raise JobError("invalid exclusion patterns")
+    commit = git("rev-parse", f"{ref}^{{commit}}").strip()
+    entries = []
+    for line in git("ls-tree", "-r", "-l", "--full-tree", commit).splitlines():
+        meta, path = line.split("\t", 1)
+        _, kind, sha, size = meta.split()
+        if kind == "blob" and len(path) <= 500:
+            entries.append({"path": path, "sha": sha, "size": int(size) if size.isdigit() else 0})
+
+    def read(sha: str) -> bytes:
+        done = subprocess.run(["git", *SAFE, f"--git-dir={REPO}", "cat-file", "blob", sha], env=ENV,
+                              capture_output=True, timeout=60, check=True)
+        return done.stdout
+
+    try:
+        result = codeindex.analyse(entries, read, known, tuple(patterns))
+    except RuntimeError as exc:
+        raise JobError(str(exc)) from exc
+    return {"ref": ref, "commit": commit, **result}
+
+
+OPERATIONS = {"git.index": op_index, "git.init": op_init, "git.commit": op_commit, "git.read": op_read, "git.diff": op_diff,
               "git.log": op_log, "git.merge": op_merge}
 
 

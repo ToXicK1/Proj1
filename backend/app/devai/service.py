@@ -61,13 +61,13 @@ class Stop(Exception):
 # Requests ---------------------------------------------------------------------------------------------------------
 
 def _may_ask(db: Session, user: User, project_id: uuid.UUID):
-    """Developers of the project, and administrators."""
+    """The project's Software Developers (not administrators: a role's tools are the role's)."""
     from app.collab.service import scope_for
     from app.execution.service import _allowed
 
     project = _allowed(db, user, project_id)
     _, scope = scope_for(db, user, project_id)
-    if scope.kind != "admin" and PROFILE not in scope.profiles:
+    if scope.kind != "professional" or PROFILE not in scope.profiles:
         raise AppError(403, "not_permitted", "The Developer AI works for the project's Software Developers")
     return project
 
@@ -129,17 +129,14 @@ def start(db: Session, user: User, project_id: uuid.UUID, *, task: str, story_it
 
 
 def cancel(db: Session, user: User, project_id: uuid.UUID, run_id: uuid.UUID) -> DeveloperAiRun:
-    """The person who asked, or an administrator. The run stops before its next step; its branch is kept."""
-    from app.collab.service import scope_for
-
+    """The person who asked. The run stops before its next step; its branch is kept."""
     project = _may_ask(db, user, project_id)
-    _, scope = scope_for(db, user, project_id)
     row = db.execute(select(DeveloperAiRun).where(DeveloperAiRun.id == run_id, DeveloperAiRun.project_id == project.id)
                      .with_for_update()).scalar_one_or_none()
     if row is None:
         raise not_found()
-    if row.requested_by_user_id != user.id and scope.kind != "admin":
-        raise AppError(403, "not_permitted", "Only the person who asked, or an administrator, can cancel this run")
+    if row.requested_by_user_id != user.id:
+        raise AppError(403, "not_permitted", "Only the person who asked can cancel this run")
     if row.status not in ACTIVE:
         raise AppError(409, "not_running", f"This run is {row.status.replace('_', ' ')}")
     row.status, row.cancelled_by_user_id, row.finished_at = "cancelled", user.id, datetime.now(UTC)

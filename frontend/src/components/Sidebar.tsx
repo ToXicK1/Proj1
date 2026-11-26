@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { DEPARTMENT_PATH, PATH_DEPARTMENT } from "../workspace/modules";
+import { PATH_DEPARTMENT } from "../workspace/modules";
+import { ROLE_SPACES, workspaceFor } from "../workspace/tools";
 import { Link, matchPath, useLocation } from "react-router-dom";
 import { api, type AccessDto, type ProjectDto, type ScopeDto } from "../api";
 import { PROFILES } from "../portal/roles";
@@ -70,7 +71,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
     : access?.status === "active" ? "messages" : null;
   const at = (path: string) => location.pathname === path;
   // Home is for the day's information; the Workspace (the professional tools) is for the project's team.
-  const workspace = access !== null && access.status === "active" && (access.is_admin || access.is_manager || access.profiles.length > 0);
+  // Administrators oversee: no role's workspace is theirs.
+  const workspace = access !== null && access.status === "active" && !access.is_admin && (access.is_manager || access.profiles.length > 0);
 
   return (
     <>
@@ -115,20 +117,24 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
                   </Link>
                   {here && scope && kind !== "member" && scope.profiles.length > 0 && (
                     <nav className="nav-sub" aria-label="Professional profiles">
-                      {kind !== "owner" && (
+                      {(kind === "admin" || kind === "manager") && (  /* the department overview: oversight only */
                         <NavLink active={profile === "team"} to={`/projects/${encodeURIComponent(projectId)}/team`}>
                           Professional team
                         </NavLink>
                       )}
-                      {PROFILES.filter(([key]) => scope.profiles.includes(key) && (kind !== "owner" || key !== "project_manager"))
-                        .map(([key, label]) => (
+                      {PROFILES.filter(([key]) => kind !== "admin" && scope.profiles.includes(key) && (kind !== "owner" || key !== "project_manager"))
+                        .map(([key, label]) => [
                         <NavLink key={key} active={profile === key}
                           to={kind === "owner"
                             ? `/projects/${encodeURIComponent(projectId)}?tab=Deliverables&profile=${key}`
-                            : `/projects/${encodeURIComponent(projectId)}/work/${DEPARTMENT_PATH[key]}`}>
+                            : workspaceFor(key, projectId)}>
                           {label}
-                        </NavLink>
-                      ))}
+                        </NavLink>,
+                        ...(kind !== "professional" ? [] : (ROLE_SPACES[key]?.tools ?? []).map((m) => (  /* the role's tools */
+                          <NavLink key={`${key}-${m.name}`} active={location.pathname === m.to(projectId)} to={m.to(projectId)}>
+                            {`· ${m.name}`}
+                          </NavLink>))),
+                      ])}
                     </nav>
                   )}
                 </div>

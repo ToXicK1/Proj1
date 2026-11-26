@@ -292,3 +292,28 @@ def merge(db: Session, factory: sessionmaker[Session], user: User, project_id: u
                                                     "merged": result["merged"]})
     db.commit()
     return change_set_out(cs)
+
+
+def code_summary(db: Session, project_id: uuid.UUID) -> dict[str, Any]:
+    """The Developer's overview for a project (Workspace): the repository, change sets waiting for review, the latest
+    Developer AI run and the last build. Read from records only; nothing runs."""
+    from app.devai.models import DeveloperAiRun
+    from app.execution.models import ExecutionJob
+
+    repo = db.execute(select(Repository).where(Repository.project_id == project_id)).scalar_one_or_none()
+    in_review = db.execute(select(func.count()).select_from(ChangeSet).where(
+        ChangeSet.project_id == project_id, ChangeSet.status.in_(("open", "in_review")))).scalar_one()
+    approved = db.execute(select(func.count()).select_from(ChangeSet).where(
+        ChangeSet.project_id == project_id, ChangeSet.status == "approved")).scalar_one()
+    run = db.execute(select(DeveloperAiRun).where(DeveloperAiRun.project_id == project_id)
+                     .order_by(DeveloperAiRun.number.desc()).limit(1)).scalar_one_or_none()
+    build = db.execute(select(ExecutionJob).where(ExecutionJob.project_id == project_id, ExecutionJob.kind == "checks")
+                       .order_by(ExecutionJob.created_at.desc()).limit(1)).scalar_one_or_none()
+    checks = ((build.result or {}).get("checks") or {}) if build else {}
+    passed = bool(checks) and all(bool(c.get("passed")) for c in checks.values())
+    return {"repository": repo is not None and repo.status == "ready",
+            "change_sets_in_review": in_review, "change_sets_approved": approved,
+            "ai_run": {"number": run.number, "status": run.status, "branch": run.branch} if run else None,
+            "last_build": {"status": build.status, "passed": passed if build.status == "succeeded" else False,
+                           "summary": str((checks.get("unit_tests") or {}).get("summary") or build.failure or "")[:120],
+                           "at": build.created_at.isoformat() if build.created_at else None} if build else None}

@@ -5,6 +5,7 @@ import { PageHeader, Skeleton } from "../components/ui";
 import { DepartmentStatus, TeamChat, projectChat } from "../portal/Collaboration";
 import { PROFILES } from "../portal/roles";
 import { MODULES, PATH_DEPARTMENT } from "../workspace/modules";
+import { ROLE_SPACES } from "../workspace/tools";
 import { Records } from "../workspace/Records";
 import { Handoffs, Later, Packages, Traceability } from "../workspace/Screens";
 import { Steps } from "../workspace/Steps";
@@ -55,11 +56,16 @@ export function DepartmentWorkspacePage() {
   return (
     <div className={`page workspace workspace-${dept}`}>
       <PageHeader eyebrow="Department workspace" title={`${title}`}
+        back={scope.kind === "manager" ? { to: `/projects/${encodeURIComponent(projectId)}/team`, label: "Professional team" }
+          : { to: "/workspace", label: "Workspace" }}
         meta={card.people.length ? `Assigned: ${card.people.join(", ")}${canEdit ? "" : " · you can read but not change this work"}`
           : "Nobody is assigned to this department yet"}
         actions={<span className="actions">
           {team && <ConnectionStatus connection={live.connection} />}
-          <Link to={`/projects/${encodeURIComponent(projectId)}/team`} className="button secondary">Professional team</Link>
+          {scope.kind === "professional" && scope.profiles.includes(department) && (ROLE_SPACES[department]?.tools ?? []).map((t) => (
+            <Link key={t.name} to={t.to(projectId)} className="button">{`Open ${t.name}`}</Link>))}
+          {scope.kind === "manager" &&
+            <Link to={`/projects/${encodeURIComponent(projectId)}/team`} className="button secondary">Professional team</Link>}
           <button type="button" className="secondary" aria-pressed={panel} onClick={() => setPanel(!panel)}>
             {panel ? "Hide context" : "Show context"}</button>
         </span>} />
@@ -86,9 +92,15 @@ export function DepartmentWorkspacePage() {
           {current.screen === "kickoff" && <Kickoff projectId={projectId} all={kinds} />}
           {current.screen === "ide" && (
             <div className="stack">
-              <p>The Developer IDE opens the project's real git repository: edit in the code editor, commit to a work
-                branch, review change sets as real diffs, and build and test in an isolated container.</p>
-              <Link className="button" to={`/projects/${encodeURIComponent(projectId)}/ide`}>Open the IDE</Link>
+              <p>The <strong>IDE</strong> opens the project's real git repository: edit in the code editor, commit to a
+                work branch, review change sets as real diffs, build and test in an isolated container, use the terminal
+                and give tasks to the Developer AI.</p>
+              <p>The <strong>Codebase Explorer</strong> shows the repository's structure and the dependencies between its
+                files, and opens any file in the IDE.</p>
+              <span className="actions">
+                <Link className="button" to={`/projects/${encodeURIComponent(projectId)}/ide`}>Open the IDE</Link>
+                <Link className="button secondary" to={`/projects/${encodeURIComponent(projectId)}/codebase`}>Open the Codebase Explorer</Link>
+              </span>
             </div>
           )}
           {current.screen === "pm_tasks" && <PmTasks projectId={projectId} onOpen={(m) => setParams({ m })} />}

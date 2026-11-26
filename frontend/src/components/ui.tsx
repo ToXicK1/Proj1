@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
 
 export type Tone = "success" | "warning" | "error" | "info" | "blocked" | "pending" | "progress" | "neutral";
@@ -107,12 +108,15 @@ export function Avatar({ name, kind = "human", size = "md" }: { name: string; ki
 }
 
 /** The top of every page: where you are, what it is, and the main actions. */
-export function PageHeader({ eyebrow, title, meta, actions, children }: {
+export function PageHeader({ eyebrow, title, meta, actions, children, back }: {
   eyebrow?: ReactNode; title: ReactNode; meta?: ReactNode; actions?: ReactNode; children?: ReactNode;
+  /** The page this one belongs to (a role's main page, the Workspace, the project): always one click back. */
+  back?: { to: string; label: string };
 }) {
   return (
     <header className="page-head">
       <div className="page-head-main">
+        {back && <Link className="back-link" to={back.to}>← {back.label}</Link>}
         {eyebrow && <div className="eyebrow">{eyebrow}</div>}
         <h1>{title}</h1>
         {meta && <p className="page-meta">{meta}</p>}

@@ -21,7 +21,7 @@ export type PortalTab = (typeof TABS)[number];
 export const TABS_FOR: Record<string, readonly PortalTab[]> = {
   owner: ["Overview", "Lifecycle", "Progress", "Project brief", "Deliverables", "Tickets", "Conversations", "Testing"],
   professional: ["Workspace", "Tickets", "Conversations"],
-  admin: TABS,
+  admin: TABS.filter((t) => t !== "Workspace"),  // administrators oversee: no department's workspace is theirs
   manager: TABS,
   member: ["Overview"],
 };

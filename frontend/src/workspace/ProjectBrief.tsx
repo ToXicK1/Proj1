@@ -80,7 +80,7 @@ const CLIENT_STATUS: Record<string, string> = {
 /** The PM (or an administrator, with a reason, when the PM is not available) hands the client-approved brief to the
  * Business Analyst department; that starts delivery with the project's kind of work. The BA asks for clarification
  * on the handoff, and the PM answers through the PM's handoffs. */
-export function BaHandoff({ projectId }: { projectId: string }) {
+export function BaHandoff({ projectId, oversight = false }: { projectId: string; oversight?: boolean }) {
   const { status, error, setError, load } = useBrief(projectId);
   const [packageId, setPackageId] = useState("");
   const [note, setNote] = useState("");
@@ -135,8 +135,10 @@ export function BaHandoff({ projectId }: { projectId: string }) {
                 {forPm ? "Start delivery for the Project Manager" : "Hand to the Business Analyst and start"}</button>
             </form>
           )}
-      <h3>Handoffs</h3>
-      <Handoffs key={String(status.started)} projectId={projectId} department={PM} canEdit={status.is_project_manager} />
+      {!oversight && <>  {/* the handoffs are the PM's workspace: not shown to an administrator */}
+        <h3>Handoffs</h3>
+        <Handoffs key={String(status.started)} projectId={projectId} department={PM} canEdit={status.is_project_manager} />
+      </>}
     </div>
   );
 }

@@ -1,38 +1,41 @@
 import "./monacoSetup";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ApiError } from "../api";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ApiError, api } from "../api";
 import { ConnectionStatus, LiveActivity, useWorkspaceEvents } from "../workspace/liveEvents";
 import { languageOf } from "./monacoSetup";
 import { type TreeNode, buildTree, filesToTest, isSafePath, sortedChildren } from "./paths";
 import { type DevAiRunDto, DeveloperAiPanel, aiStatus } from "./DeveloperAiPanel";
 import { TerminalPanel } from "./TerminalPanel";
+import { type Tab, readSaved, savedKey, startingPoint } from "./session";
+import { ancestors } from "./codebaseGraph";
 import { type ChangeSetDto, type ExecutionDto, type TreeEntryDto, repoApi } from "./repoApi";
 
 type View = "explorer" | "search" | "source" | "run" | "ai";
 type Bottom = "output" | "problems" | "history" | "terminal";
-interface Tab { path: string; ref: string; original: string; value: string }
 interface Review { cs: ChangeSetDto; path: string | null; base: string; head: string }
 
 const problem = (e: unknown) => (e instanceof ApiError ? [e.message, ...e.problems].join(" · ")
   : `That did not work${e instanceof Error && e.message ? `: ${e.message}` : "."}`);
 const short = (sha: string | undefined) => (sha ? sha.slice(0, 7) : "");
 const CHUNK = 50;
-
 /** The Developer IDE (Phase 2): the project's real git repository, edited in Monaco, committed to work branches,
  * reviewed as change sets with real diffs, and built and tested in the isolated executor. */
 export function IdePage() {
   const { projectId = "" } = useParams();
   const [params] = useSearchParams();
   const wantedSet = useRef(params.get("change_set"));  // opened from Home: go straight to that review
+  const wantedFile = useRef(params.get("file"));  // opened from elsewhere (?file=&branch=): open that file
   const [repo, setRepo] = useState<{ exists: boolean; head_sha?: string } | null>(null);
-  const [branch, setBranch] = useState("main");
+  const [refused, setRefused] = useState(false);
+  const start = useRef(startingPoint(readSaved(projectId), params.get("branch")));
+  const [branch, setBranch] = useState(start.current.branch);
   const [branches, setBranches] = useState<string[]>(["main"]);
   const [commit, setCommit] = useState("");
   const [entries, setEntries] = useState<TreeEntryDto[]>([]);
-  const [tabs, setTabs] = useState<Tab[]>([]);
-  const [active, setActive] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<Tab[]>(start.current.tabs);
+  const [active, setActive] = useState<string | null>(start.current.active);
   const [view, setView] = useState<View>("explorer");
   const [bottom, setBottom] = useState<Bottom>("output");
   const [changeSets, setChangeSets] = useState<ChangeSetDto[]>([]);
@@ -50,6 +53,23 @@ export function IdePage() {
   const [changeNote, setChangeNote] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
   const live = useWorkspaceEvents(projectId, true);
+  const navigate = useNavigate();
+  const [developer, setDeveloper] = useState(false);  // the Codebase Explorer is the Developer's
+  useEffect(() => {
+    api.portalScope(projectId).then((s) => setDeveloper(s.kind === "professional" && s.profiles.includes("software_developer")))
+      .catch(() => setDeveloper(false));
+  }, [projectId]);
+  useEffect(() => {  // keep the tabs (and unsaved edits) for this browser tab's session
+    try {
+      const data = JSON.stringify({ branch, tabs, active });
+      if (data.length < 4_000_000) window.sessionStorage.setItem(savedKey(projectId), data);
+    } catch { /* storage full or unavailable: the tabs simply are not kept */ }
+  }, [projectId, branch, tabs, active]);
+  useEffect(() => {  // closing or reloading the browser tab with unsaved edits asks first
+    const warn = (e: BeforeUnloadEvent) => { if (tabs.some((t) => t.value !== t.original)) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [tabs]);
   const seen = useRef(0);
   const editorRef = useRef<{ focus(): void } | null>(null);
   useEffect(() => { if (active) window.setTimeout(() => editorRef.current?.focus(), 0); }, [active]);  // typing goes to the open file
@@ -70,7 +90,10 @@ export function IdePage() {
       await loadBranch(branch);
       setChangeSets((await repoApi.changeSets(projectId)).items);
       setRunsList((await repoApi.executions(projectId)).items);
-    } catch (e) { setError(problem(e)); setRepo((r) => r ?? { exists: false }); }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) { setRefused(true); return; }  // not this person's tool
+      setError(problem(e)); setRepo((r) => r ?? { exists: false });
+    }
   }, [projectId, branch, loadBranch]);
   useEffect(() => { void loadAll(); }, [loadAll]);
 
@@ -100,6 +123,18 @@ export function IdePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changeSets]);
 
+  useEffect(() => {
+    const path = wantedFile.current;
+    if (!path || !entries.length) return;
+    wantedFile.current = null;
+    if (start.current.blocked) {
+      setError(`You have unsaved changes on ${branch}. Commit or discard them, then open ${path} on ${params.get("branch")}.`);
+      return;
+    }
+    openInIde(path);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries]);
+
   const dirty = tabs.filter((t) => t.value !== t.original);
   const current = tabs.find((t) => t.path === active) ?? null;
   const tree = useMemo(() => buildTree(entries), [entries]);
@@ -116,6 +151,18 @@ export function IdePage() {
       setTabs((t) => [...t, { path, ref: branch, original: file.content!, value: file.content! }]);
       setActive(path);
     } catch (e) { setError(problem(e)); } finally { setBusy(null); }
+  }
+
+  /** "Open in IDE" (Codebase Explorer, links): the existing editor and tabs; other tabs and unsaved changes are kept. */
+  function openInIde(path: string) {
+    if (!isSafePath(path)) { setError("That is not a file path of this repository."); return; }
+    if (entries.length && !entries.some((e) => e.path === path) && !tabs.some((t) => t.path === path)) {
+      setError(`${path} is not on ${branch} now: it may have been moved or deleted. Refresh the analysis.`);
+      return;
+    }
+    setView("explorer");
+    setOpen((o) => new Set([...o, ...ancestors(path)]));  // show it in the file explorer
+    void openFile(path);
   }
 
   function closeTab(path: string) {
@@ -195,17 +242,26 @@ export function IdePage() {
     catch (e) { setError(problem(e)); } finally { setBusy(null); }
   }
 
+  if (refused) {
+    return (
+      <div className="page stack">
+        <h1>Developer IDE</h1>
+        <p>The IDE is for the project's engineering professionals. Administrators oversee the project from its overview.</p>
+        <Link className="back-link" to={`/projects/${encodeURIComponent(projectId)}`}>← Project overview</Link>
+      </div>
+    );
+  }
   if (!repo) return <div className="ide ide-loading">Opening the repository…</div>;
   if (!repo.exists) {
     return (
       <div className="page stack">
         <h1>Developer IDE</h1>
         {error && <p role="alert" className="error">{error}</p>}
-        <p>This project has no git repository yet. Engineering professionals and administrators can create it; it lives
-          in the isolated executor, and every change goes through branches and reviewed change sets.</p>
+        <p>This project has no git repository yet. The project's engineering professionals can create it; it lives in
+          the isolated executor, and every change goes through branches and reviewed change sets.</p>
         <button type="button" disabled={busy !== null} onClick={() => act(async () => { await repoApi.create(projectId); await loadAll(); }, "Creating the repository…")}>
           Create the repository</button>
-        <Link to={`/projects/${encodeURIComponent(projectId)}/work/dev`}>Back to the Developer workspace</Link>
+        <Link className="back-link" to={`/projects/${encodeURIComponent(projectId)}/work/dev`}>← Development overview</Link>
       </div>
     );
   }
@@ -238,7 +294,10 @@ export function IdePage() {
           <button key={key} type="button" title={label} aria-label={label} aria-pressed={view === key}
             className={view === key ? "active" : ""} onClick={() => setView(key)}>{icon}</button>
         ))}
-        <Link className="ide-exit" title="Back to the workspace" aria-label="Back to the workspace" to={`/projects/${encodeURIComponent(projectId)}/work/dev`}>⤺</Link>
+        {developer && <Link className="ide-explorer-link" title="Codebase Explorer (opens on the platform; your tabs are kept)" aria-label="Codebase Explorer"
+          to={`/projects/${encodeURIComponent(projectId)}/codebase?branch=${encodeURIComponent(branch)}${active ? `&file=${encodeURIComponent(active)}` : ""}`}>⌬</Link>}
+        <Link className="ide-exit" title="Back to the Development overview" aria-label="Back to the Development overview"
+          to={`/projects/${encodeURIComponent(projectId)}/work/dev`}>⤺</Link>
       </nav>
 
       <aside className="ide-sidebar" aria-label={{ explorer: "Explorer", search: "Search", source: "Source Control", run: "Run and Test", ai: "Developer AI" }[view]}>
@@ -340,6 +399,8 @@ export function IdePage() {
                   {review.cs.files.map((f) => <option key={f.path} value={f.path}>{f.path} (+{f.added ?? "?"} −{f.removed ?? "?"})</option>)}
                 </select>
                 <span className={`ide-badge ide-${review.cs.status}`}>{review.cs.status.replace("_", " ")}</span>
+                {developer && <button type="button" className="secondary" title="Files that may be affected by this change set (Codebase Explorer)"
+                  onClick={() => navigate(`/projects/${encodeURIComponent(projectId)}/codebase?branch=${encodeURIComponent(review.cs.branch)}&change_set=${encodeURIComponent(review.cs.id)}`)}>Show impact</button>}
                 {["in_review", "changes_requested", "open"].includes(review.cs.status) && (
                   <>
                     <button type="button" onClick={() => void act(() => repoApi.decide(projectId, review.cs.id, "approve", review.cs.head_sha), "Approving…")}>

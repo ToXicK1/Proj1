@@ -140,7 +140,7 @@ def test_only_known_kinds_can_be_queued(client, engine):
             assert exc.code == "unknown_job_kind"
 
 
-def test_only_engineers_and_administrators_queue_executions(managed, engine):  # noqa: F811
+def test_only_engineers_queue_executions_not_even_administrators(managed, engine):  # noqa: F811
     from tests.test_pm import _setup, _signed_in
 
     c, h, _, project, people = _setup(managed, engine)
@@ -155,6 +155,8 @@ def test_only_engineers_and_administrators_queue_executions(managed, engine):  #
     for who in ("client", "pm"):
         person, ph = _signed_in(managed, people[who])
         assert person.post(url, headers=ph, json=job).status_code in (403, 404)
+    assert c.post(url, headers=h, json=job).status_code == 403  # administrators oversee; code is the engineers'
+    assert c.get(f"{url}/{queued.json()['id']}").status_code == 403
     assert analyst.post(url, headers=ah, json={"kind": "shell", "payload": {}}).status_code == 422
     with engine.connect() as conn:
         assert conn.execute(text("select count(*) from audit_events where event_type = 'execution.requested'")

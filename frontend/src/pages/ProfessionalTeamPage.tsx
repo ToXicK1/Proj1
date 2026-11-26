@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ApiError, api } from "../api";
 import { IdentityTag, PageHeader, Skeleton, StatusPill, type Tone } from "../components/ui";
 import { STEP_LABELS } from "../portal/Collaboration";
-import { DEPARTMENT_PATH } from "../workspace/modules";
+import { workspaceFor } from "../workspace/tools";
 import { type TeamCardDto, workApi } from "../workspace/workApi";
 
 /** An administrator names the project's Project Manager from the people holding the PM profile (RD-20). */
@@ -50,12 +50,21 @@ export function ProfessionalTeamPage() {
       .catch((e: unknown) => setError(e instanceof ApiError ? e.message : "Could not load the team."));
   }, [projectId]);
   useEffect(load, [load]);
-  useEffect(() => { api.access().then((a) => setAdmin(a.is_admin)).catch(() => setAdmin(false)); }, []);
+  const [oversees, setOversees] = useState<boolean | null>(null);
+  useEffect(() => {
+    api.access().then((a) => { setAdmin(a.is_admin); setOversees(a.is_admin || a.is_manager); })
+      .catch(() => { setAdmin(false); setOversees(false); });
+  }, []);
+  if (oversees === false) return (
+    <section className="page"><h1>Professional team</h1>
+      <p className="muted">The overview of every department is for administrators and the Project Manager. Your work is in
+        your <Link to="/workspace">Workspace</Link>; your to-dos are on <Link to="/">Home</Link>.</p></section>);
   if (error) return <section className="page"><h1>Professional team</h1><p role="alert" className="error">{error}</p></section>;
   if (!cards) return <section className="page"><Skeleton lines={6} /></section>;
   return (
     <div className="page">
       <PageHeader eyebrow="Project" title="Professional team"
+        back={{ to: `/projects/${encodeURIComponent(projectId)}`, label: "Project overview" }}
         meta="Each department, who is assigned, what it is working on and what waits on it."
         actions={<Link to={`/projects/${encodeURIComponent(projectId)}`} className="button secondary">Project overview</Link>} />
       <ul className="team-grid" aria-label="Departments">
@@ -89,8 +98,8 @@ export function ProfessionalTeamPage() {
               {c.profile === "project_manager" && admin && (
                 <AssignManager projectId={projectId} current={c.people[0] ?? null} onDone={load} />
               )}
-              <Link to={`/projects/${encodeURIComponent(projectId)}/work/${DEPARTMENT_PATH[c.profile]}`} className="button">
-                Open {c.title} workspace</Link>
+              {!admin && <Link to={workspaceFor(c.profile, projectId)} className="button">  {/* oversight: no way in */}
+                Open {c.title} workspace</Link>}
             </li>
           );
         })}

@@ -12,6 +12,7 @@ import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { DepartmentWorkspacePage } from "./pages/DepartmentWorkspacePage";
 // The IDE (and Monaco, several MB) loads only when someone opens it, never with the rest of the app.
 const IdePage = lazy(() => import("./ide/IdePage").then((m) => ({ default: m.IdePage })));
+const CodebasePage = lazy(() => import("./pages/CodebasePage").then((m) => ({ default: m.CodebasePage })));
 import { ProfessionalTeamPage } from "./pages/ProfessionalTeamPage";
 import { SignupPage } from "./pages/SignupPage";
 import { StudioPage } from "./pages/StudioPage";
@@ -26,6 +27,9 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (state.status === "loading") return <Skeleton />;
   if (state.status === "anonymous") {
+    // After a sign-out the page someone was on is not passed on: the next person to sign in lands on their own Home.
+    // A link opened while signed out still leads back to it after signing in.
+    if (state.signedOut) return <Navigate to="/login" replace />;
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
   if (state.user.must_change_password && location.pathname !== "/change-password") {
@@ -156,6 +160,7 @@ export function App() {
         <Route path="/change-password" element={<RequireAuth><ChangePasswordPage /></RequireAuth>} />
         <Route path="/projects/:projectId/team" element={<RequireAuth><ProfessionalTeamPage /></RequireAuth>} />
         <Route path="/projects/:projectId/work/:dept" element={<RequireAuth><DepartmentWorkspacePage /></RequireAuth>} />
+        <Route path="/projects/:projectId/codebase" element={<RequireAuth><Suspense fallback={<Skeleton />}><CodebasePage /></Suspense></RequireAuth>} />
         <Route path="/projects/:projectId/ide" element={<RequireAuth><Suspense fallback={<Skeleton />}><IdePage /></Suspense></RequireAuth>} />
         <Route path="*" element={<section className="narrow-page"><h1>Page not found</h1><p className="muted">That address does not lead anywhere. <Link to="/">Go to your projects</Link>.</p></section>} />
       </Routes>

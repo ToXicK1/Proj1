@@ -645,3 +645,159 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - The sidebar's first link is now "Home" (was "My projects"), and the project breadcrumb matches.
   - The sidebar's top section is now labelled "Main", because "Workspace" is now a link of its own.
   - The IDE opens a change set from a link (`?change_set=`).
+
+## 2026-11-26 — Each profile link opens its own tool; the team overview is for oversight
+
+- **Professional team** (`/projects/{id}/team`) is the overview of all seven departments: who is assigned, each department's current step, blockers and counts. It is now shown only to **administrators and the Project Manager**: in the sidebar, and as the department page's header button. A professional who opens the address is pointed to their Workspace and Home instead. Before, every professional saw it, which was wrong: a developer's sidebar showed "Professional team" above their own department.
+- **A profile's link opens that profile's tool.** In the sidebar under a project, "Software Developer" now opens the **IDE** directly. Before, it opened the older department page, and the IDE was only a module inside it. The Workspace page and the team overview use the same mapping (`frontend/src/workspace/tools.ts`), so a profile always lands in the same place. The other profiles open their department workspace until their own tools are built.
+- **The main stack was rebuilt** with all of Phase 2e and Home/Workspace. Migration 0036 was applied, and nothing in the existing data changed. Checked as the demo developer: under a project, the sidebar lists only "Software Developer", which opens the IDE. Home shows their 7 stage approvals and their messages.
+
+## 2026-11-26 — Workspace: an overview of each role, project by project
+
+- **The Workspace page** now shows, for each project, **what is happening in each role the person works in**, beside the button that opens that role's tool. It is built from the department's real records (the same data as the team overview), and **a person sees the details only for their own departments**. Administrators and managers see every department.
+- **Every role's card shows:**
+  - the current lifecycle step and its state, or "Not started yet", "No lifecycle steps in this kind of work" or "All of its lifecycle steps are done";
+  - how many steps are approved;
+  - records (and how many are approved);
+  - steps awaiting approval, packages awaiting a decision, incoming handoffs and AI suggestions to confirm;
+  - blockers;
+  - the people assigned, and the AI team.
+- **The Developer's card also shows the code side** (new `code` on the team card, `repos.service.code_summary`):
+  - whether the repository is ready;
+  - change sets in review and approved ones ready to merge;
+  - the latest Developer AI run and its state;
+  - the last build, never shown as passed when it failed.
+  - Other departments do not get this code summary.
+- Each project's overview loads when it scrolls into view, because an administrator may have many projects.
+- **Fixed on the way:** links styled as buttons (`className="button"`) had no style and showed as plain underlined text, including on the existing team overview. They now look like buttons.
+
+## 2026-11-26 — Codebase Explorer (Developer workspace)
+
+> Where it lives and who may use it changed after review: see *Codebase Explorer: changes after review* below. It is now a platform page, for Software Developers only.
+
+**What it is.** A new **Codebase Explorer** view in the IDE's activity bar (⌬). It shows a branch's real structure and the dependencies found by **deterministic source analysis**: each language's own parser, never a model. It has three parts:
+- the folder **hierarchy** in the sidebar;
+- an interactive **dependency graph**;
+- a **file inspector**.
+
+Every file can be opened in the IDE. Your brief's definitions are shown on screen: **predecessors** are files that depend on the selected file (incoming); **successors** are files it depends on (outgoing).
+
+**Audit findings that shaped it:**
+- The IDE opens files with `openFile(path)`. Tabs and unsaved edits live in the IDE page.
+- Repository files are readable only by executor jobs, and the API never touches them.
+- `@xyflow/react` 12.3.6 was already installed.
+- There was no code parsing at all, and no TypeScript in the runner image.
+
+So the Explorer is a view **inside** the IDE, and "Open in IDE" calls the existing `openFile`. There is no second editor, no second way of opening files, and no page reload. Your other tabs and unsaved changes are untouched.
+
+**Analysis (the `git.index` executor job, `sandbox/codeindex.py` and `sandbox/tsimports.js`).** It runs in a fresh, locked-down container per run: no network, a read-only copy of the repository, an unprivileged user.
+- **Python:** the standard `ast` module. Covers `import`, `from … import` with relative levels, and literal `importlib.import_module` / `__import__`.
+- **TypeScript and JavaScript:** the TypeScript 5.5.4 compiler's parser (now in the runner image). Covers imports (type-only marked), `export … from`, `import x = require()`, `require()` and `import()`.
+- A dynamic import whose target isn't a fixed string is recorded as **dynamic**, with no target.
+- **Excluded by default:** `.git`, `node_modules`, `.venv`/`venv`, `dist`, `build`, `__pycache__`, `coverage`, tool caches, minified and map files, and lock files. The patterns are configurable per job and validated.
+- **Secret data files are never listed or read:** `.env*` (templates such as `.env.example` are allowed), `*.pem`, `*.key`, `*.p12`, `*.pfx`, SSH keys, `*credentials*.json`, `secrets.json/yaml/yml/toml`, `.npmrc`, `.pypirc`, `.netrc`, keystores. Source code that merely *handles* secrets (`secrets.py`) is analysed. An early version of the rule wrongly excluded it; the real-repository test caught that, and it was fixed.
+- **Incremental:** only files whose git blob changed since the last index are parsed. Every import is then resolved again against the whole file list, so an import that was unresolved becomes confirmed once its file is added.
+- At most 5,000 files per branch; above that the index is marked partial.
+
+**Resolution (`app/codebase/analysis.py`, pure and deterministic).** Each relationship gets a status:
+- **confirmed:** exactly one file;
+- **partial:** several candidate roots, a path alias (`@/`), or a test matched to its source by name only (`test_x.py` → `x.py`, `x.test.ts` → `x.ts`);
+- **unresolved:** looks internal, but no such file;
+- **external:** the standard library or a package;
+- **dynamic.**
+
+Only confirmed and partial relationships with a target file are drawn as dependencies. An unresolved import is never shown as one.
+
+**Data (migration 0037).**
+- `code_indexes`: per repository and branch. Status (`indexing`, `up_to_date`, `partial`, `failed`, or `not_indexed` when there is no row), the commit analysed, counts, any failure, times.
+- `repository_files`: one row per path and branch. Unique, so there are no duplicates. File name, extension, type (source, test, config, docs, entry, other), language, size, blob hash as the content hash, analysis status and error, the imports as written (for re-resolving), and the last indexed commit.
+- `file_dependencies`: source and target file (cascade on delete), the import as written, relationship type (imports, re-exports, requires, dynamic import, tests), discovery method (`python_ast`, `typescript_parser`, `naming`), status, confidence, line, commit.
+- Constraints: one row per branch, one row per path, valid statuses and types, and "confirmed needs a target". Indexes on source, target, and repository plus branch.
+- **No source code is stored.**
+
+**API** (`/api/v1/projects/{id}/codebase`; engineers and administrators of the project only, enforced on the server):
+- `GET status`, `POST index` (CSRF; queued for the worker; one at a time per branch);
+- `GET tree`;
+- `GET graph` (focus file, depth 1–6 or transitive, file-type and relationship filters, external packages; at most 300 nodes, the most connected first, with a `truncated` flag);
+- `GET file` (the inspector; `history=true` adds the file's last commit, via `git.log` limited to that path);
+- `GET impact` (paths or a change set);
+- `GET chain`.
+
+Every path must be a file of the branch's index. Anything else, including `../`, absolute paths, `.env` and deleted files, gets "not in the analysis: moved or deleted? Refresh". The analysis finishing is published live (`codebase.indexed`).
+
+**Interface.**
+- **Graph** (React Flow plus dagre, laid out left to right): zoom, fit, pan, minimap. Each node shows name, type, path, predecessor and successor counts, and analysis status, with distinct styles for entry points, source, tests, config, docs, other, folders and external packages.
+- **Selecting a node** highlights its predecessors in amber and its successors in blue, and dims everything else. Partial and test relationships are dashed.
+- **Clicking a folder node** expands it; any node's folder can be collapsed into one node. A right-click menu offers Open in IDE, Focus here, Show impact and Collapse its folder. **Double-click opens the file in the IDE.**
+- **Toolbar:** depth, transitive, external packages, file-type filter, relationship filter, back to the whole repository, clear highlights, reset layout. **Search** sits in the sidebar.
+- **Hierarchy:** the branch's real folders. Clicking a file selects its node (bringing it into the graph if it was outside the view); each file also has an "Open" action.
+- **Inspector:**
+  - name, path, type, language, size, and parse problems;
+  - last change (on request);
+  - open change sets touching the file (its git status);
+  - **Predecessors** and **Successors** with relationship type, direction, status, line and method; other imports (external, unresolved, dynamic) listed separately;
+  - transitive dependencies in both directions, each with **Show dependency chain**;
+  - related tests and nearby configuration;
+  - a circular-dependency warning;
+  - **Open in IDE**, **Show impact**, **Focus**. Clicking any related file moves the focus to it.
+- **Impact:** for a file, or from a change-set review (**Show impact** button). It highlights the changed files, their direct and indirect dependants, and the tests to run, worded as *may be affected* and never as a certainty. Nothing is ever changed automatically.
+- **Open in IDE:**
+  - checks the path is safe and still on the branch, otherwise reports "not on <branch> now: moved or deleted? Refresh the analysis";
+  - switches to the editor, opens or re-activates the tab, keeps other tabs and unsaved edits, and reveals the file in the IDE's own file explorer;
+  - also works from a link: `/projects/{id}/ide?file=<path>&branch=<branch>` (and `&view=codebase`).
+- While the Explorer is open, the IDE's right column and bottom panel are hidden to give it room. The terminal stays connected.
+
+**Not in this first version, and stated as such:**
+- languages other than Python and TS/JS (their files are listed and typed, without dependencies);
+- `tsconfig` path aliases other than `@/`/`~/` (marked partial);
+- references from configuration files (none are deterministic enough yet).
+
+### Codebase Explorer: changes after review (2026-11-26)
+
+- **It is a page of the platform**, at `/projects/{id}/codebase`, not a view inside the IDE (your change). It has:
+  - a branch picker and "Open the IDE";
+  - the hierarchy and analysis on the left;
+  - the graph and inspector in the middle and on the right;
+  - a light theme matching the platform.
+
+  It opens from the Workspace card, the sidebar under "Software Developer", the Development overview's header, the IDE (⌬ in the activity bar, which passes the current branch and file) and a change set's "Show impact".
+- **"Open in IDE"** goes to `/projects/{id}/ide?file=…&branch=…`. To keep your other tabs and unsaved edits across that page change, **the IDE now keeps its open tabs and unsaved edits in the browser tab's session storage** (never sent anywhere; `ide/session.ts`):
+  - coming back to the IDE restores them, and "Open in IDE" adds the file to them;
+  - a link to a different branch while there are unsaved edits does not drop them: the IDE stays on your branch and says so;
+  - closing or reloading the browser tab with unsaved edits asks first.
+- **It is the Developer's only**, enforced on the server. Only people holding the Software Developer profile on the project may index or read it; administrators and other roles are refused. Its links show only for Software Developers.
+- **Fixed from the screenshots:**
+  - the graph area collapsed to a thin strip whenever the notices above it changed (the layout is now a stretching column);
+  - large repositories start with folders collapsed, at the deepest level that stays readable (at most 60 nodes);
+  - a duplicate "Codebase Explorer" heading;
+  - in the dark version, some buttons were white on white and the toolbar labels were oversized.
+
+## 2026-11-26 — Administrators oversee; each role's workspace is the role's (RD-31)
+
+- **Administrators no longer use any role's workspace.** On the server:
+  - the department workspace scope refuses administrators, except for the team summary and the brief's status and start (RD-27);
+  - the PM keeps reading every department (`ELEVATED` is now the PM only);
+  - code execution (repository, builds, IDE, terminal) is for the project's engineering professionals only;
+  - the Developer AI is for Software Developers only, and only the person who asked can cancel a run;
+  - terminal records are only their owner's;
+  - Home gives administrators no workspaces and no change sets or packages to review.
+- **On screen, administrators:**
+  - have no Workspace link;
+  - see only "Professional team" under a project;
+  - see the team summary without any "Open … workspace" button;
+  - have no department "Workspace" tab on the project page.
+- **"Start delivery for the Project Manager"** (RD-27) moved to the administrator's project overview. It is the same form, without the PM's handoff records.
+
+## 2026-11-26 — Workspace in two layers; landing after sign-in; back links
+
+- **Each role's Workspace has two layers** (your design):
+  - **the overview:** the role's main page, with what waits on the person, the AI's steps, the assistant, work to review, handoffs, conversations and records;
+  - **the tools:** the professional tools; for the Developer, the IDE and the Codebase Explorer.
+
+  The Workspace card's main button is the overview, with the tools beside it. In the sidebar under a project: "Software Developer" (the overview), then "· IDE" and "· Codebase Explorer" (`workspace/tools.ts`, `ROLE_SPACES`). The Development overview's header has "Open IDE" and "Open Codebase Explorer". Its "coming later" items for builds, tests and code review were removed, because the IDE does them.
+- **Fixed: the wrong page after sign-in.** After someone signed out, the next person to sign in on that browser was sent to the page the previous person had been on. A developer signing in after the admin landed on Oversight and was refused. A sign-out no longer passes its page on, so everyone lands on their own Home; a link opened while signed out still leads back to it.
+- **Back links on every role page** lead to its main page:
+  - Codebase Explorer → Development overview;
+  - a role's overview → Workspace (for the PM: → Professional team);
+  - Professional team → the project overview;
+  - the IDE's ⤺ → Development overview.

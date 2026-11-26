@@ -238,6 +238,11 @@ def test_who_may_ask_and_the_registry_decides_what_runs(managed, engine, git, ch
     assert analyst.post(ai, headers=ah, json={"task": "x"}).status_code == 403  # the BA is not a developer
     assert client.post(ai, headers=ch, json={"task": "x"}).status_code in (403, 404)
     assert d.post(ai, json={"task": "x"}).status_code == 403  # no CSRF token
+    assert admin.post(ai, headers=h, json={"task": "x"}).status_code == 403  # administrators oversee; not their tool
+    assert admin.get(f"{t['base']}/repository").status_code == 403
+    assert admin.get(f"{t['base']}/work/software_developer/items").status_code in (403, 404)
+    team = {c["profile"]: c for c in admin.get(f"{t['base']}/work/team").json()["departments"]}
+    assert team["software_developer"]["visible"] is True  # the summary stays: oversight
     assert d.post(ai, headers=dh, json={"task": ""}).status_code == 422
     assert d.post(ai, headers=dh, json={"task": "x", "base_branch": "../main"}).status_code == 422
 
@@ -260,7 +265,7 @@ def test_one_run_at_a_time_cancelling_and_a_lost_worker(managed, engine, git, ch
         run_id = queued.id
     again = d.post(ai, headers=dh, json={"task": "More"})
     assert again.status_code == 409 and again.json()["code"] == "run_in_progress"
-    assert o.post(f"{ai}/{run_id}/cancel", headers=oh).status_code == 403  # only the requester or an admin
+    assert o.post(f"{ai}/{run_id}/cancel", headers=oh).status_code == 403  # only the requester
     assert d.post(f"{ai}/{run_id}/cancel", headers=dh).json()["status"] == "cancelled"
     devai.run(factory, managed.state.settings, None, run_id)  # the queued job arrives after cancelling
     assert git.calls == [("git.init", git.calls[0][1])]  # nothing ran

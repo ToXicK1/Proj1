@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { PROFILES, TABS_FOR, type PortalTab } from "./roles";
 import { Avatar, EmptyState, IdentityTag, LiveIndicator, PageHeader, Panel, Skeleton, StatusPill, When } from "../components/ui";
 import { ActivityMenu } from "./ActivityMenu";
+import { BaHandoff } from "../workspace/ProjectBrief";
 import { DepartmentStatus, TeamChat, Tickets, projectChat } from "./Collaboration";
 import { ApiError, api, type ClientBriefDto, type ClientProgressDto, type ScopeDto, type DeliverableDto, type FeedbackDto, type IntakeDto, type PortalMessageDto, type WorkspaceDto } from "../api";
 
@@ -836,6 +837,12 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
         {tab === "Tickets" && <Tickets projectId={projectId} scope={scope} tick={tick} />}
         {tab === "Overview" && <Overview data={data} projectId={projectId} onChange={refresh} onBrief={() => setTab("Project brief")}
           onReview={(stage) => { setWanted(stage); setTab("Deliverables"); }} />}
+        {tab === "Overview" && scope?.kind === "admin" && (
+          <Panel title="Start delivery for the Project Manager" label="Start delivery for the Project Manager">
+            <p className="muted small">Only when the Project Manager is not available (RD-27): you give a reason, and the PM is told.</p>
+            <BaHandoff projectId={projectId} oversight />
+          </Panel>
+        )}
         {tab === "Project brief" && (
           <div className="stack">
             {data.pm_led && <ApprovedBrief projectId={projectId} onChange={refresh} />}

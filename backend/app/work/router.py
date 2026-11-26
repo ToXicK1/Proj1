@@ -111,7 +111,7 @@ def list_kinds(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> d
 @router.get("/team")
 def team(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
     """The six departments with people, AI lead, current step and pending work, from real records only."""
-    project, scope = work._scope(db, caller.user, project_id)
+    project, scope = work._scope(db, caller.user, project_id, oversight=True)  # the summary is oversight
     out = []
     for member in TEAM:
         people = collab.holders(db, project, member.profile)
@@ -120,7 +120,8 @@ def team(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
             "profile": member.profile, "title": member.title,
             "people": sorted(work._names(db, people).values()),
             "ai_lead": lead_key(first) if first else None,
-            "visible": work.reads_all(scope, member.profile),
+            # The summary (step, counts) is shown to the department, the PM and, as oversight, administrators.
+            "visible": work.reads_all(scope, member.profile) or scope.kind == "admin",
             "can_edit": caller.user.id in people,
             "work": work.counts(db, project.id, member.profile),
         }
@@ -131,6 +132,10 @@ def team(project_id: uuid.UUID, caller: CurrentCaller, db: DbSession) -> dict:
             card.update(started=status["started"], current=current, issues=status["issues"],
                         steps=len(steps), steps_done=sum(s["status"] in ("APPROVED", "COMPLETED") for s in steps),
                         awaiting_approval=sum(s["status"] == "AWAITING_HUMAN_REVIEW" for s in steps))
+            if member.profile == "software_developer":  # the Developer's Workspace overview: the code side
+                from app.repos.service import code_summary
+
+                card["code"] = code_summary(db, project.id)
         out.append(card)
     return {"departments": out, "kind": scope.kind}
 

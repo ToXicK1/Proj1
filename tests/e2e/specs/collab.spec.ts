@@ -55,7 +55,7 @@ test("each role gets its own space, the team can talk, and tickets reach the rig
   // The analyst sees only the Business Analyst space, not the owner's sections or other departments.
   await analyst.goto(projectUrl);
   const nav = analyst.getByRole("navigation", { name: "Professional profiles" });
-  await expect(nav.getByRole("link")).toHaveText(["Professional team", "Business Analyst"]);
+  await expect(nav.getByRole("link")).toHaveText(["Business Analyst"]);  // the department overview is for oversight only
   await expect(analyst.getByRole("tab")).toHaveText(["Workspace", "Tickets", "Conversations"]);
   await expect(analyst.getByRole("region", { name: "Business Analyst status" })).toContainText("Waiting for approval from Bea Analyst", LONG);
   await expect(analyst.getByRole("tab", { name: "Project brief" })).toHaveCount(0);
@@ -79,9 +79,8 @@ test("each role gets its own space, the team can talk, and tickets reach the rig
   await expect(record).toContainText("version 2");
   await record.getByRole("button", { name: "Compare with v2" }).click();
   await expect(record.getByRole("table", { name: "Changes from v1 to v2" })).toContainText("business");
-  await nav.getByRole("link", { name: "Professional team" }).click();
-  await expect(analyst.getByRole("list", { name: "Departments" }).getByRole("listitem")).toHaveCount(7);  // with the PM (RD-20)
-  await expect(analyst.getByRole("list", { name: "Departments" })).toContainText("1 records");
+  await analyst.goto(projectUrl.replace(/\/?$/, "") + "/team");  // not the analyst's page: sent to their Workspace
+  await expect(analyst.getByText("The overview of every department is for administrators")).toBeVisible();
   await architect.goto(projectUrl.replace(/\/?$/, "") + "/work/ba?m=requirements");
   await expect(architect.getByText("No records here yet.")).toBeVisible(LONG);
   await analyst.goto(projectUrl);

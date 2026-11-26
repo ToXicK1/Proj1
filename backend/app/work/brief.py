@@ -192,7 +192,7 @@ def start(db: Session, user: User, project_id: uuid.UUID, package_id: uuid.UUID,
     from app.work import kickoff
     from app.workflows import service as engine
 
-    project, _ = work._scope(db, user, project_id)
+    project, _ = work._scope(db, user, project_id, oversight=True)  # an administrator may start it for the PM (RD-27)
     by_admin = project.project_manager_id != user.id
     if by_admin:
         if not _is_admin(db, user, project):
@@ -248,8 +248,8 @@ def status(db: Session, user: User, project_id: uuid.UUID) -> dict[str, Any]:
     from app.portal.lifecycle import SCOPE_LABELS
     from app.work import kickoff
 
-    project, scope = work._scope(db, user, project_id)
-    if not work.reads_all(scope, PM):
+    project, scope = work._scope(db, user, project_id, oversight=True)
+    if not (work.reads_all(scope, PM) or _is_admin(db, user, project)):  # admins: to start delivery for the PM (RD-27)
         raise not_found()
     brief = db.execute(select(WorkItem).where(WorkItem.project_id == project.id, WorkItem.kind == "project_brief",
                                               WorkItem.status != "archived")).scalars().first()

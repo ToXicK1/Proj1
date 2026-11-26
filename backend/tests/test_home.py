@@ -45,3 +45,17 @@ def test_home_shows_each_person_what_waits_on_them(managed, engine, git, checks,
     outside = client.get("/api/v1/me/day").json()
     assert outside["change_sets"] == outside["tickets"] == outside["messages"] == outside["ai_updates"] == []
     assert outside["workspaces"] == []  # clients have the portal, not a workspace
+
+
+def test_the_workspace_overview_shows_each_role_its_own_side(managed, engine, git, checks):  # noqa: F811
+    t = _team(managed, engine)
+    (d, dh), (analyst, _) = t["dev"], t["analyst"]
+    assert d.post(f"{t['base']}/developer-ai", headers=dh, json={"task": "Add numbers"}).status_code == 202
+    team = f"{t['base']}/work/team"
+    dev_card = next(c for c in d.get(team).json()["departments"] if c["profile"] == "software_developer")
+    code = dev_card["code"]
+    assert code["repository"] is True and code["change_sets_in_review"] == 1 and code["change_sets_approved"] == 0
+    assert code["ai_run"] == {"number": 1, "status": "in_review", "branch": "ai/dev-1"}
+    assert code["last_build"] is None  # the build ran through a simulated executor: no job row, so none is claimed
+    from_ba = next(c for c in analyst.get(team).json()["departments"] if c["profile"] == "software_developer")
+    assert from_ba["visible"] is False and "code" not in from_ba  # the code side stays inside the department

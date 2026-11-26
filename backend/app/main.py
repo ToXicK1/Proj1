@@ -7,6 +7,7 @@ from sqlalchemy.engine import Engine
 from app.agents.router import router as agents_router
 from app.approvals.router import router as approvals_router
 from app.auth.router import router as auth_router
+from app.codebase.router import router as codebase_router
 from app.collab.router import oversight_router, team_router
 from app.collab.router import router as collab_router
 from app.core import correlation
@@ -125,5 +126,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(terminal_router)
     app.include_router(devai_router)
     app.include_router(home_router)
+    app.include_router(codebase_router)
     return app
 
