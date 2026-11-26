@@ -138,8 +138,16 @@ def commit(db: Session, factory: sessionmaker[Session], user: User, project_id: 
 
 # Change sets ------------------------------------------------------------------------------------------------------
 
-def change_set_out(cs: ChangeSet) -> dict[str, Any]:
-    return {"id": str(cs.id), "number": cs.number, "title": cs.title, "description": cs.description,
+def _ai_run(db: Session, change_set_id: uuid.UUID) -> Any:
+    from app.devai.models import DeveloperAiRun
+
+    return db.execute(select(DeveloperAiRun).where(DeveloperAiRun.change_set_id == change_set_id)).scalar_one_or_none()
+
+
+def change_set_out(cs: ChangeSet, ai_run: Any = None) -> dict[str, Any]:
+    return {"developer_ai_run": {"id": str(ai_run.id), "number": ai_run.number,
+                                 "requested_by_user_id": str(ai_run.requested_by_user_id)} if ai_run else None,
+            "id": str(cs.id), "number": cs.number, "title": cs.title, "description": cs.description,
             "branch": cs.branch, "base_sha": cs.base_sha, "head_sha": cs.head_sha, "status": cs.status,
             "files": cs.files, "approved_sha": cs.approved_sha, "decision_note": cs.decision_note,
             "author_user_id": str(cs.author_user_id) if cs.author_user_id else None,
@@ -171,6 +179,31 @@ def _refresh_branch(db: Session, factory: sessionmaker[Session], project: Any, u
 def open_change_set(db: Session, factory: sessionmaker[Session], user: User, project_id: uuid.UUID, *, branch: str,
                     title: str, description: str) -> dict[str, Any]:
     project = execution._allowed(db, user, project_id)
+    cs = _open(db, factory, project, user, branch=branch, title=title, description=description, author=user)
+    _audit(db, project, "change_set.opened", user, {"change_set": str(cs.id), "branch": branch, "head": cs.head_sha})
+    db.commit()
+    return change_set_out(cs)
+
+
+def open_for_ai(db: Session, factory: sessionmaker[Session], project: Any, requester: User, *, branch: str,
+                title: str, description: str, actor: str) -> ChangeSet:
+    """The Developer AI's change set (Phase 2e): authored by the AI, so no person is its author; the person who asked
+    for the work is recorded on the run and cannot approve it (decide)."""
+    from app.events.service import publish
+
+    cs = _open(db, factory, project, requester, branch=branch, title=title, description=description, author=None)
+    append_event(db, chain_key=org_chain(project.organization_id), event_type="change_set.opened",
+                 actor_type="ai_agent", actor_id=actor, organization_id=project.organization_id,
+                 project_id=project.id, payload={"change_set": str(cs.id), "branch": branch, "head": cs.head_sha,
+                                                 "requested_by": str(requester.id)})
+    publish(db, organization_id=project.organization_id, project_id=project.id, kind="change_set.opened",
+            subject=str(cs.id), actor=f"agent:{actor}", data={"branch": branch, "head": cs.head_sha})
+    db.commit()
+    return cs
+
+
+def _open(db: Session, factory: sessionmaker[Session], project: Any, user: User, *, branch: str, title: str,
+          description: str, author: User | None) -> ChangeSet:
     repo = _repo(db, project.id)
     if not BRANCH.match(branch) or branch == repo.default_branch:
         raise AppError(422, "invalid_branch", "A change set is a work branch, not the default branch")
@@ -186,20 +219,22 @@ def open_change_set(db: Session, factory: sessionmaker[Session], user: User, pro
                   .scalar_one() or 0)
     cs = ChangeSet(id=uuid7(), organization_id=project.organization_id, project_id=project.id, number=number,
                    title=title.strip()[:200], description=description[:20000], branch=branch, status="in_review",
-                   author_user_id=user.id)
+                   author_user_id=author.id if author else None)
     _apply_diff(cs, result)
     db.add(cs)
-    _audit(db, project, "change_set.opened", user, {"change_set": str(cs.id), "branch": branch,
-                                                    "head": cs.head_sha})
-    db.commit()
-    return change_set_out(cs)
+    db.flush()
+    return cs
 
 
 def list_change_sets(db: Session, user: User, project_id: uuid.UUID) -> list[dict[str, Any]]:
     project = execution._allowed(db, user, project_id)
-    rows = db.execute(select(ChangeSet).where(ChangeSet.project_id == project.id)
-                      .order_by(ChangeSet.number.desc())).scalars()
-    return [change_set_out(cs) for cs in rows]
+    from app.devai.models import DeveloperAiRun
+
+    rows = list(db.execute(select(ChangeSet).where(ChangeSet.project_id == project.id)
+                           .order_by(ChangeSet.number.desc())).scalars())
+    runs = {r.change_set_id: r for r in db.execute(select(DeveloperAiRun).where(
+        DeveloperAiRun.project_id == project.id, DeveloperAiRun.change_set_id.is_not(None))).scalars()}
+    return [change_set_out(cs, runs.get(cs.id)) for cs in rows]
 
 
 def _change_set(db: Session, project_id: uuid.UUID, change_set_id: uuid.UUID) -> ChangeSet:
@@ -221,6 +256,10 @@ def decide(db: Session, factory: sessionmaker[Session], user: User, project_id: 
         raise AppError(409, "not_in_review", f"This change set is {cs.status.replace('_', ' ')}")
     if cs.author_user_id == user.id:
         raise AppError(403, "separation_of_duties", "You cannot approve your own change set")
+    ai_run = _ai_run(db, cs.id)
+    if ai_run is not None and ai_run.requested_by_user_id == user.id:
+        raise AppError(403, "separation_of_duties", "You asked the Developer AI for this change; another engineer "
+                                                    "must review it")
     if decision == "request_changes" and not note.strip():
         raise AppError(422, "note_required", "Say what needs to change")
     _apply_diff(cs, _run(db, factory, project, user, "git.diff", {"base": "main", "head": cs.branch}))
@@ -232,7 +271,7 @@ def decide(db: Session, factory: sessionmaker[Session], user: User, project_id: 
     cs.decided_by_user_id, cs.decided_at, cs.decision_note = user.id, datetime.now(UTC), note.strip()[:2000]
     _audit(db, project, f"change_set.{cs.status}", user, {"change_set": str(cs.id), "commit": cs.head_sha})
     db.commit()
-    return change_set_out(cs)
+    return change_set_out(cs, ai_run)
 
 
 def merge(db: Session, factory: sessionmaker[Session], user: User, project_id: uuid.UUID,

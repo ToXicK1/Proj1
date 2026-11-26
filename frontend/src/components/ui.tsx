@@ -84,6 +84,7 @@ const ICONS: Record<string, string> = {
   menu: "M4 6h16M4 12h16M4 18h16",
   sidebar: "M4 4h16v16H4zM9 4v16",
   arrow: "M15 18l-6-6 6-6",
+  workspace: "M3 4h18v12H3zM8 20h8M12 16v4M7 8l3 2-3 2M12 12h4",
 };
 
 /** A small line icon. Decorative: the text next to it carries the meaning. */

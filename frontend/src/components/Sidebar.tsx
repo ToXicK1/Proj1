@@ -69,6 +69,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   const chat = access && (access.is_manager || access.profiles.length > 0) ? "team"
     : access?.status === "active" ? "messages" : null;
   const at = (path: string) => location.pathname === path;
+  // Home is for the day's information; the Workspace (the professional tools) is for the project's team.
+  const workspace = access !== null && access.status === "active" && (access.is_admin || access.is_manager || access.profiles.length > 0);
 
   return (
     <>
@@ -91,8 +93,9 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           </button>
         </div>
 
-        <nav className="nav-section" aria-label="Workspace">
-          <NavLink to="/" icon="home" active={at("/")}>My projects</NavLink>
+        <nav className="nav-section" aria-label="Main">
+          <NavLink to="/" icon="home" active={at("/")}>Home</NavLink>
+          {workspace && <NavLink to="/workspace" icon="workspace" active={at("/workspace")}>Workspace</NavLink>}
           {access?.oversees && <NavLink to="/oversight" icon="eye" active={at("/oversight")}>Oversight</NavLink>}
           {chat && <NavLink to="/team-chat" icon="chat" active={at("/team-chat")}>{chat === "team" ? "Team chat" : "Messages"}</NavLink>}
           <NavLink to="/notifications" icon="bell" active={at("/notifications")} badge={unread}>Notifications</NavLink>

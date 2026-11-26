@@ -1,6 +1,7 @@
 """Phase 1c: the database tool registry mirrors the reviewed definitions, administrators enable or disable tools
-(audited), and grants and runs respect it: department authorisation, executor tools not yet grantable, and a disabled
-tool refused even to an agent version that already holds it."""
+(audited), and grants and runs respect it: department authorisation, executor WRITE/EXECUTE tools grantable only to a
+department their definition names (Phase 2e), people-only tools never grantable, and a disabled tool refused even to
+an agent version that already holds it."""
 
 import uuid
 from dataclasses import replace
@@ -49,13 +50,15 @@ def test_administrators_switch_tools_and_grants_follow_the_registry(managed, eng
     url = f"/api/v1/orgs/{org}/tool-registry"
     analyst, ah = _signed_in(managed, people["analyst"])
     listed = {t["key"]: t for t in analyst.get(url).json()["items"]}
-    assert listed["read_project"]["grantable"] and not listed["run_checks"]["grantable"]
+    assert listed["read_project"]["grantable"] and listed["run_checks"]["grantable"]  # Phase 2e: for code departments
     assert listed["merge_change_set"]["departments"] == [] and not listed["merge_change_set"]["grantable"]
     assert analyst.put(f"{url}/read_project", headers=ah, json={"enabled": False}).status_code == 403
 
     agents = f"/api/v1/orgs/{org}/agents"
-    executor_tool = c.post(agents, headers=h, json={**AGENT, "tools": ["repo_read"]})
-    assert executor_tool.status_code == 422 and "executor" in executor_tool.text
+    write_tool = c.post(agents, headers=h, json={**AGENT, "tools": ["repo_commit"]})  # the BA is not a code department
+    assert write_tool.status_code == 422 and "not authorised" in write_tool.text
+    people_only = c.post(agents, headers=h, json={**AGENT, "tools": ["merge_change_set"]})
+    assert people_only.status_code == 422 and "cannot be granted" in people_only.text
     held = c.post(agents, headers=h, json={**AGENT, "tools": ["read_project"]})
     assert held.status_code == 201, held.text
     off = c.put(f"{url}/read_project", headers=h, json={"enabled": False})

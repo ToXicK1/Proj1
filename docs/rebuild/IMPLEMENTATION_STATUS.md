@@ -580,3 +580,68 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
 - **API:** `POST /api/v1/projects/{id}/terminal` (CSRF), `GET .../terminal`, `GET .../terminal/{session}`, WebSocket `.../terminal/{session}/ws`.
 - **Dependencies:** `websockets` (BSD-3-Clause; already present through uvicorn[standard]) is now declared directly.
 
+
+## 2026-11-26 — Phase 2e: the Developer AI
+
+- **What a developer gets:** the IDE's **Developer AI** view (✦ in the activity bar).
+  - Pick a user story, and/or write a task, then start. The AI works from the current branch.
+  - It **plans**, **commits to its own branch** (`ai/dev-<n>`), **builds and tests** in the executor, **repairs real failures at most twice**, and **opens a change set**.
+  - Each step appears live, with the plan, the notes, and every commit and check result.
+  - The status bar shows the latest run.
+  - **It never approves or merges.**
+- **Who may use it:** Software Developers on the project, and administrators. Clients, the PM and other departments may not.
+- **One run at a time per project.** The person who asked, or an administrator, can cancel a run; its branch is kept.
+- **How it runs** (`app/devai/service.py`, a worker job `developer_ai.run`):
+  1. The platform checks the agent version's grants (`repo_read`, `repo_commit`, `run_checks`) against the tool registry. It does this before anything happens and again before each tool use, so an administrator disabling a tool stops the run.
+  2. **Read the base branch** through `repo_read` (executor jobs). The model gets the file list and up to 60 KB of file content.
+  3. **Ask the model** for a plan and whole-file changes. The task, story, repository and check results are passed as **data in tags**, never as instructions. The story is pinned to the exact version that was chosen.
+  4. **Check the reply before using it:**
+     - JSON keys;
+     - at most 30 files of up to 200 KB each;
+     - safe relative paths (no `..`, nothing under `.git` or `.github`);
+     - no duplicates;
+     - **no credentials**: the platform's secret-detection patterns run, and a match means nothing is committed.
+  5. **Commit to the run's branch** through `repo_commit`, under the AI's own git identity (`Developer AI <developer-ai@aidlc.local>`). Never the default branch.
+  6. **Build and test the whole branch** through `run_checks` (no network, a fresh container). If checks fail, the real failure output goes back to the model and steps 4–6 repeat, **at most twice**. Still failing: the run ends as `checks_failed`, the branch is kept, and it is never reported as passing.
+  7. **Open a change set** authored by the AI: no person is its author. **The person who asked cannot approve it.** Another engineer must review it at the exact commit, as for any change set.
+- **The model never runs a tool itself.** Executor tools are run by the platform for the AI. The model loop runs only in-process READ tools, so it cannot reach git or the executor.
+- **Tool grants (Phase 2e):**
+  - WRITE and EXECUTE tools that run through the executor can now be granted, but only to a department their definition names. `repo_commit` and `run_checks` are for the Developer, QA and DevOps departments.
+  - People-only tools (`merge_change_set`, `publish_release`, `edit_rules`) can still never be granted.
+  - The Developer AI agent (`developer-ai`, Software Developer department) is set up with the team. It holds exactly the three tools.
+- **Records and audit:**
+  - Each run is stored in `developer_ai_runs` (migration 0036): who asked, the task, the story version, the agent version, the branch, every step, the attempts, the head commit, whether checks passed, the change set, and any failure.
+  - The audit chain gets `developer_ai.requested` (human), plus `developer_ai.committed`, `developer_ai.checked` and `change_set.opened` with actor type `ai_agent` and actor `developer-ai@v<n>`.
+  - Each model call is an `agent_runs` row (task `developer_ai`), with budgets and spend as for every AI call.
+- **Robustness:**
+  - The job is safe to deliver twice.
+  - A run whose worker died is ended plainly ("start it again"), never repeated silently.
+  - A build that does not finish is reported, never counted as passing.
+- **API:**
+  - `POST /api/v1/projects/{id}/developer-ai` (CSRF);
+  - `GET .../developer-ai`;
+  - `GET .../developer-ai/stories`;
+  - `GET .../developer-ai/{run}`;
+  - `POST .../developer-ai/{run}/cancel`.
+  - Change sets now carry `developer_ai_run` when the AI wrote them.
+- **Not in 2e:** bridging the lifecycle's Code Generation step output into git. That stage keeps its own sandbox until the Developer and QA workspaces replace it (RD-28). The Developer AI is the repository path for new work.
+
+## 2026-11-26 — Home and Workspace (your design: two spaces per person)
+
+- **Home** (`/`, "Home" in the sidebar) is for information and to-dos. It covers all of the person's projects, and each item links to where it is handled. It shows:
+  - stage approvals waiting on them (as before);
+  - **change sets to review**, never their own and never work they asked the Developer AI for (opens straight to that review in the IDE);
+  - **packages waiting for a decision** in a department they hold, submitted by someone else;
+  - **tickets** assigned to them, or unassigned in their department;
+  - **messages for them** from the last 7 days (mentions and direct messages);
+  - **what the AI finished** in the last 3 days;
+  - **unread notifications**;
+  - their projects, and the new-project form for administrators.
+- **Workspace** (`/workspace`, a new "Workspace" entry in the sidebar, beside Home) is where the work happens. For each project it shows one card per profile the person may open: their own departments, or every department for administrators and managers. Each card opens that profile's tool:
+  - **Software Developer → the IDE**: code, source control, change sets, build and test, the terminal and the Developer AI. This is the first full professional tool.
+  - **Every other profile → its department workspace** (AI drafts, records and documents), until its own professional tool is built, profile by profile.
+- **API:** `GET /api/v1/me/day` is one read-only call. Every item uses the same access rules as its own page. Clients get no team material and no workspaces.
+- **Changes on the way:**
+  - The sidebar's first link is now "Home" (was "My projects"), and the project breadcrumb matches.
+  - The sidebar's top section is now labelled "Main", because "Workspace" is now a link of its own.
+  - The IDE opens a change set from a link (`?change_set=`).

@@ -70,7 +70,14 @@ def _meeting_analysis(ctx: JobContext) -> None:
                         finish=ctx.finish_in)
 
 
+def _developer_ai(ctx: JobContext) -> None:
+    from app.devai import service as devai
+
+    devai.run(ctx.factory, ctx.settings, ctx.transport, uuid.UUID(ctx.payload["run_id"]), finish=ctx.finish_in)
+
+
 HANDLERS: dict[str, Handler] = {
+    "developer_ai.run": _developer_ai,
     "work.meeting_analysis": _meeting_analysis,
     "work.assistant": _assistant,
     "portal.drive": _drive,

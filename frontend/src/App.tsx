@@ -19,6 +19,7 @@ import { OversightPage } from "./pages/OversightPage";
 import { TeamChatPage } from "./pages/TeamChatPage";
 import { TeamPage } from "./pages/TeamPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
+import { WorkspacePage } from "./pages/WorkspacePage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { state } = useSession();
@@ -103,6 +104,7 @@ export function App() {
             </RequireAuth>
           }
         />
+        <Route path="/workspace" element={<RequireAuth><WorkspacePage /></RequireAuth>} />
         <Route
           path="/studio"
           element={

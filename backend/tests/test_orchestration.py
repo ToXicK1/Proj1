@@ -8,6 +8,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.agents import tool_runtime
+from app.devai.service import AGENT_KEY as DEVELOPER_AI
 from app.portal.lifecycle import CLIENT_ASSISTANT, LEAD_TOOLS, PM_ASSISTANT, STAGES
 from app.providers.models import AgentRun, ToolExecution
 from app.workflows import service as engine
@@ -281,7 +282,8 @@ def test_existing_teams_get_the_read_tools_on_their_next_provisioning(env, monke
     env.setup_team()  # provisioning again brings older leads up to date with a new version
     registry = env.client.get(f"/api/v1/orgs/{env.org}/agent-registry").json()["departments"]
     leads = [e for d in registry for e in d["leads"]
-             if e["key"] not in (PM_ASSISTANT, CLIENT_ASSISTANT)]  # the personas have no tools
+             if e["key"] not in (PM_ASSISTANT, CLIENT_ASSISTANT, DEVELOPER_AI)]  # personas: no tools; the Developer AI
+    # holds its own executor tools (test_devai.py)
     assert leads and all(sorted(e["tools"]) == sorted(LEAD_TOOLS) and e["version"] == 2 for e in leads)
 
 

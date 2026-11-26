@@ -8,6 +8,7 @@ from app.audit.models import AuditChain, AuditEvent  # noqa: F401
 from app.auth.models import EmailToken, User, UserSession  # noqa: F401
 from app.collab.models import TeamMessage, Ticket, TicketComment  # noqa: F401
 from app.core.db import Base
+from app.devai.models import DeveloperAiRun  # noqa: F401
 from app.events.service import WorkspaceEvent  # noqa: F401
 from app.execution.models import ExecutionJob  # noqa: F401
 from app.hooks.models import HookDefinition, HookExecution, HookVersion  # noqa: F401

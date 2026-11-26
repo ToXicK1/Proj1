@@ -2407,6 +2407,13 @@ button.link { background: none; border: 0; padding: 0; color: var(--action); cur
   text-transform: uppercase; font-size: 11px; padding: 0 8px; cursor: pointer; }
 .ide-bottom-tabs button.active { color: #fff; border-bottom-color: var(--purple-400); }
 .ide-bottom-body { overflow: auto; padding: 6px 12px; }
+.ide-devai textarea, .ide-devai select { width: 100%; background: var(--ide-input, #1e1e1e); color: inherit; border: 1px solid var(--ide-line); border-radius: 3px; padding: 4px 6px; font: inherit; font-size: 12px; }
+.ide-devai .ide-field { display: grid; gap: 3px; font-size: 12px; color: var(--ide-muted); }
+.ide-devai-run { padding: 6px 4px 8px 10px; border-left: 2px solid var(--purple-400); margin: 4px 0 8px; display: grid; gap: 4px; }
+.ide-devai-run h4 { margin: 4px 0 0; font-size: 12px; }
+.ide-pre { white-space: pre-wrap; margin: 0; font-size: 12px; }
+.ide-steps { margin: 0; padding-left: 4px; list-style: none; display: grid; gap: 2px; font-size: 12px; }
+.ide-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .ide-terminal { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; gap: 4px; }
 .ide-terminal[hidden] { display: none; }
 .ide-terminal-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -2416,6 +2423,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--action); cur
 .ide-bottom-body pre { margin: 0; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .ide-right { grid-area: right; background: var(--ide-side); overflow: auto; padding: 10px; border-left: 1px solid var(--ide-line); }
 .ide-right .muted { color: var(--ide-muted); }
+.ide-right h3 { color: #fff; font-size: 13px; }
 .ide-status { grid-area: status; background: var(--ide-accent); color: #fff; display: flex; gap: 14px; align-items: center;
   padding: 0 10px; font-size: 12px; white-space: nowrap; overflow: hidden; }
 .ide-status-right { margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
@@ -2423,8 +2431,9 @@ button.link { background: none; border: 0; padding: 0; color: var(--action); cur
 .ide-error { color: #ffd2d2; }
 .ide-badge { margin-left: 6px; font-size: 11px; padding: 0 6px; border-radius: 8px; background: #3c3c3c; }
 .ide-approved, .ide-merged, .ide-succeeded { background: #1f6f43; }
-.ide-changes_requested, .ide-failed, .ide-error, .ide-timed_out { background: #8a2a2a; }
-.ide-in_review, .ide-queued, .ide-running { background: #6b4e00; }
+.ide-changes_requested, .ide-failed, .ide-error, .ide-timed_out, .ide-checks_failed { background: #8a2a2a; }
+.ide-cancelled { background: #4a4a4a; }
+.ide-in_review, .ide-queued, .ide-running, .ide-working { background: #6b4e00; }
 /* The IDE owns the whole window, like a desktop IDE; ⤺ in the activity bar returns to the workspace. */
 .ide { position: fixed; inset: 0; z-index: 60; }
 @media (max-width: 1100px) {
@@ -2438,3 +2447,11 @@ button.link { background: none; border: 0; padding: 0; color: var(--action); cur
 .ide-sidebar-head { display: grid; gap: 6px; margin-bottom: 6px; }
 .ide-new { background: #3c3c3c; color: var(--ide-text); border: 0; border-radius: 3px; padding: 4px 8px; cursor: pointer; text-align: left; }
 .ide-review-bar input { background: #3c3c3c; color: var(--ide-text); border: 1px solid #555; border-radius: 3px; padding: 4px 6px; }
+
+/* Workspace: each profile's professional tool, one card per profile and project. */
+.workspace-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.workspace-link { display: grid; gap: 4px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: inherit; height: 100%; }
+.workspace-link:hover, .workspace-link:focus-visible { border-color: var(--green-500); outline: none; }
+.workspace-role { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.workspace-name { font-weight: 600; font-size: 16px; }
+.workspace-link .status-pill, .workspace-link .pill { justify-self: start; }

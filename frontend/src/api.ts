@@ -553,6 +553,19 @@ export interface AccessDto {
   organization: string | null;
 }
 
+/** Home: what waits on a person across their projects (GET /api/v1/me/day). */
+export interface MyDayDto {
+  change_sets: { project_id: string; project: string; id: string; number: number; title: string; branch: string; by_ai: boolean }[];
+  packages: { project_id: string; project: string; id: string; department: string; number: number; title: string }[];
+  tickets: { project_id: string; project: string; id: string; number: number; title: string; kind: string;
+    department: string; status: string; assigned_to_me: boolean }[];
+  messages: { id: string; project_id: string | null; project: string | null; channel: string; author: string;
+    direct: boolean; body: string; created_at: string }[];
+  notifications: { unread: number; latest: { id: string; kind: string; message: string; project_id: string | null; created_at: string }[] };
+  ai_updates: { project_id: string; project: string; kind: string; subject: string; data: Record<string, unknown>; created_at: string }[];
+  workspaces: { project_id: string; project: string; profiles: string[] }[];
+}
+
 export interface MyReviewDto {
   project_id: string;
   project: string;
@@ -628,6 +641,7 @@ export async function request<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DEL
 export const api = {
   access: () => request<AccessDto>("GET", "/api/v1/orgs/access"),
   myReviews: () => request<{ items: MyReviewDto[] }>("GET", "/api/v1/portal/my-reviews"),
+  myDay: () => request<MyDayDto>("GET", "/api/v1/me/day"),
   setMemberAccess: (orgId: string, userId: string, role: string, profiles: string[]) =>
     request("PUT", `${orgPath(orgId)}/members/${encodeURIComponent(userId)}/access`, { role, profiles }),
   signup: (email: string, password: string, displayName: string, requestedRole = "project_owner") =>

@@ -25,14 +25,19 @@ async function newFile(page: Page, path: string, lines: string[]) {
 }
 
 test("a developer edits, builds, commits and opens a change set in the IDE; self-approval is refused", async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(480_000);
   await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill(ADMIN_EMAIL);
   await page.getByLabel("Password", { exact: true }).fill(OWN);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.getByRole("link", { name: "Clinic booking" }).first().click();
-  const url = page.url().replace(/[?#].*$/, "");
-  await page.goto(`${url}/ide`);
+  // Home keeps the day's information; the Workspace opens each profile's professional tool.
+  await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening)/ })).toBeVisible();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Your workspaces" })).toBeVisible();
+  const workspaces = page.getByRole("region", { name: "Workspaces in Clinic booking" });
+  await expect(workspaces).toContainText("Business Analyst");
+  await workspaces.getByRole("link", { name: "Open IDE for Software Developer in Clinic booking" }).click();
+  await expect(page).toHaveURL(/\/projects\/[^/]+\/ide$/);
 
   await page.getByRole("button", { name: "Create the repository" }).click();
   const files = page.getByRole("list", { name: "Repository files" });
@@ -85,4 +90,21 @@ test("a developer edits, builds, commits and opens a change set in the IDE; self
   await page.getByRole("button", { name: "End session" }).click();
   await expect(screen).toContainText("session ended", { timeout: 20_000 });
   await expect(page.getByRole("button", { name: "New terminal" })).toBeVisible();
+
+  // Developer AI: plans, commits to its own branch, builds and tests in the executor, and opens a change set. The
+  // offline mock model writes a small project; the build and tests really run. The person who asked cannot approve it.
+  await page.getByRole("button", { name: "Developer AI" }).click();
+  await page.getByLabel("Task for the Developer AI").fill("Add an add() helper with a unit test");
+  await page.getByRole("button", { name: /^Start from / }).click();
+  const runs = page.getByRole("list", { name: "Developer AI runs" });
+  await expect(runs).toContainText("change set in review", { timeout: 180_000 });
+  const run = page.getByLabel("Developer AI run 1");
+  await expect(run).toContainText("Build and test passed");
+  await expect(run).toContainText("Branch ai/dev-1");
+  await run.getByRole("button", { name: /Review change set #2/ }).click();
+  await expect(page.getByRole("tab", { name: /Review #2/ })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("combobox", { name: "File in the change set" })).toContainText("calc.py", { timeout: 60_000 });
+  await page.getByRole("button", { name: /^Approve [0-9a-f]{7}$/ }).click();
+  await expect(status).toContainText("You asked the Developer AI for this change", { timeout: 30_000 });
+  await expect(status).toContainText("AI: run 1 change set in review");
 });

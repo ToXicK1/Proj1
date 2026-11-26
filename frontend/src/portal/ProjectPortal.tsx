@@ -795,7 +795,7 @@ export function ProjectPortal({ projectId }: { projectId: string }) {
   return (
     <div className="page project-page">
       <div className="page-topbar">
-        <nav aria-label="Breadcrumb" className="crumbs"><Link to="/">My projects</Link><span aria-hidden="true">/</span><span>{data.project.name}</span></nav>
+        <nav aria-label="Breadcrumb" className="crumbs"><Link to="/">Home</Link><span aria-hidden="true">/</span><span>{data.project.name}</span></nav>
         {(scope.kind === "admin" || scope.kind === "manager" || scope.kind === "professional") &&
           <ActivityMenu projectId={projectId} />}
       </div>

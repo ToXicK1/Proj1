@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { EmptyState, PageHeader, Panel, Skeleton, StatusPill } from "../components/ui";
 import { useSession } from "../session";
-import { ApiError, JOIN_ROLES, api, type AccessDto, type MyReviewDto, type OrgDto, type ProjectDto } from "../api";
+import { ApiError, JOIN_ROLES, api, type AccessDto, type MyDayDto, type MyReviewDto, type OrgDto, type ProjectDto } from "../api";
+import { HomeToday, todayCount } from "./HomeToday";
 
 // Categories are starting points, not restrictions (USER_PORTAL.md section 4).
 export const PROJECT_TYPES = [
@@ -35,6 +36,7 @@ export function HomePage() {
   const [busy, setBusy] = useState(false);
   const [access, setAccess] = useState<AccessDto | null>(null);
   const [reviews, setReviews] = useState<MyReviewDto[]>([]);
+  const [day, setDay] = useState<MyDayDto | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +51,8 @@ export function HomePage() {
       .catch(() => {
         if (!cancelled) setLoadError("Could not load your projects.");
       });
+    // The day's to-dos load on their own: a problem there never hides the projects.
+    api.myDay().then((d) => { if (!cancelled) setDay(d); }).catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -102,7 +106,7 @@ export function HomePage() {
   return (
     <div className="page">
       <PageHeader eyebrow={access?.organization ?? undefined} title={`${greeting}${firstName ? `, ${firstName}` : ""}`}
-        meta={projects === null ? "Loading your work…" : summary(projects.length, reviews.length)} />
+        meta={projects === null ? "Loading your work…" : summary(projects.length, reviews.length + todayCount(day))} />
       <div className={creator ? "home-grid" : "stack"}>
         <div className="stack">
           {reviews.length > 0 && (
@@ -120,6 +124,7 @@ export function HomePage() {
               </ul>
             </Panel>
           )}
+          {day && <HomeToday day={day} />}
           <Panel title="My projects" aside={projects && projects.length > 0 ? <span className="muted">{projects.length}</span> : undefined}>
             {loadError && <p role="alert" className="error">{loadError}</p>}
             {projects === null && !loadError && <Skeleton title={false} />}
@@ -201,6 +206,6 @@ export function HomePage() {
 
 function summary(projects: number, reviews: number): string {
   const parts = [`${projects} project${projects === 1 ? "" : "s"}`];
-  if (reviews) parts.push(`${reviews} waiting for your approval`);
+  if (reviews) parts.push(`${reviews} waiting on you`);
   return parts.join(" · ");
 }

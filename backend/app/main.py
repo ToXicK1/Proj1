@@ -15,9 +15,11 @@ from app.core.correlation import CorrelationMiddleware
 from app.core.db import make_engine, make_session_factory
 from app.core.errors import register_error_handlers
 from app.core.ratelimit import SlidingWindowLimiter
+from app.devai.router import router as devai_router
 from app.events.router import router as events_router
 from app.execution.router import router as execution_router
 from app.governance.router import router as governance_router
+from app.home.router import router as home_router
 from app.organizations.members_router import router as members_router
 from app.organizations.router import router as orgs_router
 from app.portal.router import router as portal_router
@@ -121,5 +123,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(tools_router)
     app.include_router(events_router)
     app.include_router(terminal_router)
+    app.include_router(devai_router)
+    app.include_router(home_router)
     return app
 

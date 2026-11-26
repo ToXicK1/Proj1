@@ -70,7 +70,10 @@ const LABELS: Record<string, string> = {
   "execution.finished": "Execution finished", "repository.created": "Repository created",
   "repository.committed": "Commit", "change_set.opened": "Change set opened",
   "change_set.approved": "Change set approved", "change_set.changes_requested": "Changes requested on a change set",
-  "change_set.merged": "Change set merged",
+  "change_set.merged": "Change set merged", "terminal.opened": "Terminal opened", "terminal.closed": "Terminal closed",
+  "developer_ai.requested": "Developer AI asked", "developer_ai.step": "Developer AI",
+  "developer_ai.committed": "Developer AI committed", "developer_ai.checked": "Developer AI built and tested",
+  "developer_ai.finished": "Developer AI finished", "developer_ai.cancelled": "Developer AI cancelled",
 };
 
 export function ConnectionStatus({ connection }: { connection: Connection }) {
@@ -89,7 +92,8 @@ export function LiveActivity({ events }: { events: WorkspaceEventDto[] }) {
           {[...events].reverse().slice(0, 15).map((e) => (
             <li key={e.id}>
               <strong>{LABELS[e.kind] ?? e.kind}</strong>
-              {typeof e.data.status === "string" && <> · {e.data.status}</>}
+              {typeof e.data.status === "string" && <> · {e.data.status.replace(/_/g, " ")}</>}
+              {typeof e.data.text === "string" && e.data.text && <> · {e.data.text}</>}
               {typeof e.data.summary === "string" && e.data.summary && <> · {e.data.summary}</>}
               {typeof e.data.branch === "string" && <> · {e.data.branch}</>}
               {typeof e.data.commit === "string" && <> · <code>{e.data.commit.slice(0, 7)}</code></>}

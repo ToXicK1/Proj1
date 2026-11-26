@@ -426,7 +426,7 @@ def test_only_admins_set_up_the_team_and_setup_can_repeat(env):
     env.setup_team()
     catalog = env.client.get(f"/api/v1/orgs/{env.org}/studio/catalog").json()
     gated = sum(1 for s in STAGES if s.gated)
-    assert len(catalog["profiles"]) == 7 and len(catalog["agents"]) == gated + 7 + 2  # one reviewer per profile, the PM persona (P3), the client assistant (P5)
+    assert len(catalog["profiles"]) == 7 and len(catalog["agents"]) == gated + 7 + 3  # one reviewer per profile, the PM persona (P3), the client assistant (P5), the Developer AI (2e)
     assert env.client.post(f"/api/v1/orgs/{env.org}/studio/default-lifecycle", headers=env.h,
                            json={"model_route": "missing"}).status_code == 404
     other, h, _ = env.person()

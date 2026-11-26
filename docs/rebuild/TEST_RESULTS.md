@@ -440,3 +440,57 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - Both typed lines are recorded with timestamps, along with 615 bytes of transcript.
   - `terminal.opened` and `terminal.closed` appear in live events, with one `terminal.opened` audit event.
   - **No terminal container was left behind.**
+
+## 2026-11-26 — Phase 2e: the Developer AI
+
+- **New backend tests, `tests/test_devai.py`: 10 passed** (one test is parametrised five ways). Git and the executor are simulated. The model is the offline mock unless a test scripts its replies.
+  - **Happy path:** a story is read, planned, committed only to `ai/dev-1` under the AI's git identity, and the whole branch is built and tested.
+    - A change set is opened with no human author.
+    - The requester's approval is refused ("You asked the Developer AI…"); another developer approves at the head commit and merges.
+    - Audit order: `requested` (human), then `committed`, `checked` and `change_set.opened` (`ai_agent`, `developer-ai@v1`). The model call is an `agent_runs` row.
+  - **Repairs:**
+    - Fail, fail, pass: three rounds, and the real failure output goes back to the model.
+    - Three fails: `checks_failed`, no change set, branch kept, never reported as passing.
+  - **Refused output, nothing committed and no build run:** a `..` path, a `.git/` path, an API key in content, a duplicate file, no files.
+  - **Who may ask:**
+    - The BA, the client and requests without a CSRF token are refused; an empty task and a bad branch get 422.
+    - An administrator disabling `run_checks` stops the run before any commit.
+  - **Run handling:**
+    - One run at a time per project (409).
+    - Cancel: only the requester or an admin; a cancelled run does nothing when its job arrives.
+    - A run whose worker died is ended plainly, not repeated.
+  - **Provisioning:** the agent holds exactly `repo_read`, `repo_commit` and `run_checks`, never `merge_change_set`.
+- **Changed tests, on purpose:**
+  - `test_tool_registry.py`: executor WRITE/EXECUTE tools are now grantable to departments that their definition names. A BA agent is still refused `repo_commit`, and people-only tools are refused to everyone.
+  - Two expected-count tests now include the `developer-ai` agent.
+- **Full backend suite:** 570 passed, 5 skipped, and 2 failed. Both failures were those count tests. After the fix they pass, which makes **572 passed, 5 skipped**: 562 before, plus the 10 new tests.
+- **Frontend:** 24 unit tests passed (new: the status bar's Developer AI text). Type check and production build passed.
+- **Browser specs, managed stack, rebuilt from scratch: accounts and IDE passed (2.1 min).** The IDE spec now ends with a real Developer AI run (mock model, real git and real build and test in the executor):
+  - start a task;
+  - the run reaches "change set in review" with "Build and test passed" on `ai/dev-1`;
+  - open its change set #2;
+  - the requester's Approve is refused with "You asked the Developer AI for this change";
+  - the status bar shows "AI: run 1 change set in review".
+- **Found and fixed on the way:**
+  - **IDE bug:** while the next change set loaded, the previous one stayed on screen with its Approve button. A click could land on the wrong change set (here #1, the person's own). The IDE now clears the shown change set at once when switching. The server's rules were never at risk: it refused, correctly.
+  - The first attempt did not run at all: Docker Desktop stopped during the stack rebuild while the backend suite was running alongside it. It was restarted, and the main stack was brought back up unchanged.
+
+## 2026-11-26 — Home and Workspace
+
+- **New backend test, `tests/test_home.py`: passed.** Two developers, a client, one Developer AI run, a ticket and a mention:
+  - The requester's Home has no change sets to review (they asked the AI for it) and none of their own messages. It shows their Software Developer workspace and the AI's finished run.
+  - The other developer's Home has change set #1 (marked as written by the AI), the ticket assigned to them, the mention, and the matching notifications.
+  - The client's Home has none of the team's material and no workspaces.
+- **Full backend suite: 573 passed, 5 skipped, 0 failed** (572 before, plus the Home test). Ruff is clean.
+- **Frontend:** 24 unit tests passed. Type check and production build passed.
+- **Browser specs, managed stack, rebuilt from scratch: accounts and IDE both passed (8.1 min).** The IDE spec now reaches the IDE the way a person does:
+  - sign in to Home;
+  - open **Workspace** in the sidebar;
+  - see the Clinic booking cards (Business Analyst and others);
+  - open "IDE" for Software Developer.
+  - It then does everything as before, including the Developer AI run and the refused requester approval.
+- **Screenshots of the path** were taken on the test stack: Home, Workspace, the IDE, and the IDE with the Developer AI run.
+- **Polish found from the screenshots, and fixed:**
+  - The Developer AI and terminal events showed as raw names in Live activity; they now have plain labels.
+  - The "Live activity" heading was nearly invisible on the dark IDE background (this was already so before these changes).
+  - Checked again in the browser after the fix, with the type check and unit tests rerun.

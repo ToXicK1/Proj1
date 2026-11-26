@@ -66,7 +66,7 @@ test("the administrator creates the people and the project; everyone chooses the
     "Business Analyst");
 
   // The administrator creates the project for the client.
-  await admin.getByRole("link", { name: "My projects" }).click();
+  await admin.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Home" }).click();
   await admin.getByLabel("Project name").fill("Clinic booking");
   await admin.getByLabel("Client (project owner)").selectOption({ label: `Olu Client · olu-${tag}@example.com` });
   await admin.getByLabel("Kind of work").selectOption("ba-department");  // decided when the project is created

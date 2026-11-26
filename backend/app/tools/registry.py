@@ -88,10 +88,9 @@ def health_of(entry: ToolRegistryEntry, now: datetime | None = None) -> str:
 
 
 def entry_out(entry: ToolRegistryEntry) -> dict[str, Any]:
-    from app.agents.tools import GRANTABLE_THIS_MILESTONE, PermissionClass
+    from app.agents.tools import grantable
 
     definition = entry.definition
     return {**definition, "enabled": entry.enabled, "health": health_of(entry),
             "health_checked_at": entry.health_checked_at.isoformat() if entry.health_checked_at else None,
-            "grantable": PermissionClass(definition["permission_class"]) in GRANTABLE_THIS_MILESTONE
-            and bool(definition["departments"]) and entry.enabled}
+            "grantable": grantable(entry.key) and entry.enabled}

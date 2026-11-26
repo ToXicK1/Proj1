@@ -1,11 +1,12 @@
 import "./monacoSetup";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api";
 import { ConnectionStatus, LiveActivity, useWorkspaceEvents } from "../workspace/liveEvents";
 import { languageOf } from "./monacoSetup";
 import { type TreeNode, buildTree, filesToTest, isSafePath, sortedChildren } from "./paths";
+import { type DevAiRunDto, DeveloperAiPanel, aiStatus } from "./DeveloperAiPanel";
 import { TerminalPanel } from "./TerminalPanel";
 import { type ChangeSetDto, type ExecutionDto, type TreeEntryDto, repoApi } from "./repoApi";
 
@@ -23,6 +24,8 @@ const CHUNK = 50;
  * reviewed as change sets with real diffs, and built and tested in the isolated executor. */
 export function IdePage() {
   const { projectId = "" } = useParams();
+  const [params] = useSearchParams();
+  const wantedSet = useRef(params.get("change_set"));  // opened from Home: go straight to that review
   const [repo, setRepo] = useState<{ exists: boolean; head_sha?: string } | null>(null);
   const [branch, setBranch] = useState("main");
   const [branches, setBranches] = useState<string[]>(["main"]);
@@ -33,6 +36,7 @@ export function IdePage() {
   const [view, setView] = useState<View>("explorer");
   const [bottom, setBottom] = useState<Bottom>("output");
   const [changeSets, setChangeSets] = useState<ChangeSetDto[]>([]);
+  const [aiRuns, setAiRuns] = useState<DevAiRunDto[]>([]);
   const [review, setReview] = useState<Review | null>(null);
   const [runsList, setRunsList] = useState<ExecutionDto[]>([]);
   const [lastRun, setLastRun] = useState<ExecutionDto | null>(null);
@@ -86,6 +90,16 @@ export function IdePage() {
     }
   }, [live.events, projectId, branch, tabs, loadBranch]);
 
+  useEffect(() => {
+    const id = wantedSet.current;
+    const cs = id ? changeSets.find((c) => c.id === id) : undefined;
+    if (!cs) return;
+    wantedSet.current = null;
+    setView("source");
+    void openReview(cs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [changeSets]);
+
   const dirty = tabs.filter((t) => t.value !== t.original);
   const current = tabs.find((t) => t.path === active) ?? null;
   const tree = useMemo(() => buildTree(entries), [entries]);
@@ -137,6 +151,9 @@ export function IdePage() {
 
   async function openReview(cs: ChangeSetDto, path: string | null = cs.files[0]?.path ?? null) {
     setBusy("Loading the diff…"); setError(null);
+    // Switching to another change set: take the previous one (and its Approve button) off screen at once, so a
+    // decision can only ever be made on the change set being shown.
+    setReview((r) => (r && r.cs.id !== cs.id ? null : r));
     try {
       let base = "", head = "";
       if (path) {
@@ -217,14 +234,14 @@ export function IdePage() {
   return (
     <div className="ide" data-testid="ide">
       <nav className="ide-activity" aria-label="Activity bar">
-        {([["explorer", "Explorer", "▤"], ["search", "Search", "⌕"], ["source", "Source Control", "⑂"], ["run", "Run and Test", "▷"], ["ai", "AI Assistant", "✦"]] as [View, string, string][]).map(([key, label, icon]) => (
+        {([["explorer", "Explorer", "▤"], ["search", "Search", "⌕"], ["source", "Source Control", "⑂"], ["run", "Run and Test", "▷"], ["ai", "Developer AI", "✦"]] as [View, string, string][]).map(([key, label, icon]) => (
           <button key={key} type="button" title={label} aria-label={label} aria-pressed={view === key}
             className={view === key ? "active" : ""} onClick={() => setView(key)}>{icon}</button>
         ))}
         <Link className="ide-exit" title="Back to the workspace" aria-label="Back to the workspace" to={`/projects/${encodeURIComponent(projectId)}/work/dev`}>⤺</Link>
       </nav>
 
-      <aside className="ide-sidebar" aria-label={{ explorer: "Explorer", search: "Search", source: "Source Control", run: "Run and Test", ai: "AI Assistant" }[view]}>
+      <aside className="ide-sidebar" aria-label={{ explorer: "Explorer", search: "Search", source: "Source Control", run: "Run and Test", ai: "Developer AI" }[view]}>
         {view === "explorer" && (
           <>
             <div className="ide-sidebar-head">
@@ -298,12 +315,9 @@ export function IdePage() {
           </div>
         )}
         {view === "ai" && (
-          <div className="stack-sm">
-            <h3>AI development assistant</h3>
-            <p className="ide-hint">Not available yet: the Developer AI arrives in milestone 2e. It will take an approved story,
-              plan, commit to its own branch through registered tools, build and test in the executor, and open a change
-              set for your review. It will never merge.</p>
-          </div>
+          <DeveloperAiPanel projectId={projectId} branch={branch} events={live.events} onRuns={setAiRuns}
+            onOpenChangeSet={(id) => { const cs = changeSets.find((c) => c.id === id); if (cs) void openReview(cs);
+              else void repoApi.changeSets(projectId).then((r) => { setChangeSets(r.items); const found = r.items.find((c) => c.id === id); if (found) void openReview(found); }); }} />
         )}
       </aside>
 
@@ -386,7 +400,7 @@ export function IdePage() {
         <span>{dirty.length ? `${dirty.length} unsaved change${dirty.length === 1 ? "" : "s"}` : "clean"}</span>
         <span>{lastRun ? `build: ${lastRun.status}` : "build: not run"}</span>
         <span>{myBranchSets[0] ? `review: ${myBranchSets[0].status.replace("_", " ")}` : "review: none"}</span>
-        <span>AI: not connected (2e)</span>
+        <span>{aiStatus(aiRuns)}</span>
         <span className="ide-status-right">{busy ?? ""}{error ? <span role="alert" className="ide-error"> {error}</span> : null}</span>
         <ConnectionStatus connection={live.connection} />
       </footer>

@@ -493,6 +493,13 @@ def provision(db: Session, user: User, organization_id: uuid.UUID, model_route: 
             db, user, organization_id=organization_id, profile_key=PM, key=CLIENT_ASSISTANT, kind="lead",
             instructions=CLIENT_PERSONA, required_keys=["reply"], model_route=model_route,
             context_sources=["project_input"], tools=[])
+    from app.devai.service import AGENT_KEY, INSTRUCTIONS, TOOLS
+
+    if AGENT_KEY not in existing:  # the Developer AI (Phase 2e): runs through the executor tools, on its own branch
+        agents.create_agent(
+            db, user, organization_id=organization_id, profile_key=DEV, key=AGENT_KEY, kind="lead",
+            instructions=INSTRUCTIONS, required_keys=["plan", "source_files", "commit_message", "notes"],
+            model_route=model_route, context_sources=["project_input"], tools=list(TOOLS))
     for stage in STAGES:
         if not stage.gated:
             continue

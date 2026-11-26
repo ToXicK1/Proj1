@@ -60,8 +60,9 @@ DEFINITIONS: dict[str, ToolDefinition] = {d.key: d for d in (
                    "READ", ("*",), ("search",), "in_process",
                    input_schema={"type": "object", "properties": {"query": {"type": "string"}},
                                  "required": ["query"], "additionalProperties": False}),
-    # Repository and execution tools (Phase 1). They run through the executor; their agent runtime arrives with the
-    # Developer IDE (Phase 2), and EXECUTE/WRITE stay ungrantable until then.
+    # Repository and execution tools (Phase 1). They run through the executor, a locked-down container per call. Since
+    # Phase 2e they can be granted to an agent of a listed department (the Developer AI); the platform runs them for
+    # the agent, only on its own work branch. Merging stays with people.
     ToolDefinition("repo_read", 1, "Read repository", "Read the project repository's files and tree at a branch or "
                    "commit.", "READ", ENGINEERING, ("tree", "read"), "executor", adapter="git",
                    executor_kind="git.read", timeout_seconds=60, limits={"files": 50, "bytes": 2_000_000}),
