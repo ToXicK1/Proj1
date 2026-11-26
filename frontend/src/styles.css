@@ -2361,3 +2361,80 @@ button.link { background: none; border: 0; padding: 0; color: var(--action); cur
 .connection-live { color: var(--purple-400); }
 .connection-connecting, .connection-reconnecting { color: var(--ink-muted, #6b6b6b); }
 .connection-offline { color: var(--ink-muted, #6b6b6b); opacity: 0.7; }
+
+/* Developer IDE (Phase 2): a dark, dense, VS Code-style layout. The AI identity stays electric purple. */
+.ide { --ide-bg: #1e1e1e; --ide-side: #252526; --ide-bar: #333333; --ide-line: #3c3c3c; --ide-text: #d4d4d4;
+  --ide-muted: #9d9d9d; --ide-accent: #28684f; display: grid; height: 100vh; background: var(--ide-bg); color: var(--ide-text);
+  grid-template-columns: 48px 260px minmax(0, 1fr) 280px; grid-template-rows: minmax(0, 1fr) 24px;
+  grid-template-areas: "activity side main right" "status status status status"; font-size: 13px; }
+.ide-loading { display: grid; place-items: center; }
+.ide button { font: inherit; color: inherit; }
+.ide-activity { grid-area: activity; background: var(--ide-bar); display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 6px; }
+.ide-activity button, .ide-activity a { width: 40px; height: 40px; background: none; border: 0; border-left: 2px solid transparent;
+  color: var(--ide-muted); font-size: 18px; cursor: pointer; text-decoration: none; display: grid; place-items: center; }
+.ide-activity button.active { color: #fff; border-left-color: var(--purple-400); }
+.ide-exit { margin-top: auto; margin-bottom: 8px; }
+.ide-sidebar { grid-area: side; background: var(--ide-side); overflow: auto; padding: 8px; border-right: 1px solid var(--ide-line); }
+.ide-sidebar h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ide-muted); margin: 10px 0 4px; }
+.ide-sidebar label { color: var(--ide-muted); font-size: 12px; display: grid; gap: 4px; }
+.ide-sidebar input, .ide-sidebar textarea, .ide-sidebar select, .ide-review-bar select { background: #3c3c3c; color: var(--ide-text);
+  border: 1px solid #555; border-radius: 3px; padding: 4px 6px; }
+.ide-sidebar > button, .ide-sidebar .stack-sm > button, .ide-review-bar button { background: var(--ide-accent); color: #fff;
+  border: 0; border-radius: 3px; padding: 6px 10px; cursor: pointer; }
+.ide-sidebar button.secondary, .ide-review-bar button.secondary { background: #3c3c3c; }
+.ide-sidebar button:disabled { opacity: .5; cursor: default; }
+.ide-tree, .ide-list { list-style: none; margin: 0; padding: 0; }
+.ide-file, .ide-folder, .ide-list button { width: 100%; text-align: left; background: none; border: 0; padding: 2px 6px;
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ide-file:hover, .ide-folder:hover, .ide-list button:hover { background: #2a2d2e; }
+.ide-file.active, .ide-list button.active { background: #37373d; }
+.ide-file.modified { color: #e2c08d; }
+.ide-hint { color: var(--ide-muted); font-size: 12px; }
+.ide-main { grid-area: main; display: grid; grid-template-rows: 35px 22px minmax(0, 1fr) 200px; min-width: 0; }
+.ide-tabs { display: flex; background: var(--ide-side); overflow-x: auto; }
+.ide-tab { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px 0 10px; border-right: 1px solid var(--ide-line);
+  color: var(--ide-muted); white-space: nowrap; }
+.ide-tab button { background: none; border: 0; cursor: pointer; padding: 0 2px; }
+.ide-tab.active { background: var(--ide-bg); color: #fff; border-top: 1px solid var(--purple-400); }
+.ide-breadcrumb { padding: 2px 12px; color: var(--ide-muted); font-size: 12px; border-bottom: 1px solid var(--ide-line); }
+.ide-editor { min-height: 0; }
+.ide-empty { height: 100%; display: grid; place-items: center; color: var(--ide-muted); }
+.ide-review { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.ide-review-bar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--ide-side); flex-wrap: wrap; }
+.ide-bottom { border-top: 1px solid var(--ide-line); display: grid; grid-template-rows: 28px minmax(0, 1fr); min-height: 0; }
+.ide-bottom-tabs { display: flex; gap: 2px; padding: 0 8px; }
+.ide-bottom-tabs button { background: none; border: 0; border-bottom: 1px solid transparent; color: var(--ide-muted);
+  text-transform: uppercase; font-size: 11px; padding: 0 8px; cursor: pointer; }
+.ide-bottom-tabs button.active { color: #fff; border-bottom-color: var(--purple-400); }
+.ide-bottom-body { overflow: auto; padding: 6px 12px; }
+.ide-terminal { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; gap: 4px; }
+.ide-terminal[hidden] { display: none; }
+.ide-terminal-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ide-terminal-bar button { background: var(--purple-500, #6d28d9); color: #fff; border: 0; border-radius: 3px; padding: 2px 10px; font-size: 12px; cursor: pointer; }
+.ide-terminal-bar button:disabled { opacity: .6; cursor: default; }
+.ide-terminal-screen { min-height: 120px; background: #1e1e1e; }
+.ide-bottom-body pre { margin: 0; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.ide-right { grid-area: right; background: var(--ide-side); overflow: auto; padding: 10px; border-left: 1px solid var(--ide-line); }
+.ide-right .muted { color: var(--ide-muted); }
+.ide-status { grid-area: status; background: var(--ide-accent); color: #fff; display: flex; gap: 14px; align-items: center;
+  padding: 0 10px; font-size: 12px; white-space: nowrap; overflow: hidden; }
+.ide-status-right { margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+.ide-status .connection { color: #fff; border-color: rgba(255,255,255,.6); padding: 0 8px; }
+.ide-error { color: #ffd2d2; }
+.ide-badge { margin-left: 6px; font-size: 11px; padding: 0 6px; border-radius: 8px; background: #3c3c3c; }
+.ide-approved, .ide-merged, .ide-succeeded { background: #1f6f43; }
+.ide-changes_requested, .ide-failed, .ide-error, .ide-timed_out { background: #8a2a2a; }
+.ide-in_review, .ide-queued, .ide-running { background: #6b4e00; }
+/* The IDE owns the whole window, like a desktop IDE; ⤺ in the activity bar returns to the workspace. */
+.ide { position: fixed; inset: 0; z-index: 60; }
+@media (max-width: 1100px) {
+  .ide { grid-template-columns: 48px 220px minmax(0, 1fr); grid-template-areas: "activity side main" "status status status"; }
+  .ide-right { display: none; }
+}
+@media (max-width: 700px) {
+  .ide { grid-template-columns: 44px minmax(0, 1fr); grid-template-areas: "activity main" "status status"; }
+  .ide-sidebar { display: none; }
+}
+.ide-sidebar-head { display: grid; gap: 6px; margin-bottom: 6px; }
+.ide-new { background: #3c3c3c; color: var(--ide-text); border: 0; border-radius: 3px; padding: 4px 8px; cursor: pointer; text-align: left; }
+.ide-review-bar input { background: #3c3c3c; color: var(--ide-text); border: 1px solid #555; border-radius: 3px; padding: 4px 6px; }

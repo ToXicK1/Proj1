@@ -28,6 +28,7 @@ from app.repos.router import router as repos_router
 from app.skills.router import router as skills_router
 from app.storage import service as storage
 from app.studio.router import router as studio_router
+from app.terminal.router import router as terminal_router
 from app.tools.router import router as tools_router
 from app.work.router import router as work_router
 from app.workflows.router import router as workflows_router
@@ -119,5 +120,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(repos_router)
     app.include_router(tools_router)
     app.include_router(events_router)
+    app.include_router(terminal_router)
     return app
 

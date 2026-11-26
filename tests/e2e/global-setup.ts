@@ -8,7 +8,8 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   try {
     const page = await browser.newPage({ baseURL });
     await page.goto("/login", { timeout: 120_000 }); // a fresh dev server compiles everything on first load
-    await page.getByRole("button", { name: "Sign in" }).waitFor({ timeout: 60_000 });
+    // Up to 3 minutes: Vite pre-compiles Monaco (the IDE's editor) once when a fresh dev server starts.
+    await page.getByRole("button", { name: "Sign in" }).waitFor({ timeout: 180_000 });
   } finally {
     await browser.close();
   }

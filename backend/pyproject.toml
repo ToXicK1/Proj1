@@ -16,6 +16,7 @@ dependencies = [
   "httpx>=0.27,<1",
   "pyyaml>=6,<7",
   "docker==7.1.0",
+  "websockets>=14,<18",  # the terminal relay (API) and the executor's internal terminal server
 ]
 
 [dependency-groups]

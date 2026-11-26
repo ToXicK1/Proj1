@@ -7,6 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends nodejs git && r
     && pip install --no-cache-dir "pytest==8.3.3" \
     && groupadd --gid 2000 code && useradd --uid 2000 --gid 2000 --no-create-home --shell /usr/sbin/nologin code
 
-COPY sandbox/runner.py sandbox/job.py sandbox/gitjob.py /opt/runner/
+COPY sandbox/runner.py sandbox/job.py sandbox/gitjob.py sandbox/terminal_init.py /opt/runner/
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 SANDBOX_WORK=/work PYTHONPATH=/opt/runner
 WORKDIR /opt/runner

@@ -1,5 +1,5 @@
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useState, type ReactNode } from "react";
+import { Suspense, lazy, useState, type ReactNode } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Skeleton } from "./components/ui";
 import { useSession } from "./session";
@@ -10,6 +10,8 @@ import { NotificationsPage } from "./pages/NotificationsPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { DepartmentWorkspacePage } from "./pages/DepartmentWorkspacePage";
+// The IDE (and Monaco, several MB) loads only when someone opens it, never with the rest of the app.
+const IdePage = lazy(() => import("./ide/IdePage").then((m) => ({ default: m.IdePage })));
 import { ProfessionalTeamPage } from "./pages/ProfessionalTeamPage";
 import { SignupPage } from "./pages/SignupPage";
 import { StudioPage } from "./pages/StudioPage";
@@ -152,6 +154,7 @@ export function App() {
         <Route path="/change-password" element={<RequireAuth><ChangePasswordPage /></RequireAuth>} />
         <Route path="/projects/:projectId/team" element={<RequireAuth><ProfessionalTeamPage /></RequireAuth>} />
         <Route path="/projects/:projectId/work/:dept" element={<RequireAuth><DepartmentWorkspacePage /></RequireAuth>} />
+        <Route path="/projects/:projectId/ide" element={<RequireAuth><Suspense fallback={<Skeleton />}><IdePage /></Suspense></RequireAuth>} />
         <Route path="*" element={<section className="narrow-page"><h1>Page not found</h1><p className="muted">That address does not lead anywhere. <Link to="/">Go to your projects</Link>.</p></section>} />
       </Routes>
     </Shell>

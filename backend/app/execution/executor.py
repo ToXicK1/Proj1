@@ -295,6 +295,9 @@ def main() -> None:  # pragma: no cover - the service loop; process() is what th
         stopping = True
 
     signal.signal(signal.SIGTERM, stop)
+    from app.execution import terminal_server
+
+    terminal_server.start_in_background(factory)  # Phase 2d: internal-only terminal connections
     log.info("executor %s ready", worker)
     last_beat = 0.0
     while not stopping:

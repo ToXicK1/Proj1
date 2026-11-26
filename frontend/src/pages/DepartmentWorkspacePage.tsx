@@ -84,6 +84,13 @@ export function DepartmentWorkspacePage() {
           {current.screen === "intake" && <Intake projectId={projectId} all={kinds} />}
           {current.screen === "analysis" && <MeetingAnalysis projectId={projectId} all={kinds} />}
           {current.screen === "kickoff" && <Kickoff projectId={projectId} all={kinds} />}
+          {current.screen === "ide" && (
+            <div className="stack">
+              <p>The Developer IDE opens the project's real git repository: edit in the code editor, commit to a work
+                branch, review change sets as real diffs, and build and test in an isolated container.</p>
+              <Link className="button" to={`/projects/${encodeURIComponent(projectId)}/ide`}>Open the IDE</Link>
+            </div>
+          )}
           {current.screen === "pm_tasks" && <PmTasks projectId={projectId} onOpen={(m) => setParams({ m })} />}
           {current.screen === "brief" && <ProjectBrief projectId={projectId} all={kinds} />}
           {current.screen === "ba_handoff" && <BaHandoff projectId={projectId} />}

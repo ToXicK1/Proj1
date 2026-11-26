@@ -389,3 +389,54 @@ Frontend 10 unit tests and typecheck pass; browser tests 20 passed (one-organiza
   - Run on the commit **before** Phase 1 (67383e4, in a separate worktree), `lifecycle.spec.ts` failed on the **same** email-verification step, while `ba-department.spec.ts` passed.
   - The email-verification step therefore fails intermittently with and without Phase 1. It is recorded as a pre-existing flake to investigate, not as passing.
   - The run's `--grep-invert live` filter also excluded tests whose names merely contain "live" (such as "deliverables"), so only 3 tests ran.
+
+## 2026-11-25 — Phase 2a–2c: the Developer IDE
+
+- **Frontend unit tests:** 23 passed. New: `src/ide/paths.test.ts` (3) covers path validation matching the git job's rule, explorer folder grouping and order, and testing what is on screen (unsaved tabs replace or add to committed files).
+- **Browser spec `ide.spec.ts`**, on the managed stack after `accounts.spec.ts`, one worker. **Passed (1.2 min; both specs together 3.0 min).** It drives the real IDE:
+  - create the repository;
+  - New file `calc.py` and `test_calc.py`, typed in Monaco;
+  - Build and test with the unsaved changes: `succeeded`, network none, "Tests: 1 passed";
+  - commit two files to a new branch (`feature/opening-hours`, status bar clean);
+  - open change set #1 and its diff;
+  - "Approve" as the author is refused with "You cannot approve your own change set".
+- **Problems found and fixed on the way:**
+  - The IDE first sat inside the page frame and was squeezed; it now owns the window and is responsive.
+  - There was no way to create a file; there is now New file.
+  - `window.prompt` dialogs were replaced with inline inputs.
+  - Build and test ignored unsaved edits; it now tests what is on screen.
+  - A newly created file did not take focus, so typing went elsewhere; it now does.
+  - Monaco 0.57's export map needed new worker import paths.
+  - The production build ran out of memory; the build script now raises the heap.
+  - **Monaco was loaded on every page**, making the first load slow. The IDE is now lazy-loaded: the main bundle went from about 4.5 MB to 400 KB, and the IDE is a 4.1 MB chunk loaded on demand.
+  - **One network error while waiting for a build made the IDE give up** ("queued" forever, although the build succeeded in 2 s). Waiting now survives transient errors, and unexpected errors show their real message.
+- **Test infrastructure:**
+  - The managed mode ran only `accounts.spec.ts`; it now runs `ide.spec.ts` too, on one worker, in order.
+  - The warm-up allows 3 minutes while a fresh Vite pre-compiles Monaco.
+  - The spec inserts code lines instead of typing them, because Monaco's auto-closing brackets would double them.
+  - One run did not start because the test stack failed to come up (a transient Docker failure); the rerun was clean.
+- **Observed and noted, not changed:** each git operation is a fresh container on a single executor, about 1–3 s each and one at a time. A change-set diff (two reads) takes several seconds. Executor throughput (parallel jobs) is a candidate for later.
+- **Backend:** no changes in Phase 2a–2c. The last full suite passed 557 tests, and the spend fix's file passes 16.
+
+## 2026-11-26 — Phase 2d: the IDE terminal
+
+- **New backend tests, `tests/test_terminal.py`: 5 passed.** Docker is faked; the real path is proven in the browser spec below.
+  - Only engineers open a terminal. It needs a repository and a valid branch, and opening it needs the CSRF token. Opening is audited and published live, and the nonce is never returned.
+  - People see only their own sessions.
+  - The executor accepts the nonce once, refuses a wrong or empty one, and refuses one older than two minutes.
+  - The relay refuses another origin, another engineer, the client, and anyone not signed in. Nothing reaches the executor.
+  - A session starts a container with no network, a read-only root, all capabilities dropped and no environment variables. The shell runs as uid 2000 and resize values are clamped.
+  - Each submitted line and any unsubmitted text are recorded, and so is the transcript. The container is always removed.
+  - A refused connection starts no container.
+- **Full backend suite: 562 passed, 5 skipped, 0 failed, 0 errors.** That is the previous 557 plus the 5 new tests, counted from the result marks. The first attempt errored before any test ran: an interrupted earlier run had left the embedded test PostgreSQL unclean, and its recovery took longer than pgserver's start-up timeout (about 37 s, mostly waiting out a Windows file lock on its log). It had recovered on its own by the rerun, which was clean. No code was changed for it.
+- **Frontend:** 23 unit tests passed. The production build (type check plus Vite) succeeded.
+- **Browser specs, managed stack, rebuilt from scratch: `accounts.spec.ts` and `ide.spec.ts` both passed (5.4 min).** The IDE spec now ends with a real terminal:
+  - open it on `feature/opening-hours`;
+  - `ls && id -u` shows `calc.py` and `2000`;
+  - a Python attempt to connect to 1.1.1.1 fails, so the shell prints the no-network marker;
+  - End session shows "session ended".
+- **Checked in the test stack's database afterwards:**
+  - The session is `ended`, its nonce is cleared and its limits record network `none`.
+  - Both typed lines are recorded with timestamps, along with 615 bytes of transcript.
+  - `terminal.opened` and `terminal.closed` appear in live events, with one `terminal.opened` audit event.
+  - **No terminal container was left behind.**

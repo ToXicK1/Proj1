@@ -540,3 +540,43 @@ Not done yet: AI participation in team chat, ticket assignment changes, attachme
   - A **Live** connection indicator in every profile's workspace header, and a **Live activity** panel in the context column.
   - The Vite dev proxy forwards WebSockets.
   - Each profile's professional central area arrives in its own phase (2–8).
+
+## 2026-11-25 — Phase 2a–2c: the Developer IDE (Monaco, source control, run and test)
+
+- **Dependencies** (verified and registered in `DEPENDENCIES.md`; all MIT, exact versions):
+  - `monaco-editor` 0.57.0. 0.58.0 was two days old, so it was not taken.
+  - `@monaco-editor/react` 4.7.0 (React 18 supported), `@xterm/xterm` 6.0.0, `@xterm/addon-fit` 0.11.0. xterm is used by the 2d terminal.
+  - DOMPurify is overridden to 3.4.17 (fixes five advisories in Monaco's 3.4.15) and used under Apache-2.0.
+  - **Substitution, documented:** `@monaco-editor/react` loads Monaco from jsDelivr by default. It is configured to use the local package instead, and Vite bundles the five language workers (`src/ide/monacoSetup.ts`). In the browser, no request went to jsDelivr and every worker was served by our own server.
+- **The IDE** (`/projects/{id}/ide`, `src/ide/IdePage.tsx`): full window, VS Code-style. From the Developer workspace, the old "Repository Explorer" placeholder became "IDE (repository, diffs, builds)".
+  - **Activity bar:** Explorer, Search, Source Control, Run and Test, AI Assistant, back to the workspace.
+  - **Explorer:** the project's real git tree, with a branch picker and **New file**.
+  - **Search:** file paths. Searching contents comes with the AI tools.
+  - **Editor:** Monaco tabs with syntax highlighting, unsaved markers and a breadcrumb.
+  - **Source Control:**
+    - Changed files; commit to the current work branch, or to a new one when on `main` (main changes only through a reviewed merge).
+    - Open a change set; change sets open in Monaco's **diff editor**, file by file, between the change set's base and head commits.
+    - Approve at the exact head commit, request changes with a note, merge the approved commit. **The server enforces every rule**: the author cannot approve, a stale commit is refused, only the approved commit is merged.
+  - **Run and Test:** builds and runs the unit tests in the isolated executor, **including unsaved editor changes** (what is on screen is what is tested). The Output, Problems and Execution history panels show the real results.
+  - **Status bar:** branch, commit, unsaved changes, build status, review status, AI status, live connection, and errors.
+  - **Live activity** in the right panel, from Phase 1's events; another person's commits, review decisions and finished builds refresh the IDE.
+  - Responsive: the right panel hides below 1100 px and the sidebar below 700 px.
+- **Not yet available, and labelled so in the IDE:** the **Developer AI** (2e: story, plan, its own branch through registered tools, build and test, change set for human review; it never merges).
+- **Production build:** Monaco needs a larger Node heap; the `build` script now sets it.
+
+## 2026-11-25 — Phase 2d: the IDE terminal
+
+- **What a developer gets:** the IDE's Terminal tab opens `bash` on a **throwaway checkout of the current branch**. It is for running tests, scripts and git read commands; changes are committed from the editor (nothing typed in the terminal is pushed back).
+- **Where it runs:** never on the API server. Each session is **a fresh container started by the executor** (the only service with the Docker socket):
+  - no network, read-only root, all capabilities dropped except CHOWN/SETUID/SETGID (used once, by the start-up script, to hand the files to uid 2000 and drop to it);
+  - no-new-privileges, 768 MB memory, 1 CPU, 256 processes, `/work` and `/tmp` on size-limited tmpfs, no environment variables (no secrets);
+  - the shell runs as uid 2000;
+  - ends after 10 idle minutes, 30 minutes in all, when the person ends it, or when the browser goes away; the container and its volumes are always removed.
+- **The path:**
+  - browser (xterm.js) → API WebSocket `/api/v1/projects/{id}/terminal/{session}/ws` → executor's internal terminal server (port 8090, compose network only, no published port).
+  - The API checks the origin, the signed-in person (re-read from the session cookie), that they are an engineering professional or admin on the project, and that the session is theirs and not yet used.
+  - It then passes the session's **one-time nonce** to the executor, which accepts it once, within two minutes, and clears it. The nonce never reaches the browser.
+- **Records:** `terminal_sessions` (migration 0035) keeps who, which branch, limits, status, end reason, **every submitted input line** (plus any unsubmitted text at the end) and the last 200 KB of output. Opening is written to the audit chain (`terminal.opened`); opening and closing appear in Live activity. `GET /terminal` and `GET /terminal/{id}` show a person their own sessions; administrators see all.
+- **API:** `POST /api/v1/projects/{id}/terminal` (CSRF), `GET .../terminal`, `GET .../terminal/{session}`, WebSocket `.../terminal/{session}/ws`.
+- **Dependencies:** `websockets` (BSD-3-Clause; already present through uvicorn[standard]) is now declared directly.
+

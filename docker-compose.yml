@@ -35,6 +35,7 @@ services:
       AIDLC_PROVIDER_TIMEOUT_SECONDS: ${AIDLC_PROVIDER_TIMEOUT_SECONDS:-600}
       AIDLC_SANDBOX_DIR: /sandbox-jobs
       AIDLC_STORAGE_ENDPOINT: http://objectstore:8333
+      AIDLC_EXECUTOR_TERMINAL_URL: ws://executor:8090  # internal only: the executor publishes no port
     extra_hosts:
       - "host.docker.internal:host-gateway"  # lets a local model server on this machine be reached
     depends_on:

@@ -20,7 +20,9 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   fullyParallel: true,
   // Six parallel browsers stalled page loads on the Vite dev server for up to a minute.
-  workers: Number(process.env.E2E_WORKERS ?? 2),
+  // Managed mode runs its specs in order on one worker: ide.spec.ts uses the administrator and project that
+  // accounts.spec.ts creates.
+  workers: managed ? 1 : Number(process.env.E2E_WORKERS ?? 2),
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   use: {
@@ -30,8 +32,8 @@ export default defineConfig({
   },
   projects: [
     managed
-      ? { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testMatch: /accounts\.spec\.ts/ }
-      : { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testIgnore: shared ? /^(?!.*(lifecycle|lifecycle-live|collab|ba-department|ba-department-live)\.spec).*$/ : /(layout|lifecycle|lifecycle-live|collab|ba-department|ba-department-live|accounts)\.spec\.ts/ },
+      ? { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testMatch: /(accounts|ide)\.spec\.ts/ }
+      : { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], channel }, testIgnore: shared ? /^(?!.*(lifecycle|lifecycle-live|collab|ba-department|ba-department-live)\.spec).*$/ : /(layout|lifecycle|lifecycle-live|collab|ba-department|ba-department-live|accounts|ide)\.spec\.ts/ },
     { name: "mobile-chromium", use: { ...devices["Pixel 5"], channel }, testMatch: shared || managed ? /^$/ : /layout\.spec\.ts/ },
   ],
 });

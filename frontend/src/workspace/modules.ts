@@ -4,7 +4,7 @@ import type { Tone } from "../components/ui";
  * shared screens, or not built yet: then it says which step brings it, and nothing pretends to work. */
 
 export type Module =
-  | { key: string; label: string; screen: "overview" | "steps" | "packages" | "handoffs" | "traceability" | "conversations" | "scope" | "changes" | "intake" | "analysis" | "brief" | "ba_handoff" | "pm_tasks" | "kickoff" }
+  | { key: string; label: string; screen: "overview" | "steps" | "packages" | "handoffs" | "traceability" | "conversations" | "scope" | "changes" | "intake" | "analysis" | "brief" | "ba_handoff" | "pm_tasks" | "kickoff" | "ide" }
   | { key: string; label: string; screen: "records"; kinds: string[] }
   | { key: string; label: string; screen: "later"; step: string; what: string };
 
@@ -88,7 +88,7 @@ export const MODULES: Record<string, Module[]> = {
     { key: "steps", label: "Lifecycle steps", screen: "steps" },
     later("tasks", "Requirements & Tasks", "7.3", "development tasks from approved stories"),
     later("plan", "Implementation Plan", "7.3", "modules, dependencies and sequencing"),
-    later("repo", "Repository Explorer", "7.3", "the platform repository, and GitHub once connected"),
+    { key: "ide", label: "IDE (repository, diffs, builds)", screen: "ide" },
     later("modules", "Modules & Components", "7.3", "module records linked to the architecture"),
     later("api", "API Development", "7.3", "implemented endpoints against the API contract"),
     later("db", "Database & Migrations", "7.3", "migrations against the approved data model"),
